@@ -27,8 +27,16 @@ static void aMyfmanekin_dma(mActor_name_t ftr_name, u8* data) {
     int player_no = mHS_get_pl_no(house_no);
     u32 manekin_no = ((ftr_name - FTR_CLOTH_MANNIQUIN_MY_ORIGINAL0) >> 2);
 
-    mNW_CopyOriginalTexture(data, &Save_Get(private_data[player_no]).my_org[manekin_no & 7]);
-    mNW_CopyOriginalPalette(data + mNW_DESIGN_TEX_SIZE, &Save_Get(private_data[player_no]).my_org[manekin_no & 7]);
+    mNW_original_design_c* design = &Save_Get(private_data[player_no]).my_org[manekin_no & 7];
+#ifdef TARGET_PC
+    const mNW_original_design_c* kept = pc_pattern_use(PC_PAT_USE_MANNEQUIN, house_no, -1, manekin_no & 7);
+    if (kept != NULL) {
+        design = (mNW_original_design_c*)kept; /* the pattern it was made from */
+    }
+#endif
+
+    mNW_CopyOriginalTexture(data, design);
+    mNW_CopyOriginalPalette(data + mNW_DESIGN_TEX_SIZE, design);
 }
 
 static aFTR_vtable_c aMyfmanekin_func = {

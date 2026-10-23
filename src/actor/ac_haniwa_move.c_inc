@@ -388,6 +388,10 @@ static void aHNW_menu_end_wait(HANIWA_ACTOR* haniwa, GAME* game) {
                     Submenu_Item_c* item = submenu->item_p;
                     if (item->item == RSV_NO) {
                         Save_Get(homes[haniwa->house_idx]).door_original = mNW_get_image_no(submenu, item->slot_no);
+#ifdef TARGET_PC
+                        pc_pattern_bind_use(PC_PAT_USE_DOOR, haniwa->house_idx, Common_Get(player_no),
+                                            mNW_get_image_no(submenu, item->slot_no)); /* keeps this pattern */
+#endif
                         sAdo_SysTrgStart(NA_SE_461);
                     }
 

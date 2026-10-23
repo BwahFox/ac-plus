@@ -131,6 +131,39 @@ static void pc_init_mail_entries(void* block) {
     }
 }
 
+/* Same as m_card.c mCD_set_init_original_data: blank folder names and blank
+ * designs. Without it the pattern storage (Mabel's "save designs to the memory
+ * card", also the pause menu's Pattern Storage) is raw zeros: "¡¡¡" folder
+ * names and black patterns. */
+static void pc_init_original_entries(void* buf) {
+    mCD_keep_original_c* keep_original = (mCD_keep_original_c*)buf;
+    int i;
+    int j;
+
+    for (i = 0; i < mCD_KEEP_ORIGINAL_PAGE_COUNT; i++) {
+        mem_clear(keep_original->folder_names[i], sizeof(keep_original->folder_names[i]), CHAR_SPACE);
+        for (j = 0; j < mCD_KEEP_ORIGINAL_COUNT; j++) {
+            mNW_InitOriginalData(&keep_original->original[i][j]);
+        }
+    }
+}
+
+/* Saves written before pc_init_original_entries existed hold an all-zero
+ * block; a block that was ever set up has space-filled folder names. */
+static void pc_repair_original_entries(void* buf) {
+    mCD_keep_original_c* keep_original = (mCD_keep_original_c*)buf;
+    const u8* names = &keep_original->folder_names[0][0];
+    u32 i;
+
+    for (i = 0; i < sizeof(keep_original->folder_names); i++) {
+        if (names[i] != 0) {
+            return;
+        }
+    }
+    OSReport("[PC] Pattern storage was never set up, initialising it\n");
+    pc_init_original_entries(buf);
+}
+
 void mCD_save_data_aram_malloc(void) {
     int i;
     for (i = 0; i < mCD_ARAM_DATA_NUM; i++) {
@@ -142,10 +175,17 @@ void mCD_save_data_aram_malloc(void) {
                     pc_init_diary_entries(l_aram_block_p_table[i]);
                 } else if (i == mCD_ARAM_DATA_MAIL) {
                     pc_init_mail_entries(l_aram_block_p_table[i]);
+                } else if (i == mCD_ARAM_DATA_ORIGINAL) {
+                    pc_init_original_entries(l_aram_block_p_table[i]);
                 }
             }
         }
     }
+}
+
+/* The ARAM block itself (pc_pattern.c reads pattern storage), NULL if not allocated. */
+void* pc_card_aram_block(int idx) {
+    return (idx >= 0 && idx < mCD_ARAM_DATA_NUM) ? l_aram_block_p_table[idx] : NULL;
 }
 
 int mCD_save_data_aram_to_main(void* dst, u32 size, u32 idx) {
@@ -181,6 +221,8 @@ void mCD_set_aram_save_data(void) {
                 pc_init_diary_entries(l_aram_block_p_table[i]);
             } else if (i == mCD_ARAM_DATA_MAIL) {
                 pc_init_mail_entries(l_aram_block_p_table[i]);
+            } else if (i == mCD_ARAM_DATA_ORIGINAL) {
+                pc_init_original_entries(l_aram_block_p_table[i]);
             }
         }
     }
@@ -237,6 +279,10 @@ static void pc_ensure_save_dirs(void) {
 }
 
 static int pc_save_write_gci_to(const char* gci_path, const char* tmp_path);
+void pc_autosave_reset_timer(void);        /* pc_quick_save.c */
+void pc_cloud_save_push(const char* path); /* pc_cloud_save.c */
+void pc_cloud_save_pull(const char* path);
+#include "pc_ext_save.h"
 
 /* mCD_get_land_copyProtect */
 static u16 pc_get_land_copy_protect(void) {
@@ -441,6 +487,11 @@ static int pc_save_write_gci_to(const char* gci_path, const char* tmp_path) {
     }
 
     OSReport("[PC] GCI save: written successfully to %s (backups rotated)\n", gci_path);
+    pc_autosave_reset_timer();
+    if (strcmp(gci_path, PC_GCI_PATH) == 0) {
+        pc_ext_save_write(gci_path);
+        pc_cloud_save_push(gci_path);
+    }
     return TRUE;
 }
 
@@ -545,6 +596,7 @@ static int pc_save_read_gci(const char* path) {
             memcpy(l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL], others_ptr + off_orig, orig_size);
             pc_save_bswap_keep_original((mCD_keep_original_c*)l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL],
                                         PC_BSWAP_FROM_BE);
+            pc_repair_original_entries(l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL]);
         }
         if (l_aram_block_p_table[mCD_ARAM_DATA_DIARY]) {
             pc_save_bswap_verify_roundtrip_diary(others_ptr + off_diary,
@@ -557,6 +609,9 @@ static int pc_save_read_gci(const char* path) {
     }
 
     free(file_data);
+    /* The ac-plus companion save always goes with the home town's main file,
+     * also when this read was a recovery from a backup. */
+    pc_ext_save_load(PC_GCI_PATH);
     return TRUE;
 }
 
@@ -731,6 +786,7 @@ int pc_save_check_and_load(void) {
 
     pc_ensure_save_dirs();
     pc_save_migrate_legacy();
+    pc_cloud_save_pull(PC_GCI_PATH);
 
     if (stat(PC_GCI_PATH, &st) == 0) {
         OSReport("[PC] Found GCI save: %s (%ld bytes)\n", PC_GCI_PATH, (long)st.st_size);
@@ -932,6 +988,40 @@ int mCD_SaveHome_bg(int param_1, int* chan) {
     }
 
     return mCD_TRANS_ERR_NONE;
+}
+
+/* Z+Start (pc_quick_save.c): save the town on the spot. Unlike the gyroid's
+ * save-and-quit this leaves the session alone (no wisp or money rock cleanup),
+ * but it clears the reset code like a proper save, so quitting afterwards does
+ * not bring Resetti. */
+int pc_quick_save(void) {
+    Private_c* priv = Now_Private;
+    u16 copy_protect;
+    int result;
+
+    if (priv == NULL || Common_Get(player_no) >= PLAYER_NUM) {
+        return FALSE;
+    }
+
+    mCkRh_SavePlayTime(Common_Get(player_no));
+    priv->reset_code = 0;
+    if (Common_Get(now_home) != NULL) {
+        Common_Get(now_home)->flags.has_saved = TRUE;
+    }
+
+    copy_protect = pc_get_land_copy_protect();
+    Common_Set(copy_protect, copy_protect);
+    Save_Set(copy_protect, copy_protect);
+    Save_Set(travel_hard_time, lbRTC_HardTime());
+
+    if (mCD_GetThisLandSlotNo() == mCD_SLOT_B && l_card_b_gci_path[0] != '\0') {
+        char tmp_path[300];
+        snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", l_card_b_gci_path);
+        result = pc_save_write_gci_to(l_card_b_gci_path, tmp_path);
+    } else {
+        result = pc_save_write_gci();
+    }
+    return result;
 }
 
 /* --- Travel / Station functions --- */

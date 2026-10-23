@@ -4,6 +4,8 @@ in vec2 v_texcoord0;
 in vec2 v_texcoord1;
 in vec3 v_normal;
 in float v_fog_z;
+in float v_curve_drop;
+uniform vec4 u_curve_haze;  /* rgb: sky colour at the horizon, a: 1 / drop at the horizon (0 = off) */
 
 /* Fog on/off is separate from the range params so shader specialization can
    fold the branch while start/end stay dynamic */
@@ -373,5 +375,11 @@ void main() {
         float fog_denom = max(u_fog_params.z - u_fog_params.y, 1e-6);
         float fog_factor = clamp((v_fog_z - u_fog_params.y) / fog_denom, 0.0, 1.0);
         fragColor.rgb = mix(fragColor.rgb, u_fog_color.rgb, fog_factor);
+    }
+
+    /* Curved world: ground nearing the horizon fades into the sky */
+    if (u_curve_haze.a > 0.0) {
+        float haze = smoothstep(0.4, 1.6, v_curve_drop * u_curve_haze.a) * 0.6;
+        fragColor.rgb = mix(fragColor.rgb, u_curve_haze.rgb, haze);
     }
 }

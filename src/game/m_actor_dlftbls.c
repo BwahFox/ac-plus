@@ -1,6 +1,10 @@
 #include "m_actor_dlftbls.h"
 
 #include "m_player_call.h"
+#ifdef TARGET_PC
+#include "ac_npc_celeste.h"
+#include "ac_npc_brewster.h"
+#endif
 #include "ac_sample.h"
 #include "ac_airplane.h"
 #include "ac_animal_logo.h"
@@ -499,13 +503,21 @@ ACTOR_DLFTBL actor_dlftbls[] = {
   MAKE_ACTOR_DLF(Npc_Hem),
   MAKE_ACTOR_DLF(Tent),
   MAKE_ACTOR_DLF(Pterminal),
-  MAKE_ACTOR_DLF(Mscore_Control)
+  MAKE_ACTOR_DLF(Mscore_Control),
+#ifdef TARGET_PC
+  MAKE_ACTOR_DLF(Npc_Celeste),
+  MAKE_ACTOR_DLF(Npc_Brewster),
+#endif
 };
 
 int actor_dlftbls_num;
 
 extern void actor_dlftbls_init() {
+#ifdef TARGET_PC
+  actor_dlftbls_num = 248;
+#else
   actor_dlftbls_num = 246;
+#endif
 }
 
 extern void actor_dlftbls_cleanup() {

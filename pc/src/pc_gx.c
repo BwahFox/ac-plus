@@ -1,6 +1,7 @@
 /* pc_gx.c - GX API → OpenGL 3.3: state management, vertex submission, draw dispatch */
 #include "pc_gx_internal.h"
 #include "pc_profiler.h"
+#include "pc_sky.h"
 #include <stddef.h>
 static GLushort quad_index_buf[(PC_GX_MAX_VERTS / 4) * 6];
 #include <math.h>
@@ -53,9 +54,9 @@ PCGXState g_gx;
 
 #ifdef PC_ENHANCEMENTS
 /* Aspect correction: factor = gc_aspect/actual_aspect, offset = content left edge in GC coords */
-static float g_aspect_factor = 1.0f;
-static float g_aspect_offset = 0.0f;
-static int   g_aspect_active = 0;
+float g_aspect_factor = 1.0f;
+float g_aspect_offset = 0.0f;
+int   g_aspect_active = 0;
 
 static void pc_gx_update_aspect(void) {
     float gc_aspect = (float)PC_GC_WIDTH / (float)PC_GC_HEIGHT;
@@ -387,6 +388,7 @@ void pc_gx_begin_frame(void) {
     pc_gx_draw_call_count = 0;
     g_pc_widescreen_stretch = 0;
     pc_gx_draw_pending();
+    pc_sky_frame_reset();
     /* glClear respects write masks — must enable all before clearing */
     glDepthMask(GL_TRUE);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
@@ -583,6 +585,9 @@ void pc_gx_cache_uniform_locations(GLuint shader, PCGXUloc* u) {
     u->projection = UL("u_projection");
     u->modelview  = UL("u_modelview");
     u->normal_mtx = UL("u_normal_mtx");
+    u->curve_up   = UL("u_curve_up");
+    u->curve_fwd  = UL("u_curve_fwd");
+    u->curve_haze = UL("u_curve_haze");
 
     u->tev_prev = UL("u_tev_prev");
     u->tev_reg0 = UL("u_tev_reg0");
@@ -777,6 +782,13 @@ void pc_gx_flush_vertices(void) {
         if (dirty & PC_GX_DIRTY_PROJECTION) {
             loc = UL(projection);
             if (loc >= 0) glUniformMatrix4fv(loc, 1, GL_TRUE, (float*)g_gx.projection_mtx);
+            if (UL(curve_up) >= 0) {
+                float up[4], fwd[4], haze[4];
+                pc_sky_curve_uniforms(g_gx.projection_type == GX_PERSPECTIVE, up, fwd, haze);
+                glUniform4fv(UL(curve_up), 1, up);
+                glUniform4fv(UL(curve_fwd), 1, fwd);
+                if (UL(curve_haze) >= 0) glUniform4fv(UL(curve_haze), 1, haze);
+            }
         }
 
         if (dirty & PC_GX_DIRTY_MODELVIEW) {
@@ -1200,6 +1212,16 @@ void GXSetArray(u32 attr, const void* data, u32 size, u8 stride) {
 void GXInvalidateVtxCache(void) { }
 
 /* --- Transforms --- */
+/* The x scale GXSetProjection applies to a perspective projection right now */
+float pc_gx_projection_x_scale(void) {
+#ifdef PC_ENHANCEMENTS
+    if (g_pc_widescreen_stretch == 0 && g_aspect_active) {
+        return g_aspect_factor;
+    }
+#endif
+    return 1.0f;
+}
+
 void GXSetProjection(const void* mtx, u32 type) {
     /* Stored matrix gets aspect-scaled below, so filter on a shadow of the
      * raw input plus everything that feeds the final matrix */

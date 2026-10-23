@@ -1034,6 +1034,10 @@ enum actor_profile_table {
     mAc_PROFILE_TENT,
     mAc_PROFILE_PTERMINAL,
     mAc_PROFILE_MSCORE_CONTROL,
+#ifdef TARGET_PC
+    mAc_PROFILE_NPC_CELESTE,
+    mAc_PROFILE_NPC_BREWSTER,
+#endif
 
     mAc_PROFILE_NUM
 };

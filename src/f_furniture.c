@@ -1,3 +1,6 @@
+#ifdef TARGET_PC
+#include "pc_pattern.h"
+#endif
 #include "f_furniture.h"
 
 #include "dolphin/os/OSCache.h"

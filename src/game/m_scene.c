@@ -435,9 +435,18 @@ static void Scene_Proc_Object_Exchange_Bank_Ptr(GAME_PLAY* play, Scene_Word_u* s
 
 static void Scene_Proc_Door_Data_Ptr(GAME_PLAY* play, Scene_Word_u* scene_data) {
     Door_data_c* data_p = scene_data->door_data.door_data_p;
+#ifdef TARGET_PC
+    extern Door_data_c* pc_museum_rooms_door_data(int scene, Door_data_c* doors, int* num);
+    int num = scene_data->door_data.num_doors;
 
+    /* ac-plus: the museum hall's stairs to the City Folk rooms */
+    data_p = pc_museum_rooms_door_data(Save_Get(scene_no), data_p, &num);
+    play->door_info.num_doors = num;
+    play->door_info.door_data_p = data_p;
+#else
     play->door_info.num_doors = scene_data->door_data.num_doors;
     play->door_info.door_data_p = data_p;
+#endif
 }
 
 extern void Door_info_ct(Door_info_c* door_info) {

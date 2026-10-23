@@ -149,7 +149,13 @@ static mNpc_Sp_Npc_Name_c l_sp_actor_name[] = {
     // Franklin
     { SP_NPC_TURKEY, mPr_SEX_MALE, 0x6DA, 2 },
     // Farley
-    { SP_NPC_HEM, mPr_SEX_MALE, 0x6DB, 9 }
+    { SP_NPC_HEM, mPr_SEX_MALE, 0x6DB, 9 },
+#ifdef TARGET_PC
+    // Celeste (her name isn't in the GameCube's strings: mNpc_GetActorWorldNameP)
+    { SP_NPC_CELESTE, mPr_SEX_FEMALE, 0x4E4, 4 }, /* a female voice, as Pelly and Sabel */
+    // Brewster (likewise)
+    { SP_NPC_BREWSTER, mPr_SEX_MALE, 0x4E4, 3 }, /* a low voice, as Wendell and Pete */
+#endif
 };
 
 static u8 l_no_name_npc_name[ANIMAL_NAME_LEN] = { 0xD4, 0x8E, 0xA6, 0x90, 0x85, 0x42 }; // never translated
@@ -2921,7 +2927,50 @@ static void mNpc_AddNpc_inKamakura(mFM_move_actor_c* move_actor, int move_actor_
 
 extern void mNpc_AddNpc_inBlock(mFM_move_actor_c* move_actor_list, u8 bx, u8 bz) {
     int scene = Save_Get(scene_no);
+#ifdef TARGET_PC
+    /* the scene actually loaded: the title screen's demo runs with the one the game was saved in */
+    extern int pc_museum_rooms_scene(void);
+    int pc_scene = pc_museum_rooms_scene();
+#endif
 
+#ifdef TARGET_PC
+    if ((pc_scene == SCENE_MUSEUM_ENTRANCE || pc_scene == SCENE_MUSEUM_OBSERVATORY) && move_actor_list != NULL) {
+        /* Celeste minds the telescope, if her lines were extracted from City Folk (pc_celeste.c):
+         * in the observatory upstairs, or in the hall when there's no observatory (pc_museum_rooms.c) */
+        extern int pc_celeste_available(void);
+        extern int pc_museum_rooms_available(void);
+        int observatory = pc_museum_rooms_available();
+        int move_actor_idx = mFI_GetMoveActorListIdx(move_actor_list, mFM_MOVE_ACTOR_NUM, EMPTY_NO);
+
+        if (pc_celeste_available() && move_actor_idx != -1 &&
+            (pc_scene == SCENE_MUSEUM_OBSERVATORY) == observatory &&
+            mFI_GetMoveActorListIdx(move_actor_list, mFM_MOVE_ACTOR_NUM, SP_NPC_CELESTE) == -1) {
+            move_actor_list[move_actor_idx].name_id = SP_NPC_CELESTE;
+            move_actor_list[move_actor_idx].ut_x = observatory ? 6 : 3;
+            move_actor_list[move_actor_idx].ut_z = observatory ? 6 : 8;
+            move_actor_list[move_actor_idx].npc_info_idx = -1;
+            move_actor_list[move_actor_idx].arg = -1;
+            mFI_SetMoveActorBitData_ON(move_actor_idx, bx, bz);
+        }
+        return;
+    }
+    if (pc_scene == SCENE_MUSEUM_CAFE && move_actor_list != NULL) {
+        /* Brewster behind the Roost's counter, if City Folk's Brewster was extracted (pc_brewster.c) */
+        extern int pc_brewster_available(void);
+        int move_actor_idx = mFI_GetMoveActorListIdx(move_actor_list, mFM_MOVE_ACTOR_NUM, EMPTY_NO);
+
+        if (pc_brewster_available() && move_actor_idx != -1 &&
+            mFI_GetMoveActorListIdx(move_actor_list, mFM_MOVE_ACTOR_NUM, SP_NPC_BREWSTER) == -1) {
+            move_actor_list[move_actor_idx].name_id = SP_NPC_BREWSTER;
+            move_actor_list[move_actor_idx].ut_x = 9;
+            move_actor_list[move_actor_idx].ut_z = 7; /* at the counter, near enough to talk across it */
+            move_actor_list[move_actor_idx].npc_info_idx = -1;
+            move_actor_list[move_actor_idx].arg = -1;
+            mFI_SetMoveActorBitData_ON(move_actor_idx, bx, bz);
+        }
+        return;
+    }
+#endif
     if ((scene == SCENE_NPC_HOUSE || scene == SCENE_KAMAKURA || scene == SCENE_COTTAGE_NPC) &&
         move_actor_list != NULL) {
         mActor_name_t field_id = mFI_GetFieldId(); // unused
@@ -3881,6 +3930,17 @@ static u8* mNpc_GetActorWorldNameP(mActor_name_t npc_id) {
         for (i = 0; i < ARRAY_COUNT(l_sp_actor_name); i++) {
             if (npc_id == sp_npc_name->sp_npc_id) {
                 mString_Load_StringFromRom(load_name, ANIMAL_NAME_LEN, sp_npc_name->name_str_no);
+#ifdef TARGET_PC
+                if (npc_id == SP_NPC_CELESTE) {
+                    static const u8 celeste[] = "Celeste";
+                    mem_clear(load_name, ANIMAL_NAME_LEN, CHAR_SPACE);
+                    mem_copy(load_name, (u8*)celeste, sizeof(celeste) - 1);
+                } else if (npc_id == SP_NPC_BREWSTER) {
+                    static const u8 brewster[] = "Brewster";
+                    mem_clear(load_name, ANIMAL_NAME_LEN, CHAR_SPACE);
+                    mem_copy(load_name, (u8*)brewster, sizeof(brewster) - 1);
+                }
+#endif
                 name_p = load_name;
                 mNpc_SetCacheName(load_name, npc_id, mNpc_NAME_TYPE_NPC);
 

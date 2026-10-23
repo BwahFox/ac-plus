@@ -3329,6 +3329,10 @@ enum ftr1_e {
 #define SP_NPC_TURKEY (SP_NPC_START + 141) // D08D
 #define SP_NPC_HEM (SP_NPC_START + 142) // D08E
 #define SP_NPC_EV_SUMMERCAMP_0 (SP_NPC_START + 143) // 0xD08F
+#ifdef TARGET_PC
+#define SP_NPC_CELESTE (SP_NPC_START + 144) // ac-plus: Celeste in the museum (ac_npc_celeste.c)
+#define SP_NPC_BREWSTER (SP_NPC_START + 145) // ac-plus: Brewster at the Roost (ac_npc_brewster.c)
+#endif
 
 #define NPC_START    0xE000 // 0xE000
 // cats

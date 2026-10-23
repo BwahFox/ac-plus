@@ -27,6 +27,12 @@ int  pc_text_width(const char* s);
 void pc_text_draw(struct game_s* game, const char* s, f32 x, f32 y,
                   int r, int g, int b, int a, f32 scale);
 
+/* Draws a 4-bit palette image (GameCube CI4 tiles, RGB5A3 palette of 16, both
+ * 32-byte aligned) as one quad at x,y with size w,h, in the same font draw
+ * phase as pc_text_draw. Nearest filtering, so QR codes and patterns stay sharp. */
+void pc_image_draw_ci4(struct game_s* game, const void* tex, const u16* tlut, int tex_w, int tex_h,
+                       f32 x, f32 y, f32 w, f32 h);
+
 #ifdef __cplusplus
 }
 #endif

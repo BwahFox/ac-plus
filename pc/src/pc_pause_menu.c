@@ -3,6 +3,8 @@
 #include "pc_settings_menu.h"
 #include "pc_menu_util.h"
 #include "pc_text_draw.h"
+#include "pc_pattern_qr.h"
+#include "pc_constellation_edit.h"
 
 #include "m_font.h"
 #include "m_rcp.h"
@@ -27,14 +29,55 @@ typedef enum {
     PAGE_MAIN = 0,
     PAGE_SETTINGS = 1,
     PAGE_CONFIRM_QUIT = 2,
+    PAGE_QR = 3,
+    PAGE_CONST = 4, /* Celeste's telescope, opened by her (pc_constellation_edit.c) */
 } PauseMenuPage;
 
-#define MAIN_ITEM_COUNT     3
+#define MAIN_ITEM_MAX       6
 #define CONFIRM_ITEM_COUNT  2
 
+/* Main page rows. Design only shows once pattern materials are unlocked. */
+typedef enum {
+    MAIN_RESUME,
+    MAIN_DESIGN,
+    MAIN_STORAGE,
+    MAIN_QR,
+    MAIN_SETTINGS,
+    MAIN_QUIT,
+} MainItem;
+
 static PauseMenuPage cur_page = PAGE_MAIN;
-static int main_sel = 0;    /* 0=Resume, 1=Settings, 2=Quit Game */
+static int main_sel = 0;    /* row index into main_items() */
 static int confirm_sel = 0; /* 0=No (default), 1=Yes */
+
+int pc_designer_unlocked(void);
+void pc_designer_request(void);
+int pc_pattern_storage_available(void);
+void pc_pattern_storage_request(void);
+
+/* Rows shown on the main page, in order; returns how many. */
+static int main_items(MainItem* out) {
+    int n = 0;
+
+    out[n++] = MAIN_RESUME;
+    if (pc_designer_unlocked()) {
+        out[n++] = MAIN_DESIGN;
+    }
+    if (pc_pattern_storage_available()) {
+        out[n++] = MAIN_STORAGE;
+    }
+    if (pc_qr_menu_available()) {
+        out[n++] = MAIN_QR;
+    }
+    out[n++] = MAIN_SETTINGS;
+    out[n++] = MAIN_QUIT;
+    return n;
+}
+
+void pc_pause_menu_open_const(void) {
+    g_pc_paused = 1;
+    cur_page = PAGE_CONST;
+}
 
 void pc_pause_menu_toggle(void) {
     if (!g_pc_paused && (g_pc_title_main_menu_visible || g_pc_nes_active)) return;
@@ -51,15 +94,33 @@ void pc_pause_menu_toggle(void) {
 /* Input */
 
 static void main_activate(void) {
-    switch (main_sel) {
-        case 0: /* Resume */
+    MainItem items[MAIN_ITEM_MAX];
+    int count = main_items(items);
+
+    if (main_sel >= count) {
+        main_sel = 0;
+    }
+    switch (items[main_sel]) {
+        case MAIN_RESUME:
             pc_pause_menu_toggle();
             break;
-        case 1: /* Settings */
+        case MAIN_DESIGN: /* opens once the game is running again */
+            pc_designer_request();
+            pc_pause_menu_toggle();
+            break;
+        case MAIN_STORAGE:
+            pc_pattern_storage_request();
+            pc_pause_menu_toggle();
+            break;
+        case MAIN_QR:
+            cur_page = PAGE_QR;
+            pc_qr_menu_enter();
+            break;
+        case MAIN_SETTINGS:
             cur_page = PAGE_SETTINGS;
             pc_settings_menu_enter();
             break;
-        case 2: /* Quit Game -> confirm page (default to No) */
+        case MAIN_QUIT: /* -> confirm page (default to No) */
             cur_page = PAGE_CONFIRM_QUIT;
             confirm_sel = 0;
             break;
@@ -69,7 +130,7 @@ static void main_activate(void) {
 static void confirm_activate(void) {
     if (confirm_sel == 1) {
         printf("[PAUSE] Quit confirmed\n");
-        g_pc_running = 0;
+        pc_request_quit(); /* saves first when save_on_quit is set */
     } else {
         cur_page = PAGE_MAIN;
         main_sel = 0;
@@ -106,9 +167,27 @@ static void handle_action(MenuAction act) {
         return;
     }
 
+    if (cur_page == PAGE_CONST) {
+        pc_const_edit_action((int)act);
+        if (!pc_const_edit_active()) {
+            /* back to the game, not the pause menu */
+            cur_page = PAGE_MAIN;
+            g_pc_paused = 0;
+            g_pc_pause_input_drain = 1;
+        }
+        return;
+    }
+
+    if (cur_page == PAGE_QR) {
+        pc_qr_menu_action((int)act); /* MenuAction values match pc_pattern_qr.h */
+        if (!pc_qr_menu_active()) cur_page = PAGE_MAIN;
+        return;
+    }
+
     /* Pages owned here (Main, Quit-confirm). */
     {
-        int item_count = (cur_page == PAGE_MAIN) ? MAIN_ITEM_COUNT : CONFIRM_ITEM_COUNT;
+        MainItem items[MAIN_ITEM_MAX];
+        int item_count = (cur_page == PAGE_MAIN) ? main_items(items) : CONFIRM_ITEM_COUNT;
         int* sel       = (cur_page == PAGE_MAIN) ? &main_sel : &confirm_sel;
 
         switch (act) {
@@ -208,17 +287,20 @@ int pc_pause_menu_handle_event(const SDL_Event* e) {
 /* Drawing */
 
 static void draw_main_page(struct game_s* game) {
-    static const char* items[MAIN_ITEM_COUNT] = { "Resume", "Settings", "Quit Game" };
+    static const char* labels[] = { "Resume", "Design a Pattern", "Pattern Storage", "Pattern QR Codes", "Settings",
+                                    "Quit Game" };
+    MainItem items[MAIN_ITEM_MAX];
+    int count = main_items(items);
 
     pc_menu_draw_centered(game, "- Paused -", 80.0f, 255, 255, 255, 255, 1.0f);
 
     f32 y = 110.0f;
     f32 line_h = 18.0f;
-    for (int i = 0; i < MAIN_ITEM_COUNT; i++) {
+    for (int i = 0; i < count; i++) {
         int r, g, b, a;
         int selected = (i == main_sel);
         pc_menu_row_colors(selected, &r, &g, &b, &a);
-        pc_menu_draw_centered(game, items[i], y + i * line_h, r, g, b, a,
+        pc_menu_draw_centered(game, labels[items[i]], y + i * line_h, r, g, b, a,
                               selected ? PC_MENU_SCALE_SELECTED : 1.0f);
     }
 }
@@ -243,10 +325,13 @@ void pc_pause_menu_draw(struct game_s* game) {
         pc_settings_menu_draw(game, /*with_dim_backdrop=*/1);
         /* The user may have closed it from inside (Back). */
         if (!pc_settings_menu_active()) cur_page = PAGE_MAIN;
+    } else if (cur_page == PAGE_CONST) {
+        pc_const_edit_draw(game); /* draws the sky itself, no dimming */
     } else {
-        pc_menu_dim_rect(game->graph, 180);
+        pc_menu_dim_rect(game->graph, cur_page == PAGE_QR ? 210 : 180);
         if (cur_page == PAGE_MAIN)              draw_main_page(game);
         else if (cur_page == PAGE_CONFIRM_QUIT) draw_confirm_page(game);
+        else if (cur_page == PAGE_QR)           pc_qr_menu_draw(game);
     }
 
     mFont_UnSetMatrix(game->graph, mFont_MODE_FONT);

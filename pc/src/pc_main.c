@@ -1,4 +1,5 @@
 /* pc_main.c - PC entry point: SDL2/GL init and boot sequence */
+#include "pc_cf_data.h"
 #include "pc_platform.h"
 #include "pc_gx_internal.h"
 #include "pc_texture_pack.h"
@@ -11,6 +12,7 @@
 #include "pc_settings_menu.h"
 #include "pc_profiler.h"
 #include "m_kankyo.h"
+#include "pc_mouse.h"
 
 /* prefer discrete GPU on laptops */
 #ifdef _WIN32
@@ -21,6 +23,7 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 SDL_Window*   g_pc_window = NULL;
 SDL_GLContext  g_pc_gl_context = NULL;
 int           g_pc_running = 1;
+int           g_pc_mouse_wheel = 0; /* wheel steps since the pattern designer last looked */
 int           g_pc_frame_limit_override = -1;
 int           g_pc_speedhack_enabled = 0;
 int           g_pc_verbose = 0;
@@ -45,7 +48,12 @@ void pc_platform_init(void) {
     SetProcessDPIAware();
     SDL_SetHint(SDL_HINT_WINDOWS_INTRESOURCE_ICON, "1");
 #endif
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO | SDL_INIT_TIMER) < 0) {
+    /* PC_NO_PAD (pc_devtest.c): leave gamepads alone so a test copy can't read the player's controller */
+    Uint32 sdl_flags = SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER;
+    if (getenv("PC_NO_PAD") == NULL) {
+        sdl_flags |= SDL_INIT_GAMECONTROLLER;
+    }
+    if (SDL_Init(sdl_flags) < 0) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         exit(1);
     }
@@ -156,7 +164,10 @@ void pc_platform_update_window_size(void) {
 }
 
 void pc_platform_swap_buffers(void) {
+    extern void pc_devtest_frame_end(void);
+
     pc_gx_draw_pending();
+    pc_devtest_frame_end();
     SDL_GL_SwapWindow(g_pc_window);
 }
 
@@ -164,16 +175,23 @@ int pc_platform_poll_events(void) {
     SDL_Event event;
 
     pc_typing_update();
+    pc_quit_request_poll();
 
     while (SDL_PollEvent(&event)) {
         switch (event.type) {
-            case SDL_QUIT:
-                g_pc_running = 0;
-                return 0;
+            case SDL_QUIT: /* saves first when save_on_quit is set (pc_quick_save.c) */
+                pc_request_quit();
+                break;
             case SDL_WINDOWEVENT:
                 if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
                     pc_platform_update_window_size();
                 }
+                break;
+            case SDL_MOUSEWHEEL:
+#ifdef MOUSE_INPUT
+                g_mouse_wheel_delta += event.wheel.y;
+#endif
+                g_pc_mouse_wheel += event.wheel.y; /* pattern designer colours (pc_designer_mouse.c_inc) */
                 break;
             case SDL_KEYDOWN:
                 /* Keybinding capture eats all input first (works from both
@@ -184,6 +202,11 @@ int pc_platform_poll_events(void) {
                 }
                 if (event.key.keysym.sym == SDLK_F3 && !event.key.repeat) {
                     pc_speedhack_toggle();
+                    break;
+                }
+                if (event.key.keysym.sym == SDLK_F4 && !event.key.repeat) {
+                    extern void pc_ground_debug_toggle(void);
+                    pc_ground_debug_toggle(); /* tile readout (pc_ground_pattern.c) */
                     break;
                 }
                 if (event.key.keysym.sym == SDLK_ESCAPE && !event.key.repeat) {
@@ -229,11 +252,18 @@ int pc_platform_poll_events(void) {
                 }
                 break;
             case SDL_TEXTINPUT:
+                if (pc_settings_menu_capture_active()) {
+                    pc_settings_menu_handle_capture_event(&event); /* typing the server address */
+                    break;
+                }
                 if (g_pc_paused) break;
                 pc_typing_handle_event(&event);
                 break;
         }
     }
+
+    pc_mouse_update();
+
     return 1;
 }
 
@@ -394,6 +424,36 @@ int main(int argc, char* argv[]) {
                                  "Animal Crossing - Missing ROM", msg, g_pc_window);
         pc_platform_shutdown();
         return 1;
+    }
+    {
+        /* ac-plus: the City Folk files, from the player's own City Folk disc (pc_cf_data.h) */
+        FILE* f = fopen("cf_sky/version.txt", "r");
+        int version = 0;
+
+        if (f != NULL) {
+            if (fscanf(f, "%d", &version) != 1) {
+                version = 0;
+            }
+            fclose(f);
+        }
+        if (version != PC_CF_DATA_VERSION) {
+            const char* msg =
+                version == 0
+                    ? "City Folk files not found.\n\n"
+                      "ac-plus also needs your own copy of Animal Crossing: City Folk (Wii, USA).\n"
+                      "Convert it once with:\n\n"
+                      "    ./ac-plus.sh extract-cf <your City Folk disc image>\n\n"
+                      "See \"Setting up\" in README.md."
+                    : "The City Folk files are from an older version of ac-plus.\n\n"
+                      "Convert your City Folk disc again with:\n\n"
+                      "    ./ac-plus.sh extract-cf <your City Folk disc image>\n\n"
+                      "See \"Setting up\" in README.md.";
+
+            fprintf(stderr, "[PC] %s\n", msg);
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ac-plus - City Folk files needed", msg, g_pc_window);
+            pc_platform_shutdown();
+            return 1;
+        }
     }
 
     ac_entry();                         /* sets HotStartEntry = &entry */

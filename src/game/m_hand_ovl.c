@@ -12,6 +12,11 @@
 #include "m_needlework_ovl.h"
 #include "sys_matrix.h"
 #include "m_rcp.h"
+#ifdef TARGET_PC
+#include "pc_storage.h"
+#else
+#define pc_storage_slot(home, idx) (&Save_Get(homes[home]).haniwa.items[idx])
+#endif
 
 static mHD_Ovl_c hand_ovl_data;
 
@@ -101,7 +106,7 @@ static void mHD_hand_pos_get(Submenu* submenu, f32* pos, int table_type, int tab
     }
 }
 
-static void mHD_hand_position_move(Submenu* submenu) {
+static void mHD_update_logical_position(Submenu* submenu) {
     mHD_Ovl_c* hand_ovl = submenu->overlay->hand_ovl;
     mTG_tag_c* tag = &submenu->overlay->tag_ovl->tags[0];
     int table_idx = submenu->overlay->tag_ovl->get_table_idx_proc(tag);
@@ -163,6 +168,51 @@ static void mHD_hand_position_move(Submenu* submenu) {
     } else {
         hand_ovl->info.move_flag = mHD_MOVE_NONE;
     }
+}
+
+static void mHD_update_visual_position(Submenu* submenu) {
+    mHD_Ovl_c* hand_ovl = submenu->overlay->hand_ovl;
+    mTG_Ovl_c* tag_ovl = submenu->overlay->tag_ovl;
+
+#ifdef MOUSE_INPUT
+    if (tag_ovl->mouse_active) {
+        f32 target_x = (tag_ovl->mouse_x - 160.0f);
+        f32 target_y = (120.0f - tag_ovl->mouse_y);
+        
+        f32 dX = target_x - hand_ovl->info.visual_pos[0];
+        f32 dY = target_y - hand_ovl->info.visual_pos[1];
+        
+        if (fabsf(dX) > 0.1f || fabsf(dY) > 0.1f) {
+            f32 speed = 0.3f;
+            hand_ovl->info.visual_pos[0] += dX * speed;
+            hand_ovl->info.visual_pos[1] += dY * speed;
+        } else {
+            hand_ovl->info.visual_pos[0] = target_x;
+            hand_ovl->info.visual_pos[1] = target_y;
+        }
+    } else
+#endif
+    {
+        f32 dX = hand_ovl->info.pos[0] - hand_ovl->info.visual_pos[0];
+        f32 dY = hand_ovl->info.pos[1] - hand_ovl->info.visual_pos[1];
+        
+        if (fabsf(dX) > 0.1f || fabsf(dY) > 0.1f) {
+            f32 speed = 0.3f;
+            hand_ovl->info.visual_pos[0] += dX * speed;
+            hand_ovl->info.visual_pos[1] += dY * speed;
+        } else {
+            hand_ovl->info.visual_pos[0] = hand_ovl->info.pos[0];
+            hand_ovl->info.visual_pos[1] = hand_ovl->info.pos[1];
+        }
+    }
+}
+
+static void mHD_hand_position_move(Submenu* submenu) {
+    /* Update logical position (what the game uses for item logic) */
+    mHD_update_logical_position(submenu);
+    
+    /* Update visual position (what we render) */
+    mHD_update_visual_position(submenu);
 }
 
 static void mHD_drop_item(Submenu* submenu, mTG_tag_c* tag, mActor_name_t* item, Mail_c* mail) {
@@ -524,6 +574,12 @@ static void mHD_open_end_proc_item_type3(Submenu* submenu, int idx, int table) {
             mHD_drop_item(submenu, tag, &cloth_p->item, NULL);
             if (cloth_p->item == RSV_CLOTH) {
                 cloth_idx = 0x100 + mNW_get_image_no(submenu, submenu->overlay->tag_ovl->get_table_idx_proc(tag));
+#ifdef TARGET_PC
+                {
+                    extern void pc_pattern_bind_cloth(int player_no, int image);
+                    pc_pattern_bind_cloth(Common_Get(player_no), cloth_idx - 0x100); /* keeps this pattern */
+                }
+#endif
             } else {
                 cloth_idx = ITEM_IS_CLOTH(cloth_p->item) ? (cloth_p->item - ITM_CLOTH_START) : 0;
             }
@@ -563,7 +619,12 @@ static void mHD_open_end_proc_item_type6(Submenu* submenu, int idx, int table) {
         flag = TRUE;
     }
 
-    mHD_drop_item(submenu, tag, &Save_Get(homes[menu_info->data1]).haniwa.items[idx].item, NULL);
+    mHD_drop_item(submenu, tag, &pc_storage_slot(menu_info->data1, idx)->item, NULL);
+#ifdef TARGET_PC
+    if (pc_storage_active()) {
+        flag = FALSE; /* storage: no price tag */
+    }
+#endif
     if (flag == TRUE) {
         submenu->overlay->tag_ovl->item_name_wait_time = 0;
         submenu->overlay->tag_ovl->chg_tag_func_proc(submenu, tag->table, mTG_TYPE_HANIWA_PUT_ITEM, 0, tag->base_pos[0],
@@ -694,10 +755,10 @@ static void mHD_open_end_proc_item(Submenu* submenu) {
         u32 tmp_price = hand_ovl->info.haniwa_item_price;
 
         menu_info = &submenu->overlay->menu_info[submenu->menu_type];
-        hand_ovl->info.haniwa_item_cond = Save_Get(homes[menu_info->data1]).haniwa.items[idx].exchange_type;
-        hand_ovl->info.haniwa_item_price = Save_Get(homes[menu_info->data1]).haniwa.items[idx].extra_data;
-        Save_Get(homes[menu_info->data1]).haniwa.items[idx].exchange_type = tmp_cond;
-        Save_Get(homes[menu_info->data1]).haniwa.items[idx].extra_data = tmp_price;
+        hand_ovl->info.haniwa_item_cond = pc_storage_slot(menu_info->data1, idx)->exchange_type;
+        hand_ovl->info.haniwa_item_price = pc_storage_slot(menu_info->data1, idx)->extra_data;
+        pc_storage_slot(menu_info->data1, idx)->exchange_type = tmp_cond;
+        pc_storage_slot(menu_info->data1, idx)->extra_data = tmp_price;
     } else {
         hand_ovl->info.haniwa_item_cond = mHm_HANIWA_TRADE_1;
         hand_ovl->info.haniwa_item_price = 0;
@@ -779,6 +840,12 @@ static void mHD_sasu2_move(Submenu* submenu) {
             mHD_drop_item(submenu, tag, &cloth_p->item, NULL);
             if (cloth_p->item == RSV_CLOTH) {
                 cloth_idx = 0x100 + mNW_get_image_no(submenu, submenu->overlay->tag_ovl->get_table_idx_proc(tag));
+#ifdef TARGET_PC
+                {
+                    extern void pc_pattern_bind_cloth(int player_no, int image);
+                    pc_pattern_bind_cloth(Common_Get(player_no), cloth_idx - 0x100); /* keeps this pattern */
+                }
+#endif
             } else {
                 cloth_idx = ITEM_IS_CLOTH(cloth_p->item) ? (cloth_p->item - ITM_CLOTH_START) : 0;
             }
@@ -982,10 +1049,11 @@ static void mHD_hand_ovl_draw(Submenu* submenu, GAME* game) {
         f32 pos_adj;
         mTG_tag_c* tag;
 
-        target_pos[0] =
-            (hand_ovl->info.pos[0] + hand_ovl->info.ofs[0] * cos_z + hand_ovl->info.ofs[1] * (-cos_x * sin_z)) + 4.0f;
-        target_pos[1] =
-            (hand_ovl->info.pos[1] + hand_ovl->info.ofs[0] * sin_z + hand_ovl->info.ofs[1] * (cos_x * cos_z)) - 4.0f;
+        /* Use visual_pos for rendering */
+        target_pos[0] = (hand_ovl->info.visual_pos[0] + hand_ovl->info.ofs[0] * cos_z + 
+                        hand_ovl->info.ofs[1] * (-cos_x * sin_z)) + 4.0f;
+        target_pos[1] = (hand_ovl->info.visual_pos[1] + hand_ovl->info.ofs[0] * sin_z + 
+                        hand_ovl->info.ofs[1] * (cos_x * cos_z)) - 4.0f;
 
         /* Draw hand shadow first */
         Matrix_push();
@@ -1073,6 +1141,9 @@ extern void mHD_hand_ovl_construct(Submenu* submenu) {
     mMl_clear_mail(&hand_ovl->info.mail);
     hand_ovl->info.item_cond = mPr_ITEM_COND_NORMAL;
 
+    hand_ovl->info.visual_pos[0] = 0.0f;
+    hand_ovl->info.visual_pos[1] = 0.0f;
+ 
     if (menu_info->menu_type == mSM_OVL_INVENTORY && menu_info->data0 == mSM_IV_OPEN_EXCHANGE) {
         mActor_name_t item;
         int item_cond;

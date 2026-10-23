@@ -546,6 +546,14 @@ static void Bg_Draw_Actor_draw(ACTOR* actorx, GAME* game) {
         block++;
     }
 
+#ifdef TARGET_PC
+    {
+        /* Patterns laid on the ground (pc_ground_pattern.c), right on the terrain. */
+        extern void pc_ground_pattern_draw(GAME* game);
+        pc_ground_pattern_draw(game);
+    }
+#endif
+
     OPEN_DISP(game->graph);
 
     gDPSetTextureAdjustMode(NEXT_BG_OPA_DISP, G_TA_N64);

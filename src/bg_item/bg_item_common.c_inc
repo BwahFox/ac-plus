@@ -1,3 +1,6 @@
+#ifdef TARGET_PC
+#include "pc_sky.h"
+#endif
 static void bit_cmn_single_drawS(GAME* game, bg_item_common_info_c* common_info, mActor_name_t fg_item, xyz_t* pos,
                                  s_xyz* angle, xyz_t* scale, u8 alpha, bIT_DRAW_BF_PROC draw_bf,
                                  bIT_DRAW_AF_PROC draw_af, rgba_t* col);
@@ -2845,7 +2848,16 @@ static int bg_item_common_culling_check(GAME_PLAY* play, ACTOR* actorx, xyz_t* p
     xyz_t camera_pos;
     f32 camera_w;
 
+#ifdef TARGET_PC
+    {
+        /* where the curved world will actually draw it */
+        xyz_t bent;
+        pc_sky_curve_world(&pos->x, &bent.x);
+        Skin_Matrix_PrjMulVector(&play->projection_matrix, &bent, &camera_pos, &camera_w);
+    }
+#else
     Skin_Matrix_PrjMulVector(&play->projection_matrix, pos, &camera_pos, &camera_w);
+#endif
     return Actor_draw_actor_no_culling_check2(actorx, &camera_pos, camera_w);
 }
 

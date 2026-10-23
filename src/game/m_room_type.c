@@ -2,6 +2,9 @@
 
 #include "m_name_table.h"
 #include "m_common_data.h"
+#ifdef TARGET_PC
+#include "pc_pattern.h"
+#endif
 #include "ac_my_room.h"
 #include "m_melody.h"
 #include "padmgr.h"
@@ -1859,6 +1862,10 @@ extern int mRmTp_GetFloorIdx() {
             case SCENE_KAMAKURA:
                 mRmTp_PrintFloorIndex("FLOOR_KAMAKURA");
                 return FLOOR_KAMAKURA;
+#ifdef TARGET_PC
+            case SCENE_MUSEUM_OBSERVATORY:
+            case SCENE_MUSEUM_CAFE:
+#endif
             case SCENE_MUSEUM_ENTRANCE:
                 mRmTp_PrintFloorIndex("FLOOR_MUSEUM_ENTRANCE");
                 return FLOOR_MUSEUM_ENTRANCE;
@@ -2113,6 +2120,12 @@ extern void mRmTp_CopyWallData(u8* dst, int wall_no) {
             int valid2 = mHS_get_pl_no_detail(room_idx) >= 0 && mHS_get_pl_no_detail(room_idx) < PLAYER_NUM;
             int player_no = valid2 ? mHS_get_pl_no_detail(room_idx) : 0;
             mNW_original_design_c* original = &Save_Get(private_data[player_no]).my_org[tex_idx & 7];
+#ifdef TARGET_PC
+            const mNW_original_design_c* kept = pc_pattern_use(PC_PAT_USE_WALL, mFI_GetFieldId(), -1, tex_idx);
+            if (kept != NULL) {
+                original = (mNW_original_design_c*)kept; /* the pattern it was made from */
+            }
+#endif
 
             mNW_CopyOriginalPalette(dst, original);
             mNW_CopyOriginalTexture(dst + mNW_PALETTE_SIZE, original);
@@ -2144,6 +2157,12 @@ extern void mRmTp_CopyFloorData(u8* dst, int floor_no) {
             int valid2 = mHS_get_pl_no_detail(room_idx) >= 0 && mHS_get_pl_no_detail(room_idx) < PLAYER_NUM;
             int player_no = valid2 ? mHS_get_pl_no_detail(room_idx) : 0;
             mNW_original_design_c* original = &Save_Get(private_data[player_no]).my_org[tex_idx & 7];
+#ifdef TARGET_PC
+            const mNW_original_design_c* kept = pc_pattern_use(PC_PAT_USE_FLOOR, mFI_GetFieldId(), -1, tex_idx);
+            if (kept != NULL) {
+                original = (mNW_original_design_c*)kept; /* the pattern it was made from */
+            }
+#endif
 
             mNW_CopyOriginalPalette(dst, original);
             mNW_CopyOriginalTexture(dst + mNW_PALETTE_SIZE, original);
@@ -2235,6 +2254,12 @@ extern int mRmTp_CheckFloorIsMyOriginalInThisScene() {
 }
 
 extern int mRmTp_GetEntranceBasePosition(xyz_t* pos) {
+#ifdef TARGET_PC
+    extern int pc_museum_rooms_camera_base(xyz_t * pos);
+    if (pc_museum_rooms_camera_base(pos)) {
+        return TRUE;
+    }
+#endif
     if (Save_Get(scene_no) == SCENE_MUSEUM_ENTRANCE) {
         pos->x = 80.0f;
         pos->y = 40.0f;

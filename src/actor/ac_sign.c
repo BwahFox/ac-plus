@@ -1,6 +1,9 @@
 #include "ac_sign.h"
 
 #include "m_common_data.h"
+#ifdef TARGET_PC
+#include "pc_pattern.h"
+#endif
 #include "m_debug.h"
 #include "m_skin_matrix.h"
 #include "libultra/libultra.h"
@@ -10,6 +13,9 @@
 #include "m_needlework_ovl.h"
 #include "sys_matrix.h"
 #include "m_rcp.h"
+#ifdef TARGET_PC
+#include "pc_sky.h"
+#endif
 
 enum {
     aSIGN_ACTION_WAIT,
@@ -88,6 +94,9 @@ static int aSIGN_no_cull_check(GAME_PLAY* play, int bz, int bx, int ut_z, int ut
     center_pos.y = mFI_UNIT_BASE_SIZE_F + mCoBG_GetBgY_OnlyCenter_FromWpos2(center_pos, 0.0f);
 
     /* Transform world space to clip space */
+#ifdef TARGET_PC
+    pc_sky_curve_world(&center_pos.x, &center_pos.x); /* where the curved world will actually draw it */
+#endif
     Skin_Matrix_PrjMulVector(&play->projection_matrix, &center_pos, &clip_pos, &w);
 
     /* Test that the clip space is within the camera bounds */
@@ -600,6 +609,16 @@ static void aSIGN_change_my_original(SIGN_ACTOR* sign, GAME* game, u16 design_no
 
     if (ITEM_IS_SIGNBOARD(*fg_p)) {
         mFI_SetFG_common(SIGNBOARD_START + design_no, sign->sign_pos, TRUE);
+#ifdef TARGET_PC
+        {
+            int bx, bz, ux, uz;
+
+            if (mFI_Wpos2BkandUtNuminBlock(&bx, &bz, &ux, &uz, sign->sign_pos)) { /* the sign keeps this pattern */
+                pc_pattern_bind_use(PC_PAT_USE_SIGN, pc_pattern_sign_key(bx, bz, ux, uz), (design_no >> 3) & 3,
+                                    design_no & 7);
+            }
+        }
+#endif
         sAdo_OngenTrgStart(NA_SE_461, &sign->sign_pos);
     }
 }
@@ -852,6 +871,19 @@ static void aSIGN_single_all_draw(SIGN_ACTOR* sign, GAME* game) {
             } else {
                 pal_p = mNW_PaletteIdx2Palette(Save_Get(private_data[player_no]).my_org[my_original_idx].palette);
                 tex_p = Save_Get(private_data[player_no]).my_org[my_original_idx].design.data;
+#ifdef TARGET_PC
+                {
+                    const mNW_original_design_c* kept = pc_pattern_use(
+                        PC_PAT_USE_SIGN,
+                        pc_pattern_sign_key(sign->single[i].block.x, sign->single[i].block.z, sign->single[i].unit.x,
+                                            sign->single[i].unit.z),
+                        player_no, my_original_idx);
+                    if (kept != NULL) {
+                        pal_p = mNW_PaletteIdx2Palette(kept->palette);
+                        tex_p = (u8*)kept->design.data;
+                    }
+                }
+#endif
             }
 
             gSPSegment(POLY_OPA_DISP++, ANIME_1_TXT_SEG, pal_p);
@@ -937,6 +969,18 @@ static void aSIGN_actor_draw(ACTOR* actorx, GAME* game) {
                                     pal_p = mNW_PaletteIdx2Palette(
                                         Save_Get(private_data[player_no]).my_org[my_original_idx].palette);
                                     tex_p = Save_Get(private_data[player_no]).my_org[my_original_idx].design.data;
+#ifdef TARGET_PC
+                                    {
+                                        const mNW_original_design_c* kept = pc_pattern_use(
+                                            PC_PAT_USE_SIGN,
+                                            pc_pattern_sign_key(draw_p->block.x, draw_p->block.z, ut_x, ut_z),
+                                            player_no, my_original_idx);
+                                        if (kept != NULL) { /* the pattern it was made from */
+                                            pal_p = mNW_PaletteIdx2Palette(kept->palette);
+                                            tex_p = (u8*)kept->design.data;
+                                        }
+                                    }
+#endif
                                 }
 
                                 gSPSegment(POLY_OPA_DISP++, ANIME_1_TXT_SEG, pal_p);

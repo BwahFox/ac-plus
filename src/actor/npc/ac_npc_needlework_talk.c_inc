@@ -588,6 +588,19 @@ static void aNNW_talk_design_close3(NPC_NEEDLEWORK_ACTOR* actor, GAME_PLAY* play
 
         mSP_get_sell_price(aNNW_DESIGN_PRICE);
         mNW_OverWriteOriginalName(&Now_Private->my_org[actor->_9AE & 7], actor->design_name);
+#ifdef TARGET_PC
+        {
+            extern void pc_pattern_note_edit(int player_no, int image);
+            pc_pattern_note_edit(Common_Get(player_no), actor->_9AE & 7); /* renamed: same pattern */
+        }
+#endif
+#ifdef TARGET_PC
+        {
+            /* Five of these and the sisters sell pattern materials (pc_designer.c). */
+            extern void pc_designer_count_pattern(void);
+            pc_designer_count_pattern();
+        }
+#endif
         org_cloth_idx = (CLOTH_NUM + 1) + actor->_9AE;
         if (org_cloth_idx == Now_Private->cloth.idx) {
             aNNW_change_talk_proc(actor, aNNW_TALK_CLOTH_CHANGE2);

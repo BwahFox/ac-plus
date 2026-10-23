@@ -12,6 +12,9 @@
 #include "m_bgm.h"
 #include "m_timeIn_ovl.h"
 #include "dolphin/os/OSRtc.h"
+#ifdef TARGET_PC
+#include "pc_settings.h"
+#endif
 
 enum {
     aNPS2_TALK_SETUP_YURE,
@@ -81,6 +84,11 @@ static void aNPS2_schedule_proc(NPC_ACTOR*, GAME_PLAY*, int);
 
 static int aNPS2_count_player_sum(void);
 static int aNPS2_setup_game_start(NPC_P_SEL2_ACTOR* p_sel2, GAME_PLAY* play);
+#ifdef TARGET_PC
+static int aNPS2_pc_quick_load(NPC_P_SEL2_ACTOR* p_sel2, GAME_PLAY* play);
+/* 0 = not tried yet, 1 = tried and the conversation runs, 2 = quick loading */
+static int l_aNPS2_quick_load_state;
+#endif
 
 static void aNPS2_change_talk_proc(NPC_P_SEL2_ACTOR* p_sel2, GAME_PLAY* play, int talk_idx);
 
@@ -155,6 +163,9 @@ static void aNPS2_actor_ct(ACTOR* actorx, GAME* game) {
         }
 
         p_sel2->start_flag = FALSE;
+#ifdef TARGET_PC
+        l_aNPS2_quick_load_state = 0;
+#endif
     }
 }
 
@@ -175,6 +186,12 @@ static void aNPS2_actor_move(ACTOR* actorx, GAME* game) {
     GAME_PLAY* play = (GAME_PLAY*)game;
 
     CLIP(npc_clip)->move_proc(actorx, game);
+
+#ifdef TARGET_PC
+    if (l_aNPS2_quick_load_state == 0) {
+        l_aNPS2_quick_load_state = aNPS2_pc_quick_load(p_sel2, play) ? 2 : 1;
+    }
+#endif
 
     if (p_sel2->start_flag == TRUE && aNPS2_setup_game_start(p_sel2, play) == TRUE) {
         p_sel2->start_flag = FALSE;

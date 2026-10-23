@@ -90,6 +90,7 @@ typedef struct {
 /* Uniform locations for one GL program */
 typedef struct {
     GLint projection, modelview, normal_mtx;
+    GLint curve_up, curve_fwd, curve_haze;
     GLint tev_prev, tev_reg0, tev_reg1, tev_reg2;
     GLint num_tev_stages;
     GLint tev_color_in[PC_GX_MAX_TEV_STAGES], tev_alpha_in[PC_GX_MAX_TEV_STAGES];

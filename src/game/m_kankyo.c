@@ -8,6 +8,9 @@
 #include "m_npc_schedule.h"
 #include "m_player_lib.h"
 #include "libultra/libultra.h"
+#ifdef TARGET_PC
+#include "pc_weather.h"
+#endif
 
 #define mEnv_TIME_TO_SECS(hour, min, sec) ((hour) * mTM_SECONDS_IN_HOUR + (min) * mTM_SECONDS_IN_MINUTE + (sec))
 
@@ -907,6 +910,38 @@ typedef struct electric_light_s {
 
 static mEnv_electric_light_c l_mEnv_electric_light;
 
+#ifdef TARGET_PC
+/* For the PC sky: 0 = clear, 1 = rain/snow, blended like the lighting while the weather changes */
+f32 mEnv_PC_GetOvercastRate(void) {
+    f32 now = (l_mEnv_electric_light.now_weather == mEnv_WEATHER_RAIN ||
+               l_mEnv_electric_light.now_weather == mEnv_WEATHER_SNOW)
+                  ? 1.0f
+                  : 0.0f;
+    f32 next = (l_mEnv_electric_light.next_weather == mEnv_WEATHER_RAIN ||
+                l_mEnv_electric_light.next_weather == mEnv_WEATHER_SNOW)
+                   ? 1.0f
+                   : 0.0f;
+
+    return now + l_mEnv_electric_light.change_weather_env_rate * (next - now);
+}
+
+/* A weather change's lighting is still blending; the game won't take another until it's done */
+int mEnv_PC_WeatherEnvBusy(void) {
+    return l_mEnv_electric_light.now_weather != l_mEnv_electric_light.next_weather;
+}
+
+/* How far an overcast clear spell pulls the town's light towards rain's (pc_weather.c) */
+#define mEnv_PC_CLOUD_LIGHT 0.5f
+
+static f32 mEnv_PC_CloudLight(void) {
+    if (Common_Get(field_type) != mFI_FIELDTYPE2_FG || mEnv_PC_WeatherEnvBusy() ||
+        l_mEnv_electric_light.now_weather != mEnv_WEATHER_CLEAR) {
+        return 0.0f;
+    }
+    return pc_weather_cloud() * mEnv_PC_CLOUD_LIGHT;
+}
+#endif
+
 static int mEnv_CheckNpcRoomPointLightNiceStatus();
 static void mEnv_set_time(Kankyo* kankyo);
 static void mEnv_MakeWindowLightAlpha(int enabled);
@@ -1073,6 +1108,34 @@ static int mEnv_GetNowRoomPointLightInfo(GAME_PLAY* play, s_xyz* pos, u8* color,
 
                     break;
                 }
+
+#ifdef TARGET_PC
+                case SCENE_MUSEUM_OBSERVATORY: { /* ac-plus: lit as the entrance hall */
+                    color[0] = 220; // r
+                    color[1] = 220; // g
+                    color[2] = 200; // b
+
+                    pos->x = 260;
+                    pos->y = 220;
+                    pos->z = 280;
+
+                    power[0] = 800;
+
+                    break;
+                }
+
+                case SCENE_MUSEUM_CAFE: { /* ac-plus: warm café light */
+                    color[0] = 240; // r
+                    color[1] = 210; // g
+                    color[2] = 160; // b
+
+                    pos->x = 300;
+                    pos->y = 220;
+                    pos->z = 280;
+
+                    break;
+                }
+#endif
 
                 case SCENE_MUSEUM_ENTRANCE: {
                     color[0] = 220; // r
@@ -1444,6 +1507,9 @@ static void mEnv_MakeShadowInfo(Kankyo* kankyo) {
 
     time_adjust *= (weather_base_adjust +
                     l_mEnv_electric_light.change_weather_env_rate * (weather_change_adjust - weather_base_adjust));
+#ifdef TARGET_PC
+    time_adjust *= 1.0f - mEnv_PC_CloudLight() * (1.0f - 0.75f) * 2.0f; /* rain's 0.75 at full cloud light */
+#endif
     kankyo->shadow_alpha = (time_adjust * 255.0f * l_mEnv_electric_light.shadow_adjust * 0.75f) *
                            l_mEnv_electric_light.staffroll_fade_rate;
 
@@ -1792,13 +1858,30 @@ static void mEnv_SetBaseLight(Kankyo* kankyo) {
                 BaseLight* now = l_mEnv_normal_kcolor_data[l_mEnv_electric_light.now_weather];
                 BaseLight* nxt = l_mEnv_normal_kcolor_data[l_mEnv_electric_light.next_weather];
                 int next_term = (term + 1) % mEnv_TERM_NUM;
-                BaseLight* nxt_w0 = nxt + term;
-                BaseLight* nxt_w1 = nxt + next_term;
-                BaseLight* now_w0 = now + term;
-                BaseLight* now_w1 = now + next_term;
+                BaseLight* nxt_w0;
+                BaseLight* nxt_w1;
+                BaseLight* now_w0;
+                BaseLight* now_w1;
+#ifdef TARGET_PC
+                /* overcast: blend from rain's light towards clear's the way a weather change does */
+                f32 cloud = mEnv_PC_CloudLight();
+                f32 saved_rate = l_mEnv_electric_light.change_weather_env_rate;
+
+                if (cloud > 0.0f) {
+                    now = l_mEnv_normal_kcolor_data[mEnv_WEATHER_RAIN];
+                    l_mEnv_electric_light.change_weather_env_rate = 1.0f - cloud;
+                }
+#endif
+                nxt_w0 = nxt + term;
+                nxt_w1 = nxt + next_term;
+                now_w0 = now + term;
+                now_w1 = now + next_term;
 
                 mEnv_CalcSetLight(&kankyo->base_light, nxt_w0, nxt_w1, now_w0, now_w1, kankyo,
                                   percent_towards_next_term);
+#ifdef TARGET_PC
+                l_mEnv_electric_light.change_weather_env_rate = saved_rate;
+#endif
             }
 
             if (Common_Get(field_type) == mFI_FIELDTYPE2_FG) {

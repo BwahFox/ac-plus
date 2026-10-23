@@ -11,6 +11,11 @@
 #include "dolphin/os.h"
 // #include "va_args.h"
 #include "jsyswrap.h"
+#ifdef TARGET_PC
+#include "pc_sky.h"
+#include "pc_cf_room.h"
+#include "pc_cf_char.h"
+#endif
 #include "dolphin/PPCArch.h"
 
 #ifdef TARGET_PC
@@ -4412,6 +4417,19 @@ void emu64::dl_G_NOOP() {
                 g_pc_widescreen_stretch = 2; /* pillarbox mode for UI */
                 break;
             }
+            if (this->gfx.words.w1 == PC_NOOP_SKY || this->gfx.words.w1 == PC_NOOP_WORLD_BEGIN ||
+                this->gfx.words.w1 == PC_NOOP_WORLD_END || this->gfx.words.w1 == PC_NOOP_STARGAZE) {
+                pc_sky_noop(this->gfx.words.w1, this->projection_mtx, this->position_mtx);
+                break;
+            }
+            if (this->gfx.words.w1 == PC_NOOP_CF_ROOM) {
+                pc_cf_room_noop(this->gfx.words.w1, this->projection_mtx, this->position_mtx);
+                break;
+            }
+            if (pc_cf_char_is_tag(this->gfx.words.w1)) {
+                pc_cf_char_noop(this->gfx.words.w1, this->projection_mtx, this->position_mtx);
+                break;
+            }
 #endif
             if (this->gfx.words.w1 == 0) {
                 EMU64_LOG("gsDPNoOp(),");
@@ -5214,8 +5232,19 @@ void emu64::dl_G_CULLDL() {
             }
 #endif
 
+#ifdef TARGET_PC
+            {
+                /* cull against the curved position the vertex shader will draw */
+                f32 x = vtx->position.x;
+                f32 y = vtx->position.y;
+                f32 z = vtx->position.z;
+                pc_sky_curve_point(this->projection_type == GX_PERSPECTIVE, &x, &y, &z);
+                guMtxXFM1F_dol2(this->projection_mtx, this->projection_type, x, y, z, &ox, &oy, &oz);
+            }
+#else
             guMtxXFM1F_dol2(this->projection_mtx, this->projection_type, vtx->position.x, vtx->position.y,
                             vtx->position.z, &ox, &oy, &oz);
+#endif
         } else {
             /* MTX_NONSHARED */
             Vec oVec;
@@ -5236,6 +5265,9 @@ void emu64::dl_G_CULLDL() {
             f32 y = oVec.y;
             f32 z = oVec.z;
 
+#ifdef TARGET_PC
+            pc_sky_curve_point(this->projection_type == GX_PERSPECTIVE, &x, &y, &z);
+#endif
             guMtxXFM1F_dol2(this->projection_mtx, this->projection_type, x, y, z, &ox, &oy, &oz);
         }
 

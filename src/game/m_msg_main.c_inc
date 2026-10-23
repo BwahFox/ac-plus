@@ -323,6 +323,21 @@ static int mMsg_Count_MsgData(u8* data) {
 }
 
 static int mMsg_LoadMsgData(mMsg_Data_c* msg_data, int index, int cut) {
+#ifdef TARGET_PC
+    {
+        /* City Folk characters' lines while they talk (pc_cf_lines.c) */
+        extern int pc_cf_lines_msg(int index, u8* buf, int buf_size, int* len);
+        int len;
+
+        if (msg_data != NULL && pc_cf_lines_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len)) {
+            msg_data->msg_no = index;
+            msg_data->data_loaded = TRUE;
+            msg_data->msg_len = mMsg_Count_MsgData(msg_data->text_buf.data);
+            msg_data->cut = cut;
+            return TRUE;
+        }
+    }
+#endif
     if (msg_data != NULL) {
         u32 addr;
         u32 size;
@@ -365,6 +380,22 @@ static int mMsg_LoadMsgData(mMsg_Data_c* msg_data, int index, int cut) {
             }
 #endif
 
+            {
+                /* dev: PC_MSG_DUMP=1 logs every message's bytes as it loads */
+                static int dump = -1;
+                if (dump < 0) {
+                    dump = getenv("PC_MSG_DUMP") != NULL;
+                }
+                if (dump) {
+                    int j;
+                    printf("[MsgDump] %d:", index);
+                    for (j = 0; j < (int)size; j++) {
+                        printf(" %02x", msg_data->text_buf.data[j]);
+                    }
+                    printf("\n");
+                    fflush(stdout);
+                }
+            }
             msg_data->msg_no = index;
             msg_data->data_loaded = TRUE;
             msg_data->msg_len = mMsg_Count_MsgData(msg_data->text_buf.data);
@@ -376,6 +407,14 @@ static int mMsg_LoadMsgData(mMsg_Data_c* msg_data, int index, int cut) {
     msg_data->data_loaded = FALSE;
     return FALSE;
 }
+
+#ifdef TARGET_PC
+/* dev: load message `index` just to log it (PC_MSG_DUMP must be set) */
+void pc_msg_dev_dump(int index) {
+    static mMsg_Data_c tmp;
+    mMsg_LoadMsgData(&tmp, index, FALSE);
+}
+#endif
 
 extern int mMsg_ChangeMsgData(mMsg_Window_c* msg_p, int index) {
     if (index >= 0 && index < MSG_MAX && mMsg_LoadMsgData(msg_p->msg_data, index, FALSE)) {

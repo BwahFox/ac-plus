@@ -144,7 +144,8 @@ static void Player_actor_set_nextgoto_info_type1(ACTOR* actor) {
         int scene = Common_Get(door_data).next_scene_id - 1;
 
         if (scene == SCENE_DEPART_2 || scene == SCENE_MUSEUM_ENTRANCE || scene == SCENE_MUSEUM_ROOM_PAINTING ||
-            scene == SCENE_MUSEUM_ROOM_FOSSIL || scene == SCENE_MUSEUM_ROOM_INSECT || scene == SCENE_MUSEUM_ROOM_FISH) {
+            scene == SCENE_MUSEUM_ROOM_FOSSIL || scene == SCENE_MUSEUM_ROOM_INSECT || scene == SCENE_MUSEUM_ROOM_FISH ||
+            mSc_IS_SCENE_MUSEUM_PC_ROOM(scene)) {
             play->fb_fade_type = FADE_TYPE_OTHER_ROOM;
             mBGMForce_room_nonstop_start();
         } else {

@@ -40,6 +40,9 @@
 #include "m_skin_matrix.h"
 #include "padmgr.h"
 #ifdef TARGET_PC
+#include "pc_sky.h"
+#endif
+#ifdef TARGET_PC
 #include "pc_diag.h"
 #include "pc_platform.h"
 #endif
@@ -506,6 +509,17 @@ static void Game_play_move_fbdemo_not_move(GAME* game) {
     game->doing_point_specific = 0x8F;
     game->doing_point = 1;
 
+#ifdef TARGET_PC
+    {
+        /* "Design a Pattern" from the pause menu opens its submenus here. */
+        extern void pc_designer_tick(GAME_PLAY* play);
+        extern void pc_ground_pattern_tick(GAME_PLAY* play);
+        extern void pc_item_storage_tick(GAME_PLAY* play);
+        pc_designer_tick(play);
+        pc_ground_pattern_tick(play); /* "Lay on Ground" from a pattern's Use menu */
+        pc_item_storage_tick(play);   /* test harness only */
+    }
+#endif
     mSM_submenu_ctrl(play);
 
     if (play->submenu.process_status == mSM_PROCESS_WAIT) {
@@ -533,6 +547,13 @@ static void Game_play_move_fbdemo_not_move(GAME* game) {
         game->doing_point = 0;
         game->doing_point_specific = 0x90;
         Actor_info_call_actor(play, &play->actor_info);
+#ifdef TARGET_PC
+        {
+            extern void pc_museum_rooms_move(GAME_PLAY* play);
+
+            pc_museum_rooms_move(play); /* round things in the City Folk rooms the player can't walk through */
+        }
+#endif
         game->doing_point = 0;
         game->doing_point_specific = 0x91;
         game->doing_point = 1;
@@ -833,9 +854,30 @@ static void Game_play_draw(GAME_PLAY* play) {
         PC_DIAG(3, "Game_play_draw: viewer done\n");
         setupViewMatrix(play, graph, graph);
         PC_DIAG(3, "Game_play_draw: viewMtx done\n");
+#ifdef TARGET_PC
+        pc_sky_play_draw(play);
+        {
+            /* dev: PC_CF_ROOM_TEST=name draws that City Folk room in every scene */
+            static const char* test = (const char*)-1;
+            if (test == (const char*)-1) {
+                test = getenv("PC_CF_ROOM_TEST");
+            }
+            if (test != NULL) {
+                extern int pc_cf_room_play_draw(GAME_PLAY* play, const char* name, float light, float y_offset);
+                pc_cf_room_play_draw(play, test, 1.0f, 0.0f);
+            }
+        }
+        {
+            extern void pc_museum_rooms_draw(GAME_PLAY* play);
+            pc_museum_rooms_draw(play);
+        }
+#endif
 
         if ((makeBumpTexture(play, graph, graph) == 1) && ((GETREG(HREG, 80) != 10) || (GETREG(HREG, 89) != 0))) {
             PC_DIAG(3, "Game_play_draw: bump done, drawing\n");
+#ifdef TARGET_PC
+            pc_sky_play_draw_end(play);
+#endif
             watch_my_step_draw(play);
             banti_draw(play);
             mSM_submenu_draw(&play->submenu, (GAME*)play);
@@ -859,6 +901,12 @@ extern void play_main(GAME* game) {
     GAME_PLAY* play = (GAME_PLAY*)game;
 
     PC_DIAG(5, "play_main: enter scene=%d frame=%d\n", play->scene_id, play->game_frame);
+#ifdef TARGET_PC
+    {
+        extern void pc_quick_save_tick(GAME* game);
+        pc_quick_save_tick(game);
+    }
+#endif
     game->doing_point = 0;
     game->doing_point_specific = 0x6E;
     fqrand();
@@ -1009,6 +1057,10 @@ static void Gameplay_Scene_Read(GAME_PLAY* play, s16 idx) {
         start_demo3_info,
         lighthouse_info,
         tent_info,
+#ifdef TARGET_PC
+        museum_observatory_info,
+        museum_cafe_info,
+#endif
     };
 
     Scene_data_status_c* current = &scene_data_status[idx];
@@ -1016,6 +1068,13 @@ static void Gameplay_Scene_Read(GAME_PLAY* play, s16 idx) {
     current->unk13 = 0;
     play->scene_data_status = current;
     play->scene_id = idx;
+#ifdef TARGET_PC
+    {
+        extern void pc_museum_rooms_scene_set(int scene);
+
+        pc_museum_rooms_scene_set(idx);
+    }
+#endif
     play->current_scene_data = scene_word_data[idx];
     current->unk13 = 0;
     Gameplay_Scene_Init(play);

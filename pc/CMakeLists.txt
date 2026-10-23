@@ -40,6 +40,7 @@ add_compile_definitions(
     _LANGUAGE_C    # Required for N64 GBI/ultratypes headers
     PC_ENHANCEMENTS   # Optional visual improvements (MSAA, etc). Remove to get pure PC port.
     KEYBOARD_TYPING   # Physical keyboard typing in text editor. Remove for platforms without keyboards.
+    MOUSE_INPUT       # Mouse input for menu and misc interfaces. Remove for platforms without mouse.
 )
 
 # Common compiler flags (applied to all sources). GCC is required:
@@ -275,17 +276,47 @@ set(PC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_dvd.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_pad.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_typing.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_mouse.c
     ${DECOMP_ROOT}/src/static/dolphin/pad/Padclamp.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_card.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_vi.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_audio.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_music.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_aram.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_misc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_mtx.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_m_card.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_quick_save.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_cloud_save.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_designer.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_ext_save.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_ground_pattern.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_pattern.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_pattern_qr.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/qrcodegen/qrcodegen.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/quirc/quirc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/quirc/decode.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/quirc/identify.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/quirc/version_db.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_storage.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_save_bswap.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_model_viewer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_texture_pack.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_devtest.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_sky.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_sky_game.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_weather.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_constellation.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_constellation_edit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_devwarp.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_celeste.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_cf_lines.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_cf_room.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_cf_char.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_cf_anim.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_sfx.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_brewster.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_museum_rooms.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_settings.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_profiler.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_pause_menu.c
@@ -330,6 +361,14 @@ set_source_files_properties(${FIXNES_SOURCES}
     PROPERTIES
     COMPILE_OPTIONS "-w;-O2"
     COMPILE_DEFINITIONS "COL_TEX_BSWAP;COL_GL_BSWAP;DO_INLINE_ATTRIBS=1"
+)
+# Vendored audio decoders (public domain / MIT-0): third-party code, quiet and optimized.
+# Kept out of PC_SOURCES so the -Wall options set on those below don't apply.
+set(MUSIC_DECODER_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_music_decode.c)
+set_source_files_properties(${MUSIC_DECODER_SOURCES}
+    PROPERTIES
+    COMPILE_OPTIONS "-w;-O2"
+    INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/lib/audio_decoders"
 )
 # Also optimize the fixNES wrapper (frame loop is hot)
 # Note: DO NOT set DO_INLINE_ATTRIBS here — the always_inline functions (cpuCycle etc)
@@ -411,6 +450,7 @@ endif()
 add_executable(ac_pc
     ${PC_SOURCES}
     ${FIXNES_SOURCES}
+    ${MUSIC_DECODER_SOURCES}
     ${GAME_C_SOURCES}
     ${GAME_CXX_SOURCES}
     ${RC_FILE}

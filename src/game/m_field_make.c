@@ -1229,6 +1229,12 @@ extern void mFM_FieldInit(GAME_PLAY* play) {
     mFI_InitAreaInfo();
     mFI_InitRegisterBgInfo();
     set_field_type();
+#ifdef TARGET_PC
+    {
+        extern void pc_museum_rooms_field_made(void);
+        pc_museum_rooms_field_made();
+    }
+#endif
     mFM_PoorTree();
 
     if (Common_Get(field_type) == mFI_FIELDTYPE2_FG) {
@@ -1250,7 +1256,7 @@ extern void mFM_FieldInit(GAME_PLAY* play) {
     Common_Set(make_npc2_actor, FALSE);
 
     if (play->fb_wipe_type == WIPE_TYPE_EVENT) {
-        if (scene == SCENE_MUSEUM_ENTRANCE) {
+        if (scene == SCENE_MUSEUM_ENTRANCE || mSc_IS_SCENE_MUSEUM_PC_ROOM(scene)) {
             mBGMPsComp_museum_status(1);
         } else if (scene == SCENE_MUSEUM_ROOM_PAINTING) {
             mBGMPsComp_museum_status(2);
@@ -1264,7 +1270,7 @@ extern void mFM_FieldInit(GAME_PLAY* play) {
     } else if (mFI_GET_TYPE(g_fdinfo->field_id) == mFI_FIELD_PLAYER0_ROOM ||
                mFI_GET_TYPE(g_fdinfo->field_id) == mFI_FIELD_ROOM0 ||
                mFI_GET_TYPE(g_fdinfo->field_id) == mFI_FIELD_NPCROOM0) {
-        if (scene == SCENE_MUSEUM_ENTRANCE) {
+        if (scene == SCENE_MUSEUM_ENTRANCE || mSc_IS_SCENE_MUSEUM_PC_ROOM(scene)) {
             mBGMPsComp_scene_mode(15);
             mBGMPsComp_museum_status(1);
         } else if (scene == SCENE_MUSEUM_ROOM_PAINTING) {

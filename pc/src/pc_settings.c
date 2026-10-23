@@ -13,13 +13,26 @@ PCSettings g_pc_settings = {
     .msaa          = 4,
     .texture_filtering = 1,
     .preload_textures = 0,
+    .world_curve = 75,
+    .cf_weather = 1,
     .disable_resetti = 0,
     .disable_shop_visitor_req = 0,
     .borderless_acres = 1,
     .nes_aspect = 1,
     .master_volume = 100,
+    .autosave_minutes = 0,
+    .save_on_quit = 1,
+    .cloud_save = 0,
+    .cloud_save_folder = "",
+    .quick_load = 0,
+    .server_sync = 0,
+    .server_sync_host = "",
+    .server_sync_dir = "ac-plus-saves/sync",
+    .music_pack = "",
+    .music_volume = 100,
     .stick_deadzone = 12,
     .cstick_deadzone = 12,
+    .mouse_mode = 1,
 };
 
 static const char* SETTINGS_FILE = "settings.ini";
@@ -49,6 +62,13 @@ static const char* DEFAULT_SETTINGS =
     "# Preload HD textures at startup: 0 = off (load on demand), 1 = preload, 2 = preload + cache file (fastest)\n"
     "preload_textures = 0\n"
     "\n"
+    "# City Folk style curved world and sky outdoors, strength in percent: 0 = flat (original), 75 = default, up to 300\n"
+    "world_curve = 75\n"
+    "\n"
+    "# City Folk weather: 1 = the weather can change during the day, with overcast skies and rainbows after rain.\n"
+    "# 0 = the original one weather per day\n"
+    "cf_weather = 1\n"
+    "\n"
     "[Gameplay]\n"
     "# Disable Mr. Resetti: 0 = normal, 1 = disable\n"
     "disable_resetti = 0\n"
@@ -62,19 +82,54 @@ static const char* DEFAULT_SETTINGS =
     "# NES emulator aspect ratio: 0 = stretch to fullscreen, 1 = 4:3 pillarbox\n"
     "nes_aspect = 1\n"
     "\n"
+    "[Saving]\n"
+    "# Autosave: save automatically after this many minutes of play (only while you're walking around). 0 = off\n"
+    "autosave_minutes = 0\n"
+    "\n"
+    "# Save on quit: 1 = save the town when you quit from the pause menu or close the window (if saving is possible there)\n"
+    "save_on_quit = 1\n"
+    "\n"
+    "# Cloud saves: 1 = copy the town save into cloud_save_folder after every save, and load a newer copy\n"
+    "# from there at startup. Point it at a synced folder (Syncthing, Nextcloud, an sshfs mount...).\n"
+    "# Any save that gets replaced is kept as a .cloudbak file next to it.\n"
+    "cloud_save = 0\n"
+    "cloud_save_folder =\n"
+    "\n"
+    "# Quick load: 1 = skip the arrival scene when a returning player loads and start straight in town\n"
+    "quick_load = 0\n"
+    "\n"
+    "# Server sync: 1 = when the game is started through ac-sync.sh, download the save from a server\n"
+    "# before playing and upload it after. Uses ssh with key login: server_sync_host is user@host\n"
+    "# (or a Host from ~/.ssh/config), server_sync_dir a folder in that user's home.\n"
+    "server_sync = 0\n"
+    "server_sync_host =\n"
+    "server_sync_dir = ac-plus-saves/sync\n"
+    "\n"
     "[Audio]\n"
     "# Master output volume as a percentage (0-100)\n"
     "master_volume = 100\n"
     "\n"
+    "# Custom hourly music: the name of a folder in music/ (leave empty for the game's own music).\n"
+    "# The folder holds hourly/00-23, plus optional rain/ and snow/ variants (ogg, mp3, flac or wav).\n"
+    "music_pack =\n"
+    "\n"
+    "# Custom music volume as a percentage (0-100)\n"
+    "music_volume = 100\n"
+    "\n"
     "[Input]\n"
     "# Gamepad stick deadzones as a percentage (0-40)\n"
     "stick_deadzone = 12\n"
-    "cstick_deadzone = 12\n";
+    "cstick_deadzone = 12\n"
+    "\n"
+    "# Mouse: 1 = in menus, the inventory and the pattern designer, 2 = only ac-plus's pattern designer mouse, 0 = off\n"
+    "mouse_mode = 1\n";
 
 static const char* skip_ws(const char* s) {
     while (*s == ' ' || *s == '\t') s++;
     return s;
 }
+
+static int s_seen_server_sync = 0; /* settings.ini has server_sync (import_ac_sync_conf) */
 
 static void trim_end(char* s) {
     int len = (int)strlen(s);
@@ -106,6 +161,10 @@ static void apply_setting(const char* key, const char* value) {
         if (val == 0 || val == 1) g_pc_settings.texture_filtering = val;
     } else if (strcmp(key, "preload_textures") == 0) {
         if (val >= 0 && val <= 2) g_pc_settings.preload_textures = val;
+    } else if (strcmp(key, "world_curve") == 0) {
+        if (val >= 0 && val <= 300) g_pc_settings.world_curve = val;
+    } else if (strcmp(key, "cf_weather") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.cf_weather = val;
     } else if (strcmp(key, "disable_resetti") == 0) {
         if (val == 0 || val == 1) g_pc_settings.disable_resetti = val;
     } else if (strcmp(key, "disable_shop_visitor_req") == 0) {
@@ -116,8 +175,31 @@ static void apply_setting(const char* key, const char* value) {
         if (val == 0 || val == 1) g_pc_settings.nes_aspect = val;
     } else if (strcmp(key, "master_volume") == 0) {
         if (val >= 0 && val <= 100) g_pc_settings.master_volume = val;
+    } else if (strcmp(key, "music_pack") == 0) {
+        snprintf(g_pc_settings.music_pack, sizeof(g_pc_settings.music_pack), "%s", value);
+    } else if (strcmp(key, "music_volume") == 0) {
+        if (val >= 0 && val <= 100) g_pc_settings.music_volume = val;
+    } else if (strcmp(key, "autosave_minutes") == 0) {
+        if (val >= 0 && val <= 600) g_pc_settings.autosave_minutes = val;
+    } else if (strcmp(key, "save_on_quit") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.save_on_quit = val;
+    } else if (strcmp(key, "cloud_save") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.cloud_save = val;
+    } else if (strcmp(key, "cloud_save_folder") == 0) {
+        snprintf(g_pc_settings.cloud_save_folder, sizeof(g_pc_settings.cloud_save_folder), "%s", value);
+    } else if (strcmp(key, "quick_load") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.quick_load = val;
+    } else if (strcmp(key, "server_sync") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.server_sync = val;
+        s_seen_server_sync = 1;
+    } else if (strcmp(key, "server_sync_host") == 0) {
+        snprintf(g_pc_settings.server_sync_host, sizeof(g_pc_settings.server_sync_host), "%s", value);
+    } else if (strcmp(key, "server_sync_dir") == 0) {
+        snprintf(g_pc_settings.server_sync_dir, sizeof(g_pc_settings.server_sync_dir), "%s", value);
     } else if (strcmp(key, "stick_deadzone") == 0) {
         if (val >= 0 && val <= 40) g_pc_settings.stick_deadzone = val;
+    } else if (strcmp(key, "mouse_mode") == 0) {
+        if (val >= 0 && val <= 2) g_pc_settings.mouse_mode = val;
     } else if (strcmp(key, "cstick_deadzone") == 0) {
         if (val >= 0 && val <= 40) g_pc_settings.cstick_deadzone = val;
     }
@@ -187,6 +269,13 @@ void pc_settings_save(void) {
     fprintf(f, "# Preload HD textures at startup: 0 = off (load on demand), 1 = preload, 2 = preload + cache file (fastest)\n");
     fprintf(f, "preload_textures = %d\n", g_pc_settings.preload_textures);
     fprintf(f, "\n");
+    fprintf(f, "# City Folk style curved world and sky outdoors, strength in percent: 0 = flat (original), 75 = default, up to 300\n");
+    fprintf(f, "world_curve = %d\n", g_pc_settings.world_curve);
+    fprintf(f, "\n");
+    fprintf(f, "# City Folk weather: 1 = the weather can change during the day, with overcast skies and rainbows after rain.\n");
+    fprintf(f, "# 0 = the original one weather per day\n");
+    fprintf(f, "cf_weather = %d\n", g_pc_settings.cf_weather);
+    fprintf(f, "\n");
     fprintf(f, "[Gameplay]\n");
     fprintf(f, "# Disable Mr. Resetti: 0 = normal, 1 = disable\n");
     fprintf(f, "disable_resetti = %d\n", g_pc_settings.disable_resetti);
@@ -200,14 +289,47 @@ void pc_settings_save(void) {
     fprintf(f, "# NES emulator aspect ratio: 0 = stretch to fullscreen, 1 = 4:3 pillarbox\n");
     fprintf(f, "nes_aspect = %d\n", g_pc_settings.nes_aspect);
     fprintf(f, "\n");
+    fprintf(f, "[Saving]\n");
+    fprintf(f, "# Autosave: save automatically after this many minutes of play (only while you're walking around). 0 = off\n");
+    fprintf(f, "autosave_minutes = %d\n", g_pc_settings.autosave_minutes);
+    fprintf(f, "\n");
+    fprintf(f, "# Save on quit: 1 = save the town when you quit from the pause menu or close the window (if saving is possible there)\n");
+    fprintf(f, "save_on_quit = %d\n", g_pc_settings.save_on_quit);
+    fprintf(f, "\n");
+    fprintf(f, "# Cloud saves: 1 = copy the town save into cloud_save_folder after every save, and load a newer copy\n");
+    fprintf(f, "# from there at startup. Point it at a synced folder (Syncthing, Nextcloud, an sshfs mount...).\n");
+    fprintf(f, "# Any save that gets replaced is kept as a .cloudbak file next to it.\n");
+    fprintf(f, "cloud_save = %d\n", g_pc_settings.cloud_save);
+    fprintf(f, "cloud_save_folder = %s\n", g_pc_settings.cloud_save_folder);
+    fprintf(f, "\n");
+    fprintf(f, "# Quick load: 1 = skip the arrival scene when a returning player loads and start straight in town\n");
+    fprintf(f, "quick_load = %d\n", g_pc_settings.quick_load);
+    fprintf(f, "\n");
+    fprintf(f, "# Server sync: 1 = when the game is started through ac-sync.sh, download the save from a server\n");
+    fprintf(f, "# before playing and upload it after. Uses ssh with key login: server_sync_host is user@host\n");
+    fprintf(f, "# (or a Host from ~/.ssh/config), server_sync_dir a folder in that user's home.\n");
+    fprintf(f, "server_sync = %d\n", g_pc_settings.server_sync);
+    fprintf(f, "server_sync_host = %s\n", g_pc_settings.server_sync_host);
+    fprintf(f, "server_sync_dir = %s\n", g_pc_settings.server_sync_dir);
+    fprintf(f, "\n");
     fprintf(f, "[Audio]\n");
     fprintf(f, "# Master output volume as a percentage (0-100)\n");
     fprintf(f, "master_volume = %d\n", g_pc_settings.master_volume);
+    fprintf(f, "\n");
+    fprintf(f, "# Custom hourly music: the name of a folder in music/ (leave empty for the game's own music).\n");
+    fprintf(f, "# The folder holds hourly/00-23, plus optional rain/ and snow/ variants (ogg, mp3, flac or wav).\n");
+    fprintf(f, "music_pack = %s\n", g_pc_settings.music_pack);
+    fprintf(f, "\n");
+    fprintf(f, "# Custom music volume as a percentage (0-100)\n");
+    fprintf(f, "music_volume = %d\n", g_pc_settings.music_volume);
     fprintf(f, "\n");
     fprintf(f, "[Input]\n");
     fprintf(f, "# Gamepad stick deadzones as a percentage (0-40)\n");
     fprintf(f, "stick_deadzone = %d\n", g_pc_settings.stick_deadzone);
     fprintf(f, "cstick_deadzone = %d\n", g_pc_settings.cstick_deadzone);
+    fprintf(f, "\n");
+    fprintf(f, "# Mouse: 1 = in menus, the inventory and the pattern designer, 2 = only ac-plus's pattern designer mouse, 0 = off\n");
+    fprintf(f, "mouse_mode = %d\n", g_pc_settings.mouse_mode);
     fclose(f);
     printf("[Settings] Saved %s\n", SETTINGS_FILE);
 }
@@ -357,6 +479,30 @@ void pc_settings_apply(void) {
            g_pc_settings.fullscreen, g_pc_settings.vsync, g_pc_settings.max_fps, g_pc_settings.msaa);
 }
 
+/* Installs from before server sync was a setting kept it in ac-sync.conf (always on):
+ * carry that over once, switched on */
+static int import_ac_sync_conf(void) {
+    FILE* f = fopen("ac-sync.conf", "r");
+    char line[256];
+
+    if (!f) {
+        return 0;
+    }
+    while (fgets(line, sizeof(line), f)) {
+        char* p = line;
+        trim_end(p);
+        if (strncmp(p, "AC_SYNC_HOST=", 13) == 0) {
+            snprintf(g_pc_settings.server_sync_host, sizeof(g_pc_settings.server_sync_host), "%.127s", p + 13);
+        } else if (strncmp(p, "AC_SYNC_DIR=", 12) == 0) {
+            snprintf(g_pc_settings.server_sync_dir, sizeof(g_pc_settings.server_sync_dir), "%.127s", p + 12);
+        }
+    }
+    fclose(f);
+    g_pc_settings.server_sync = g_pc_settings.server_sync_host[0] != '\0';
+    printf("[Settings] server sync imported from ac-sync.conf: %s\n", g_pc_settings.server_sync_host);
+    return 1;
+}
+
 void pc_settings_load(void) {
     FILE* f = fopen(SETTINGS_FILE, "r");
     if (!f) {
@@ -389,6 +535,9 @@ void pc_settings_load(void) {
     fclose(f);
     apply_frame_limit_setting();
     apply_borderless_acres_setting();
+    if (!s_seen_server_sync && import_ac_sync_conf()) {
+        pc_settings_save();
+    }
 
     printf("[Settings] Loaded %s: %dx%d fullscreen=%d vsync=%d max_fps=%d msaa=%d preload_textures=%d borderless_acres=%d\n",
            SETTINGS_FILE, g_pc_settings.window_width, g_pc_settings.window_height,

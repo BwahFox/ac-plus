@@ -5,6 +5,9 @@
 #include "ac_set_ovl_insect.h"
 #include "m_room_type.h"
 #include "m_common_data.h"
+#ifdef TARGET_PC
+#include "pc_pattern.h"
+#endif
 #include "m_rcp.h"
 #include "sys_matrix.h"
 #include "m_tag_ovl.h"
@@ -730,8 +733,15 @@ static void mIV_pl_shape_item_draw_umbrella(Submenu* submenu, GAME* game) {
     if (umbrella_item_kind >= mPlayer_ITEM_KIND_ORG_UMBRELLA00) {
         int org_idx = (umbrella_item_kind - mPlayer_ITEM_KIND_ORG_UMBRELLA00) & 7;
 
-        gSPSegment(POLY_OPA_DISP++, G_MWO_SEGMENT_8, mNW_PaletteIdx2Palette(Now_Private->my_org[org_idx].palette));
-        gSPSegment(POLY_OPA_DISP++, G_MWO_SEGMENT_9, Now_Private->my_org[org_idx].design.data);
+        const mNW_original_design_c* umb = &Now_Private->my_org[org_idx];
+#ifdef TARGET_PC
+        if (pc_pattern_umbrella(Common_Get(player_no), org_idx) != NULL) {
+            umb = pc_pattern_umbrella(Common_Get(player_no), org_idx); /* the pattern it was made from */
+        }
+#endif
+
+        gSPSegment(POLY_OPA_DISP++, G_MWO_SEGMENT_8, mNW_PaletteIdx2Palette(umb->palette));
+        gSPSegment(POLY_OPA_DISP++, G_MWO_SEGMENT_9, (void*)umb->design.data);
     }
 
     gSPMatrix(POLY_OPA_DISP++, _Matrix_to_Mtx_new(graph), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);

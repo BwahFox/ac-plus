@@ -1,6 +1,11 @@
 static void aNPS2_think_main_proc(NPC_ACTOR* nactorx, GAME_PLAY* play) {
     NPC_P_SEL2_ACTOR* p_sel2 = (NPC_P_SEL2_ACTOR*)nactorx;
 
+#ifdef TARGET_PC
+    if (l_aNPS2_quick_load_state == 2) {
+        return; /* no conversation: the player is already on their way into town */
+    }
+#endif
     if (nactorx->action.step == aNPC_ACTION_END_STEP && !p_sel2->talk_end_flag) {
         nactorx->talk_info.talk_request_proc = &aNPS2_talk_request;
     }

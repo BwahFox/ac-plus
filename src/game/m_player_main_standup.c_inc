@@ -18,6 +18,12 @@ static int Player_actor_request_main_standup(GAME* game, int ftr_no, int priorit
     return FALSE;
 }
 
+#ifdef TARGET_PC
+/* ac-plus: set while the player sits where getting up forward would walk into something (the Roost's
+ * counter, ac_npc_brewster.c): they turn to face away first */
+int pc_player_standup_turn = FALSE;
+#endif
+
 static void Player_actor_setup_main_Standup(ACTOR* actor, GAME* game) {
     PLAYER_ACTOR* player = (PLAYER_ACTOR*)actor;
     cKF_SkeletonInfo_R_c* keyf;
@@ -25,6 +31,13 @@ static void Player_actor_setup_main_Standup(ACTOR* actor, GAME* game) {
     int ftr_no;
 
     keyf = &player->keyframe0;
+#ifdef TARGET_PC
+    if (pc_player_standup_turn) {
+        actor->shape_info.rotation.y += DEG2SHORT_ANGLE2(180.0f);
+        actor->world.angle.y = actor->shape_info.rotation.y;
+        pc_player_standup_turn = FALSE;
+    }
+#endif
 
     ftr_no = req_standup->ftrID;
 

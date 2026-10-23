@@ -1,3 +1,6 @@
+#ifdef TARGET_PC
+#include "pc_pattern.h"
+#endif
 #include "ac_haniwa.h"
 
 #include "m_play.h"

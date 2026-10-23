@@ -5,6 +5,9 @@
 #include "m_lib.h"
 #include "m_rcp.h"
 #include "m_common_data.h"
+#ifdef TARGET_PC
+#include "pc_pattern.h"
+#endif
 
 enum {
     aTUMB_ACTION_TAKEOUT_BEFORE,
@@ -330,8 +333,17 @@ static void aTUMB_actor_draw(ACTOR* actor, GAME* game) {
         umbrella_name = tool_name - TOOL_ORG_UMBRELLA0;
         if (parent->part == ACTOR_PART_PLAYER) {
             umbrella_name = (umbrella_name & 7);
-            gSPSegment(gfx++, G_MWO_SEGMENT_8, mNW_PaletteIdx2Palette(Player_Palette_Get(umbrella_name)));
-            gSPSegment(gfx++, G_MWO_SEGMENT_9, Player_Design_Get(umbrella_name));
+#ifdef TARGET_PC
+            const mNW_original_design_c* umb = pc_pattern_umbrella(Common_Get(player_no), umbrella_name);
+            if (umb != NULL) { /* the pattern it was made from */
+                gSPSegment(gfx++, G_MWO_SEGMENT_8, mNW_PaletteIdx2Palette(umb->palette));
+                gSPSegment(gfx++, G_MWO_SEGMENT_9, (void*)umb->design.data);
+            } else
+#endif
+            {
+                gSPSegment(gfx++, G_MWO_SEGMENT_8, mNW_PaletteIdx2Palette(Player_Palette_Get(umbrella_name)));
+                gSPSegment(gfx++, G_MWO_SEGMENT_9, Player_Design_Get(umbrella_name));
+            }
         } else {
             umbrella_name = umbrella_name & 3;
             gSPSegment(gfx++, G_MWO_SEGMENT_8,

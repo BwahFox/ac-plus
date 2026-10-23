@@ -1,6 +1,7 @@
 /* pc_os.c - Dolphin OS replacement: arena, timers, threads, message queues */
 #include "pc_platform.h"
 
+#include <stdlib.h>
 #include <time.h>
 
 /* --- Memory arena --- */
@@ -108,6 +109,15 @@ void OSTicksToCalendarTime(s64 ticks, void* td_ptr) {
     int* td = (int*)td_ptr;
     int days, secs;
     s64 d;
+    static int clock_speed = -1;
+
+    /* dev: PC_CLOCK_SPEED=n runs the calendar clock n times faster from startup */
+    if (clock_speed < 0) {
+        clock_speed = getenv("PC_CLOCK_SPEED") != NULL ? atoi(getenv("PC_CLOCK_SPEED")) : 0;
+    }
+    if (clock_speed > 1 && ticks > gc_epoch_offset_ticks) {
+        ticks = gc_epoch_offset_ticks + (ticks - gc_epoch_offset_ticks) * clock_speed;
+    }
 
     d = ticks % OSSecondsToTicks(1);
     if (d < 0) {

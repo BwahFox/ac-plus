@@ -3,6 +3,9 @@
 #include "m_name_table.h"
 #include "bg_item_h.h"
 #include "m_common_data.h"
+#ifdef TARGET_PC
+#include "pc_pattern.h"
+#endif
 #include "m_house.h"
 #include "m_player_lib.h"
 #include "m_demo.h"

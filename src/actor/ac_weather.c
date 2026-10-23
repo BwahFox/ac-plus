@@ -16,6 +16,7 @@
 #include "graph.h"
 #ifdef TARGET_PC
 #include "pc_platform.h"
+#include "pc_weather.h"
 #endif
 
 static void Weather_Actor_ct(ACTOR* actor, GAME* game);
@@ -661,6 +662,28 @@ static void aWeather_RenewWeatherLevel(ACTOR* actorx, GAME* game) {
     }
 }
 
+#ifdef TARGET_PC
+extern void mEnv_PC_ScheduledWeather(s16* weather, s16* intensity);
+extern int mEnv_PC_WeatherEnvBusy(void);
+extern void pc_weather_dev_dump(void);
+
+/* City Folk weather: the schedule has moved on from the saved weather (checked once a game minute) */
+static int aWeather_PcScheduleDue(WEATHER_ACTOR* weather) {
+    static int last_minute = -1;
+    const lbRTC_time_c* rtc = &Common_Get(time.rtc_time);
+    int minute = rtc->hour * 60 + rtc->min;
+    s16 w, i;
+
+    if (!pc_weather_active() || weather->request_change || mEnv_PC_WeatherEnvBusy() || minute == last_minute) {
+        return FALSE;
+    }
+    last_minute = minute;
+    pc_weather_dev_dump();
+    mEnv_PC_ScheduledWeather(&w, &i);
+    return Save_Get(weather) != (u8)(i | (w << 4));
+}
+#endif
+
 static void aWeather_ChangeWeatherTime0(ACTOR* actorx) {
     WEATHER_ACTOR* weather = (WEATHER_ACTOR*)actorx;
     s16 rndWeather, rndIntensity;
@@ -678,7 +701,12 @@ static void aWeather_ChangeWeatherTime0(ACTOR* actorx) {
             Save_Get(scene_no) == SCENE_START_DEMO3) {
             return;
         }
+#ifdef TARGET_PC
+        if ((mFI_CheckPlayerBlockInfo() & mRF_BLOCKKIND_OFFING) == 0 &&
+            (mTM_check_renew_time(0) != 0 || (mFI_CheckInIsland() == 0 && aWeather_PcScheduleDue(weather)))) {
+#else
         if ((mFI_CheckPlayerBlockInfo() & mRF_BLOCKKIND_OFFING) == 0 && (mTM_check_renew_time(0) != 0)) {
+#endif
             mEnv_RandomWeather(&rndWeather, &rndIntensity);
             mEv_GetEventWeather(&evWeather, &evIntensity);
             if (evWeather != -1) {

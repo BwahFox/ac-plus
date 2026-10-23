@@ -80,6 +80,10 @@ enum scene_table {
     SCENE_START_DEMO3,
     SCENE_LIGHTHOUSE,
     SCENE_TENT,
+#ifdef TARGET_PC
+    SCENE_MUSEUM_OBSERVATORY, /* ac-plus: City Folk's observatory, upstairs */
+    SCENE_MUSEUM_CAFE,        /* ac-plus: the Roost, downstairs */
+#endif
 
     SCENE_NUM
 };
@@ -100,7 +104,15 @@ enum scene_table {
     ((scene) == SCENE_MY_ROOM_BASEMENT_S || (scene) == SCENE_MY_ROOM_BASEMENT_M || \
      (scene) == SCENE_MY_ROOM_BASEMENT_L || (scene) == SCENE_MY_ROOM_BASEMENT_LL1)
 
+#ifdef TARGET_PC
+#define mSc_IS_SCENE_MUSEUM_ROOM(scene)                                              \
+    (((scene) >= SCENE_MUSEUM_ENTRANCE && (scene) <= SCENE_MUSEUM_ROOM_FISH) ||       \
+     (scene) == SCENE_MUSEUM_OBSERVATORY || (scene) == SCENE_MUSEUM_CAFE)
+#define mSc_IS_SCENE_MUSEUM_PC_ROOM(scene) ((scene) == SCENE_MUSEUM_OBSERVATORY || (scene) == SCENE_MUSEUM_CAFE)
+#else
 #define mSc_IS_SCENE_MUSEUM_ROOM(scene) ((scene) >= SCENE_MUSEUM_ENTRANCE && (scene) <= SCENE_MUSEUM_ROOM_FISH)
+#define mSc_IS_SCENE_MUSEUM_PC_ROOM(scene) 0
+#endif
 
 extern Scene_data_status_c scene_data_status[SCENE_NUM];
 

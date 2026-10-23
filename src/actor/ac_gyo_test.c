@@ -3,6 +3,9 @@
 #include "m_common_data.h"
 #include "m_player_lib.h"
 #include "ac_uki.h"
+#ifdef TARGET_PC
+#include "pc_sfx.h"
+#endif
 
 enum {
     aGTT_ACTION_SWIM,
@@ -587,6 +590,9 @@ static void aGTT_touch(ACTOR* actorx, GAME* game) {
             if ((aGTT_random_check(4.0f) != FALSE && (aGYO_check_fall(gyo) == TRUE)) || DECREMENT_TIMER(gyo->touch_counter) == 0) {
                 if (uki->gyo_status == 2) {
                     uki->gyo_command = 2;
+#ifdef TARGET_PC
+                    pc_sfx_play("bite", 1.0f); /* ac-plus: City Folk's plop as the fish takes the float */
+#endif
 
                     // If a free space exists, 1/20 chance of switching the fish out for trash
                     if (mPlib_Get_space_putin_item() >= 0 && aGTT_random_check(20.0f) != 0) {

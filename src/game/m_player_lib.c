@@ -3,6 +3,9 @@
 #include "m_play.h"
 #include "m_actor.h"
 #include "m_common_data.h"
+#ifdef TARGET_PC
+#include "pc_pattern.h"
+#endif
 #include "jsyswrap.h"
 #include "libultra/libultra.h"
 #include "ac_t_umbrella.h"
@@ -10,6 +13,7 @@
 #include "ac_uki.h"
 #ifdef TARGET_PC
 #include "pc_bswap.h"
+#include "pc_cf_anim.h"
 #endif
 
 int g_mPlib_wade_disabled = FALSE;
@@ -340,6 +344,14 @@ extern cKF_Animation_R_c* mPlib_Get_Pointer_Animation(int anim_idx) {
     if (anim_idx >= 0 && anim_idx < mPlayer_ANIM_NUM && data[anim_idx] != NULL) {
         return data[anim_idx];
     }
+#ifdef TARGET_PC
+    /* ac-plus: City Folk's (pc_cf_anim.h), or sitting still if they weren't extracted */
+    if (anim_idx >= PC_CF_PANIM_FIRST && anim_idx < PC_CF_PANIM_FIRST + PC_CF_PANIM_NUM) {
+        cKF_Animation_R_c* cf = (cKF_Animation_R_c*)pc_cf_anim_player(anim_idx - PC_CF_PANIM_FIRST);
+
+        return cf != NULL ? cf : &cKF_ba_r_ply_1_sitdown_wait1;
+    }
+#endif
 
     return NULL;
 }
@@ -1077,6 +1089,15 @@ extern u32 mPlib_Get_PlayerTexRom_p(int idx) {
         if (!mPr_ORIGINAL_DESIGN_IDX_VALID(org_idx)) {
             org_idx = 0;
         }
+#ifdef TARGET_PC
+        {
+            /* The pattern put on, even if its slot has changed since. */
+            const mNW_original_design_c* worn = pc_pattern_worn(Common_Get(player_no), idx);
+            if (worn != NULL && idx == Now_Private->cloth.idx) {
+                return (u32)worn->design.data;
+            }
+        }
+#endif
 
         return (u32)Now_Private->my_org[org_idx & 7].design.data;
     }
@@ -1108,6 +1129,14 @@ extern u32 mPlib_Get_PlayerPalletRom_p(int idx) {
             org_idx = 0;
         }
 
+#ifdef TARGET_PC
+        {
+            const mNW_original_design_c* worn = pc_pattern_worn(Common_Get(player_no), idx);
+            if (worn != NULL && idx == Now_Private->cloth.idx) {
+                return (u32)mNW_PaletteIdx2Palette(worn->palette);
+            }
+        }
+#endif
         return (u32)mNW_PaletteIdx2Palette(Now_Private->my_org[org_idx & 7].palette);
     }
 }

@@ -2827,6 +2827,17 @@ static void aMR_SetFtrDemoMsg(MY_ROOM_ACTOR* my_room) {
             FTR_ACTOR* ftr_actor = &l_aMR_work.ftr_actor_list[my_room->demo_ftrID];
             u32 player_no = Common_Get(player_no);
 
+#ifdef TARGET_PC
+            if (my_room->msg_timer > 0 && aMR_CheckRoomOwner(player_no, my_room) &&
+                Save_Get(scene_no) != SCENE_NPC_HOUSE && Save_Get(scene_no) != SCENE_COTTAGE_NPC) {
+                /* ac-plus item storage instead of the 2-3 items inside: those move into it. */
+                pc_storage_take_furniture_items(ftr_actor->items, aFTR_KEEP_ITEM_COUNT);
+                aMR_TidyItemInFurniture(ftr_actor);
+                l_aMR_pc_storage = TRUE;
+                my_room->requested_msg_type = aMR_MSG_STATE_OPEN_SUBMENU;
+                return;
+            }
+#endif
             if (my_room->msg_timer > 0) {
                 if (aMR_GetItemCountInFurniture(ftr_actor) <= 0) {
                     if (aMR_CheckRoomOwner(player_no, my_room)) {

@@ -793,6 +793,36 @@ mFM_field_data_c data_fdd[SCENE_NUM] = {
         0x00000000,
         0x00000000,
     },
+#ifdef TARGET_PC
+    /* the museum's City Folk rooms: the entrance hall's block for now, its look and collision
+     * replaced once made (pc_museum_rooms.c); museum music and camera from the hall's field id */
+    {
+        mFI_FIELD_ROOM_MUSEUM_ENTRANCE,
+        1,
+        1,
+        {
+            { BLOCK_COMBI_ROM_MUSEUM1, 0 },
+        },
+        NULL,
+        0x00000000,
+        0x00000000,
+        0x00000000,
+        0x00000000,
+    },
+    {
+        mFI_FIELD_ROOM_MUSEUM_ENTRANCE,
+        1,
+        1,
+        {
+            { BLOCK_COMBI_ROM_MUSEUM1, 0 },
+        },
+        NULL,
+        0x00000000,
+        0x00000000,
+        0x00000000,
+        0x00000000,
+    },
+#endif
 };
 
 #ifdef TARGET_PC

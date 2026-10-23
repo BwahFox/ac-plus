@@ -3,6 +3,9 @@
 #include "m_common_data.h"
 #include "m_item_name.h"
 #include "m_msg.h"
+#ifdef TARGET_PC
+#include "m_shop.h"
+#endif
 
 enum {
   aCR_ACTION_WAIT,

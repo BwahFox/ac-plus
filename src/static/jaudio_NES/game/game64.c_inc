@@ -15,6 +15,10 @@
 #include "jaudio_NES/verysimple.h"
 #include "jaudio_NES/neosthread.h"
 
+#ifdef TARGET_PC
+#include "pc_music.h"
+#endif
+
 #define SE_GROUP NA_GROUP0 // all sound effects are played here using one of its 16 subtracks
 #define BGM0_GROUP NA_GROUP1 // first bgm group, swapped with second for crossfade
 #define BGM1_GROUP NA_GROUP3 // second bgm group, swapped with first for crossfade
@@ -1454,14 +1458,24 @@ void Sou_BgmStart(u8 id, u16 fadeTime) {
         NA_COMMAND_AUDIO_GROUP_SET_PORT(oldBGMHandle, 0, sou_now_bgm_handle);
         NA_COMMAND_AUDIO_GROUP_SET_PORT(oldBGMHandle, 1, SEQ_TABLE[id]);
         Na_BgmMuteClear();
+#ifdef TARGET_PC
+        /* The running sequence switches songs itself: stop standing in for it. */
+        pc_music_seq_started(oldBGMHandle, id, sou_tenki, -1);
+#endif
     } else if (id >= BGM_NINTENDO0 && id <= BGM_NINTENDO4) {
         int bb = (u8)(id - BGM_NINTENDO0);
         Na_SysTrgStart(bb + NA_SE_16F);
     } else {
         NA_COMMAND_AUDIO_STOP_SEQ(oldBGMHandle, fadeTime);
         NA_COMMAND_AUDIO_STOP_SEQ(sou_now_bgm_handle, 0);
+#ifdef TARGET_PC
+        u8 requested = id;
+#endif
         id = Sou_BgmTenkiConv(id);
         NA_COMMAND_AUDIO_START_SEQ(sou_now_bgm_handle, SEQ_TABLE[id], fadeTime);
+#ifdef TARGET_PC
+        pc_music_seq_started(sou_now_bgm_handle, requested, sou_tenki, SEQ_TABLE[id]);
+#endif
         Na_StaffRollStart(SEQ_TABLE[id]);
         Na_SetKappaSeqHandle(sou_now_bgm_handle);
     }
@@ -1566,11 +1580,17 @@ void Sou_SpecialRoutine06() {
                 NA_COMMAND_AUDIO_STOP_SEQ(BGM0_GROUP, 700);
                 v = Sou_BgmTenkiConv(sou_bgm_call_buffer_u8);
                 NA_COMMAND_AUDIO_START_SEQ(BGM1_GROUP, SEQ_TABLE[v], 700);
+#ifdef TARGET_PC
+                pc_music_seq_started(BGM1_GROUP, sou_bgm_call_buffer_u8, sou_tenki, SEQ_TABLE[v]);
+#endif
             } else {
                 sou_now_bgm_handle = BGM0_GROUP;
                 NA_COMMAND_AUDIO_STOP_SEQ(BGM1_GROUP, 700);
                 v = Sou_BgmTenkiConv(sou_bgm_call_buffer_u8);
                 NA_COMMAND_AUDIO_START_SEQ(BGM0_GROUP, SEQ_TABLE[v], 700);
+#ifdef TARGET_PC
+                pc_music_seq_started(BGM0_GROUP, sou_bgm_call_buffer_u8, sou_tenki, SEQ_TABLE[v]);
+#endif
             }
         } break;
         case 3: {

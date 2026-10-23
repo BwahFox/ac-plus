@@ -40,17 +40,58 @@ static void Player_actor_request_proc_index_fromSitdown_wait(ACTOR* actor, GAME*
     PLAYER_ACTOR* player = (PLAYER_ACTOR*)actor;
     int ftr_no = player->main_data.sitdown_wait.ftrID;
 
+#ifdef TARGET_PC
+    if (mDemo_Get_talk_actor() != NULL) {
+        return; /* ac-plus: talked to sitting down (the Roost's counter): the stick picks answers */
+    }
+#endif
     if ((Player_actor_GetController_move_percentX()) || (Player_actor_GetController_move_percentY())) {
         Player_actor_request_main_standup(game, ftr_no, mPlayer_REQUEST_PRIORITY_22);
     }
 }
 
+#ifdef TARGET_PC
+/* ac-plus: an animation to play once while seated (a player animation index, e.g. City Folk's drink at
+ * the Roost's counter, pc_cf_anim.h), or -1 to sit still. Set by whoever runs the scene. */
+int pc_player_seated_anim = -1;
+
+static void Player_actor_Seated_anim(ACTOR* actor, GAME* game) {
+    PLAYER_ACTOR* player = (PLAYER_ACTOR*)actor;
+    int want = pc_player_seated_anim >= 0 ? pc_player_seated_anim : mPlayer_ANIM_SITDOWN_WAIT1;
+
+    if (player->animation0_idx == want) {
+        return;
+    }
+    if (pc_player_seated_anim >= 0) {
+        /* City Folk's run at 60 keys a second: speed 1 (the GameCube's own are 30, at 0.5) */
+        Player_actor_InitAnimation_Base2(actor, game, want, want, 1.0f, 1.0f, 1.0f, -5.0f, cKF_FRAMECONTROL_STOP,
+                                         mPlayer_PART_TABLE_NORMAL);
+    } else {
+        Player_actor_InitAnimation_Base1(actor, game, want, want, 1.0f, 1.0f, 0.5f, -5.0f, 0);
+    }
+}
+#endif
+
 static void Player_actor_main_Sitdown_wait(ACTOR* actor, GAME* game) {
     Player_actor_Movement_Sitdown_wait(actor);
     Player_actor_Reinput_force_position_angle(actor, game);
+#ifdef TARGET_PC
+    Player_actor_Seated_anim(actor, game);
+#endif
     Player_actor_CulcAnimation_Sitdown_wait(actor);
     Player_actor_recover_lean_angle(actor);
     Player_actor_set_eye_pattern_normal(actor);
+#ifdef TARGET_PC
+    {
+        /* City Folk's drink: eyes shut while the cup's at the mouth (its frames 76-184; keys from 1) */
+        PLAYER_ACTOR* player = (PLAYER_ACTOR*)actor;
+        f32 frame = player->keyframe0.frame_control.current_frame;
+
+        if (player->animation0_idx == PC_CF_PANIM_FIRST + PC_CF_PANIM_CAFE_DRINK1 && frame >= 77.0f && frame <= 185.0f) {
+            Player_actor_set_eye_pattern(actor, 2);
+        }
+    }
+#endif
     Player_actor_Item_main(actor, game);
     Player_actor_request_proc_index_fromSitdown_wait(actor, game);
     Player_actor_main_Sitdown_wait_other_func2(actor, game);

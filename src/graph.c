@@ -387,6 +387,12 @@ static void graph_main(GRAPH* this, GAME* game) {
     PC_DIAG(10, "graph_main: game_main returned, frame_counter=%d\n", this->frame_counter);
 #ifdef TARGET_PC
     pc_pause_menu_draw(game);
+    {
+        extern void pc_quick_save_draw(GAME* game);
+        extern void pc_ground_debug_draw(GAME* game);
+        pc_quick_save_draw(game);
+        pc_ground_debug_draw(game); /* F4 tile readout */
+    }
 #endif
     GRAPH_SET_DOING_POINT(this, GAME_MAIN_FINISHED);
     if (ResetStatus < IRQ_RESET_DELAY) {

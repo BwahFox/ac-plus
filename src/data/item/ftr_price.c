@@ -888,10 +888,17 @@ unsigned short ftr_price_table[] = {
     3000,
     3000,
     3000,
+#ifdef TARGET_PC /* ac-plus: the "forbidden four" cost what the other NES games do */
+    3000,
+    3000,
+    3000,
+    3000,
+#else
     40000,
     40000,
     40000,
     40000,
+#endif
     3000,
     1840,
     2580,

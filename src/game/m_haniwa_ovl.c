@@ -9,6 +9,11 @@
 #include "m_hand_ovl.h"
 #include "m_font.h"
 #include "m_haniwaPortrait_ovl.h"
+#ifdef TARGET_PC
+#include "pc_storage.h"
+#else
+#define pc_storage_slot(home, idx) (&Save_Get(homes[home]).haniwa.items[idx])
+#endif
 
 static mHW_Ovl_c haniwa_ovl_data;
 
@@ -25,7 +30,7 @@ static void mHW_set_price(Submenu* submenu, u8** str) {
     mTG_tag_c* tag = &submenu->overlay->tag_ovl->tags[0];
     mSM_MenuInfo_c* menu_info = &submenu->overlay->menu_info[mSM_OVL_HANIWA];
     u8 price_str[6];
-    u32 price = Save_Get(homes[menu_info->data1]).haniwa.items[tag->tag_col].extra_data;
+    u32 price = pc_storage_slot(menu_info->data1, tag->tag_col)->extra_data;
     int len;
     int found;
 
@@ -135,7 +140,7 @@ static int mHW_make_message_normal(Submenu* submenu, mSM_MenuInfo_c* menu_info) 
         case mTG_TYPE_NONE:
         case mTG_TYPE_HANIWA_PUT_ITEM:
             if (tag->table == mTG_TABLE_HANIWA) {
-                Haniwa_Item_c* item = &Save_Get(homes[menu_info->data1]).haniwa.items[tag_ovl->tags[0].tag_col];
+                Haniwa_Item_c* item = pc_storage_slot(menu_info->data1, tag_ovl->tags[0].tag_col);
                 
                 if (item->item != EMPTY_NO) {
                     switch (item->exchange_type) {
@@ -201,7 +206,7 @@ static void mHW_make_message(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
     }
 
     if (msg_idx != msg_idx_bak || (msg_idx == mHW_MSG_BERU2 &&
-        haniwa_ovl->msg_price != Save_Get(homes[menu_info->data1]).haniwa.items[tag->tag_col].extra_data)) {
+        haniwa_ovl->msg_price != pc_storage_slot(menu_info->data1, tag->tag_col)->extra_data)) {
         mHW_make_cond_message(submenu, msg_idx);
         haniwa_ovl->msg_idx = msg_idx;
         haniwa_ovl->msg_counter = 0;
@@ -241,6 +246,14 @@ static void mHW_haniwa_ovl_move(Submenu* submenu) {
     menu_info->pre_move_func(submenu);
     (*ovl_move_proc[menu_info->proc_status])(submenu, menu_info);
 
+#ifdef TARGET_PC
+    if (pc_storage_active()) {
+        /* Storage: no gyroid to talk or animate. Keep the save copy current. */
+        pc_storage_sync();
+        submenu->overlay->menu_control.animation_flag = menu_info->proc_status == mSM_OVL_PROC_PLAY;
+        return;
+    }
+#endif
     mHW_make_message(submenu, menu_info);
 
     switch (menu_info->proc_status) {
@@ -323,6 +336,13 @@ static void mHW_set_dl(mSM_MenuInfo_c* menu_info, Submenu* submenu, GAME* game) 
     f32 pos_x = menu_info->position[0];
     f32 pos_y = menu_info->position[1];
 
+#ifdef TARGET_PC
+    if (pc_storage_active()) {
+        pc_storage_draw(submenu, game, pos_x, pos_y);
+        submenu->overlay->menu_control.tag_draw_func(submenu, game, mSM_OVL_HANIWA);
+        return;
+    }
+#endif
     mHW_set_frame_dl(submenu, graph, pos_x, pos_y);
     mHW_set_item(submenu, graph, menu_info, pos_x, pos_y);
     submenu->overlay->hanwiaPortrait_ovl->set_haniwaPortrait_proc(submenu, menu_info, graph, game, 39.0f + pos_x, 19.0f - pos_y);
@@ -388,8 +408,15 @@ extern void mHW_haniwa_ovl_construct(Submenu* submenu) {
 
     mHW_haniwa_ovl_init(submenu);
     mHW_haniwa_ovl_set_proc(submenu);
+#ifdef TARGET_PC
+    mTG_pc_set_storage_table(pc_storage_active());
+#endif
 }
 
 extern void mHW_haniwa_ovl_destruct(Submenu* submenu) {
+#ifdef TARGET_PC
+    pc_storage_end();
+    mTG_pc_set_storage_table(FALSE);
+#endif
     submenu->overlay->haniwa_ovl = NULL;
 }

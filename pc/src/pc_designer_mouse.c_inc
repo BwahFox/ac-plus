@@ -1,0 +1,357 @@
+/* pc_designer_mouse.c_inc - mouse controls for the pattern designer (m_design_ovl.c).
+ *
+ * Included by m_design_ovl.c so it can use the editor's own helpers; called once
+ * per frame from mDE_move_Play before the editor reads the pad. Off with
+ * designer_mouse = 0 (Controls tab). To drop it entirely, remove this file, its
+ * #include and the one call in mDE_move_Play.
+ *
+ *   canvas        hover moves the cursor; left = A (paint / fill / shape / stamp /
+ *                 undo with the current tool), right = B (pick the colour)
+ *                 shapes: press for one corner, release for the other
+ *   colours       left picks it          palette button  left next, right previous
+ *   tools         left on a tool opens its options; left on an option picks it,
+ *                 right goes back        preview          left toggles the grid
+ *   wheel         next / previous colour
+ *   Ctrl+Z        undo / redo (mDE_pc_keys, any mouse setting)
+ *
+ * The mouse only takes over the cursor once it moves, so the controller keeps
+ * working alongside it. Screen positions are the editor's 320x240 layout. */
+#include "pc_settings.h"
+
+#include <SDL.h>
+
+extern SDL_Window* g_pc_window;
+extern int g_pc_mouse_wheel;
+int pc_devtest_mouse(int* wx, int* wy, u32* buttons);
+int pc_devtest_ctrl_z(void);
+
+#define mDE_MS_CANVAS_X 79
+#define mDE_MS_CANVAS_Y 40
+#define mDE_MS_TEXEL 5
+
+static struct {
+    int x, y;            /* window position last frame */
+    u32 buttons;         /* SDL button mask last frame */
+    int last_cx, last_cy; /* canvas texel last frame, -1 = off the canvas */
+    int in_use;          /* the mouse has moved since the editor opened */
+    int waku_drag;       /* a shape's first corner came from a mouse press */
+} l_mDE_mouse;
+
+/* Window position -> editor screen (320x240), as the menu's 4:3 pillarbox draws it. */
+static void mDE_mouse_to_screen(int wx, int wy, f32* sx, f32* sy) {
+    int ww = 1, wh = 1;
+
+    SDL_GetWindowSize(g_pc_window, &ww, &wh);
+    if (ww <= 0 || wh <= 0) {
+        *sx = *sy = -1.0f;
+        return;
+    }
+    if (ww * 3 > wh * 4) {
+        f32 scale = (f32)wh / 240.0f;
+        *sx = 160.0f + ((f32)wx - (f32)ww * 0.5f) / scale;
+        *sy = (f32)wy / scale;
+    } else {
+        *sx = (f32)wx * 320.0f / (f32)ww;
+        *sy = (f32)wy * 240.0f / (f32)wh;
+    }
+}
+
+static int mDE_mouse_in(f32 sx, f32 sy, f32 x0, f32 y0, f32 x1, f32 y1) {
+    return sx >= x0 && sx < x1 && sy >= y0 && sy < y1;
+}
+
+/* Lowest y / highest x the pen of the current size may sit at (mDE_cursor_move_check). */
+static int mDE_mouse_pen_margin(mDE_Ovl_c* design_ovl) {
+    if (design_ovl->main_mode_act == mDE_MAIN_MODE_PEN) {
+        return design_ovl->_6A0 == 1 ? 1 : design_ovl->_6A0 == 2 ? 2 : 0;
+    }
+    return 0;
+}
+
+static void mDE_mouse_set_cursor(mDE_Ovl_c* design_ovl, int cx, int cy) {
+    int m = mDE_mouse_pen_margin(design_ovl);
+
+    if (cy < m) {
+        cy = m;
+    }
+    if (cx > mDE_POS_MAX - m) {
+        cx = mDE_POS_MAX - m;
+    }
+    design_ovl->cursor_x = cx;
+    design_ovl->cursor_y = cy;
+    design_ovl->_650 = cx * mDE_MS_TEXEL;
+    design_ovl->_654 = -cy * mDE_MS_TEXEL;
+    design_ovl->_660 = design_ovl->_650 + 2.5f;
+    design_ovl->_664 = design_ovl->_654 - 2.5f;
+}
+
+/* One pen dab, exactly as mDE_main_pen_move paints while A is held. */
+static void mDE_mouse_pen_dab(mDE_Ovl_c* design_ovl, int x, int y) {
+    switch (design_ovl->_6A0) {
+        case 1:
+            mDE_set_texture_template(design_ovl, mDE_pen_2, x, y, 2, 2, 0, 1);
+            break;
+        case 2:
+            mDE_set_texture_template(design_ovl, mDE_pen_3, x, y, 3, 3, 0, 2);
+            break;
+        default:
+            mDE_set_pal_on_cursor(design_ovl, x, y, design_ovl->_6A4);
+            break;
+    }
+}
+
+/* Fill the gap a fast stroke leaves between last frame's texel and this one's
+ * (the game paints the end point itself). */
+static void mDE_mouse_pen_line(mDE_Ovl_c* design_ovl, int x0, int y0, int x1, int y1) {
+    int dx = x1 > x0 ? x1 - x0 : x0 - x1;
+    int dy = y1 > y0 ? y1 - y0 : y0 - y1;
+    int sx = x0 < x1 ? 1 : -1;
+    int sy = y0 < y1 ? 1 : -1;
+    int err = dx - dy;
+
+    while (x0 != x1 || y0 != y1) {
+        int e2 = err * 2;
+
+        mDE_mouse_pen_dab(design_ovl, x0, y0);
+        if (e2 > -dy) {
+            err -= dy;
+            x0 += sx;
+        }
+        if (e2 < dx) {
+            err += dx;
+            y0 += sy;
+        }
+    }
+}
+
+static void mDE_mouse_palette_step(mDE_Ovl_c* design_ovl, int dir) {
+    sAdo_SysTrgStart(0x458);
+    design_ovl->palette_no = (design_ovl->palette_no + (dir > 0 ? 1 : 15)) & 15;
+    design_ovl->palette_p = mNW_PaletteIdx2Palette(design_ovl->palette_no);
+    mDE_pallet_RGB5A3_to_RGB24(design_ovl);
+}
+
+static void mDE_mouse_pick_colour(mDE_Ovl_c* design_ovl, int k) {
+    sAdo_SysTrgStart(0x45a);
+    design_ovl->_6A4 = k;
+    design_ovl->_6A5 = k;
+    if (design_ovl->mode != mDE_MODE_MAIN) {
+        mDE_setup_action(design_ovl, mDE_MODE_MAIN);
+    }
+}
+
+/* Options per tool row (pen, fill, shape, stamp, undo), as mDE_mode_tool_check allows. */
+static int mDE_mouse_tool_options(int row) {
+    static const int count[] = { 3, 6, 5, 4, 1 };
+
+    if (row == 3 && (Save_Get(scene_no) == SCENE_START_DEMO3 || GETREG(NMREG, 0x5f))) {
+        return 5;
+    }
+    return (row >= 0 && row < 5) ? count[row] : 0;
+}
+
+static int mDE_mouse_tool_current(mDE_Ovl_c* design_ovl, int row) {
+    switch (row) {
+        case 0: return design_ovl->_6A0;
+        case 1: return design_ovl->_6A1;
+        case 2: return design_ovl->_6A2;
+        case 3: return design_ovl->_6A3;
+    }
+    return 0;
+}
+
+/* Tools: rows of 24 px from y 91, columns of 24 px from x 35. In tool mode the
+ * options run over the left of the canvas, so they are checked first. */
+static int mDE_mouse_tools(mDE_Ovl_c* design_ovl, f32 sx, f32 sy, u32 pressed) {
+    int row;
+    int col;
+
+    if (sx < 35 || sy < 91 || sy >= 91 + 5 * 24) {
+        return FALSE;
+    }
+    row = (int)((sy - 91) / 24);
+    col = (int)((sx - 35) / 24);
+    if (design_ovl->mode == mDE_MODE_TOOL) {
+        if (col >= mDE_mouse_tool_options(row)) {
+            return FALSE;
+        }
+        if (pressed & SDL_BUTTON_LMASK) {
+            sAdo_SysTrgStart(NA_SE_33);
+            design_ovl->_69F = row;
+            design_ovl->_69E = col;
+            mDE_move_tool_decide(design_ovl);
+            mDE_setup_action(design_ovl, mDE_MODE_MAIN);
+        } else if (pressed & SDL_BUTTON_RMASK) {
+            mDE_setup_action(design_ovl, mDE_MODE_MAIN);
+        }
+        return TRUE;
+    }
+    if (col != 0) {
+        return FALSE;
+    }
+    if (pressed & SDL_BUTTON_LMASK) {
+        /* Open this tool's options, the current one selected. */
+        sAdo_SysTrgStart(NA_SE_37);
+        design_ovl->_69F = row;
+        design_ovl->_69E = mDE_mouse_tool_current(design_ovl, row);
+        mDE_setup_action(design_ovl, mDE_MODE_TOOL);
+    }
+    return TRUE;
+}
+
+static void mDE_pc_mouse(mDE_Ovl_c* design_ovl) {
+    pad_t* pad = &gamePT->pads[PAD0];
+    int wx, wy;
+    u32 buttons;
+    u32 pressed;
+    u32 released;
+    int moved;
+    int wheel;
+    f32 sx, sy;
+    int on_canvas;
+    int cx = -1, cy = -1;
+
+    if (g_pc_settings.mouse_mode != 2 || g_pc_window == NULL) {
+        g_pc_mouse_wheel = 0;
+        return;
+    }
+    if (!pc_devtest_mouse(&wx, &wy, &buttons)) {
+        if (!(SDL_GetWindowFlags(g_pc_window) & SDL_WINDOW_MOUSE_FOCUS)) {
+            g_pc_mouse_wheel = 0;
+            return;
+        }
+        buttons = SDL_GetMouseState(&wx, &wy);
+    }
+    pressed = buttons & ~l_mDE_mouse.buttons;
+    released = l_mDE_mouse.buttons & ~buttons;
+    moved = wx != l_mDE_mouse.x || wy != l_mDE_mouse.y;
+    l_mDE_mouse.x = wx;
+    l_mDE_mouse.y = wy;
+    l_mDE_mouse.buttons = buttons;
+    wheel = g_pc_mouse_wheel;
+    g_pc_mouse_wheel = 0;
+    if (moved || pressed) {
+        l_mDE_mouse.in_use = TRUE;
+    }
+    if (!l_mDE_mouse.in_use) {
+        return;
+    }
+
+    mDE_mouse_to_screen(wx, wy, &sx, &sy);
+    on_canvas = mDE_mouse_in(sx, sy, mDE_MS_CANVAS_X, mDE_MS_CANVAS_Y, mDE_MS_CANVAS_X + 32 * mDE_MS_TEXEL,
+                             mDE_MS_CANVAS_Y + 32 * mDE_MS_TEXEL);
+    if (on_canvas) {
+        cx = (int)((sx - mDE_MS_CANVAS_X) / mDE_MS_TEXEL);
+        cy = (int)((sy - mDE_MS_CANVAS_Y) / mDE_MS_TEXEL);
+    }
+
+    /* Wheel: colours, like C-up / C-down. */
+    if (wheel != 0) {
+        int k = design_ovl->_6A4 + (wheel < 0 ? 1 : -1);
+
+        mDE_mouse_pick_colour(design_ovl, k > 15 ? 1 : k < 1 ? 15 : k);
+    }
+
+    if (design_ovl->mode == mDE_MODE_TOOL && pressed && mDE_mouse_tools(design_ovl, sx, sy, pressed)) {
+        return;
+    }
+    if (on_canvas) {
+        if (design_ovl->mode != mDE_MODE_MAIN) {
+            if (!(pressed & SDL_BUTTON_LMASK)) {
+                l_mDE_mouse.last_cx = -1;
+                return; /* hovering over another panel's options */
+            }
+            mDE_setup_action(design_ovl, mDE_MODE_MAIN);
+        }
+        if (moved || buttons) {
+            mDE_mouse_set_cursor(design_ovl, cx, cy);
+        }
+
+        if (design_ovl->main_mode_act == mDE_MAIN_MODE_WAKU) {
+            /* Shapes: press sets the first corner, release draws to the second. */
+            if (pressed & SDL_BUTTON_LMASK) {
+                pad->on.button |= BUTTON_A;
+                pad->now.button |= BUTTON_A;
+                l_mDE_mouse.waku_drag = TRUE;
+            } else if ((released & SDL_BUTTON_LMASK) && l_mDE_mouse.waku_drag && design_ovl->_69A) {
+                pad->on.button |= BUTTON_A;
+                pad->now.button |= BUTTON_A;
+                l_mDE_mouse.waku_drag = FALSE;
+            }
+        } else if (pressed & SDL_BUTTON_LMASK) {
+            pad->on.button |= BUTTON_A;
+            pad->now.button |= BUTTON_A;
+        } else if (buttons & SDL_BUTTON_LMASK) {
+            pad->now.button |= BUTTON_A;
+            if (design_ovl->main_mode_act == mDE_MAIN_MODE_PEN && design_ovl->_6CC && l_mDE_mouse.last_cx >= 0) {
+                mDE_mouse_pen_line(design_ovl, l_mDE_mouse.last_cx, l_mDE_mouse.last_cy, design_ovl->cursor_x,
+                                   design_ovl->cursor_y);
+            }
+        }
+        if (pressed & SDL_BUTTON_RMASK) {
+            pad->on.button |= BUTTON_B;
+            pad->now.button |= BUTTON_B;
+        } else if (buttons & SDL_BUTTON_RMASK) {
+            pad->now.button |= BUTTON_B;
+        }
+        l_mDE_mouse.last_cx = design_ovl->cursor_x;
+        l_mDE_mouse.last_cy = design_ovl->cursor_y;
+        return;
+    }
+    l_mDE_mouse.last_cx = -1;
+
+    /* A shape dragged off the canvas still finishes at the cursor's last spot. */
+    if ((released & SDL_BUTTON_LMASK) && l_mDE_mouse.waku_drag) {
+        l_mDE_mouse.waku_drag = FALSE;
+        if (design_ovl->main_mode_act == mDE_MAIN_MODE_WAKU && design_ovl->_69A) {
+            pad->on.button |= BUTTON_A;
+            pad->now.button |= BUTTON_A;
+        }
+        return;
+    }
+    if (!(pressed & (SDL_BUTTON_LMASK | SDL_BUTTON_RMASK))) {
+        return;
+    }
+
+    /* Colours 1-15, and the palette button above them. */
+    if (mDE_mouse_in(sx, sy, 258, 62, 283, 202)) {
+        int k = (int)((sy - 52) / 10);
+
+        if (k >= 1 && k <= 15 && (pressed & SDL_BUTTON_LMASK)) {
+            mDE_mouse_pick_colour(design_ovl, k);
+        }
+        return;
+    }
+    if (mDE_mouse_in(sx, sy, 257, 36, 284, 62)) {
+        mDE_mouse_palette_step(design_ovl, (pressed & SDL_BUTTON_LMASK) ? 1 : -1);
+        return;
+    }
+
+    /* Preview: grid on/off. */
+    if (mDE_mouse_in(sx, sy, 32, 40, 64, 72) && (pressed & SDL_BUTTON_LMASK)) {
+        design_ovl->_69D = !design_ovl->_69D;
+        sAdo_SysTrgStart(design_ovl->_69D ? 0x456 : 0x457);
+        return;
+    }
+
+    if (mDE_mouse_tools(design_ovl, sx, sy, pressed)) {
+        return;
+    }
+    if (design_ovl->mode == mDE_MODE_TOOL && (pressed & SDL_BUTTON_RMASK)) {
+        mDE_setup_action(design_ovl, mDE_MODE_MAIN);
+    }
+}
+
+/* Ctrl+Z: the editor's undo (Y). Undo swaps with the last change, so pressing it
+ * again redoes. Works with any mouse setting. */
+static void mDE_pc_keys(mDE_Ovl_c* design_ovl) {
+    static int l_held = FALSE;
+    const Uint8* keys = SDL_GetKeyboardState(NULL);
+    int held = ((keys[SDL_SCANCODE_LCTRL] || keys[SDL_SCANCODE_RCTRL]) && keys[SDL_SCANCODE_Z]) ||
+               pc_devtest_ctrl_z();
+
+    if (held && !l_held && design_ovl->_6CC == 0) {
+        mDE_undo(design_ovl);
+    }
+    l_held = held;
+}

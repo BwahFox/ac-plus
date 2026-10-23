@@ -20,6 +20,7 @@
 #include "m_common_data.h"
 #ifdef TARGET_PC
 #include "pc_platform.h"
+#include "pc_sky.h"
 #endif
 
 #ifdef MUST_MATCH
@@ -524,11 +525,28 @@ extern void Actor_info_draw_actor(GAME_PLAY* play, Actor_info* actor_info) {
     list = actor_info->list;
     for (i = 0; i < ACTOR_PART_NUM; i++) {
         int do_not_draw;
+#ifdef TARGET_PC
+        /* The bg item actor is swapped out mid-scene on the boat to the island (mBI_change_bg_item), leaving
+         * a frame or two with no bg_item_clip. Structures draw their shadows through it; in the original only
+         * the offing's actors are around then, but with borderless acres the dock's are too (Kapp'n's sign
+         * crashed). Skip drawing them for those frames. */
+        int no_bg_item = i == ACTOR_PART_ITEM && Common_Get(clip).bg_item_clip == NULL &&
+                         Common_Get(field_type) == mFI_FIELDTYPE2_FG;
+#endif
 
         for (actor = list->actor; actor != NULL; actor = actor->next_actor) {
             /* Apply projection matrix to actor position */
+#ifdef TARGET_PC
+            {
+                /* where the curved world will actually draw it */
+                xyz_t pos;
+                pc_sky_curve_world(&actor->world.position.x, &pos.x);
+                Skin_Matrix_PrjMulVector(&play->projection_matrix, &pos, &actor->camera_position, &actor->camera_w);
+            }
+#else
             Skin_Matrix_PrjMulVector(&play->projection_matrix, &actor->world.position, &actor->camera_position,
                                      &actor->camera_w);
+#endif
 
             Actor_cull_check(actor);
             do_not_draw = (*draw_chk_proc)(actor, play);
@@ -537,7 +555,11 @@ extern void Actor_info_draw_actor(GAME_PLAY* play, Actor_info* actor_info) {
             if (do_not_draw == FALSE && actor->ct_proc == NULL && actor->dw_proc != NULL) {
                 if ((actor->state_bitfield & (ACTOR_STATE_NO_DRAW_WHILE_CULLED | ACTOR_STATE_NO_CULL))) {
                     if ((actor->state_bitfield & ACTOR_STATE_INVISIBLE) == 0 && actor->cull_while_talking == FALSE &&
-                        actor->skip_drawing == FALSE) {
+                        actor->skip_drawing == FALSE
+#ifdef TARGET_PC
+                        && !no_bg_item
+#endif
+                    ) {
                         Actor_draw(play, actor);
                         actor->drawn = TRUE;
                     }

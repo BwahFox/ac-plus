@@ -26,6 +26,11 @@ int  pc_pause_menu_handle_event(const SDL_Event* e);
  * after game_main() returns. No-op if not paused. */
 void pc_pause_menu_draw(struct game_s* game);
 
+/* Quit, saving first when save_on_quit is set (pc_quick_save.c). The poll runs
+ * once per frame and quits if no play frame picked the request up. */
+void pc_request_quit(void);
+void pc_quit_request_poll(void);
+
 #ifdef __cplusplus
 }
 #endif

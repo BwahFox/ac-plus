@@ -10,6 +10,9 @@
 
 #ifdef PC_ENHANCEMENTS
 #include "m_museum_display.h"
+#ifdef TARGET_PC
+#include "pc_storage.h"
+#endif
 #endif
 
 static mSM_dlftbl_c SubmenuArea_dlftbl[mSM_DLF_NUM] = { { NULL, 0, 0, 0, 0, 0, "submenu_ovl" },
@@ -530,6 +533,14 @@ static int mSM_check_item_for_entrust(int slot_no, int param_2) {
     Private_c* priv = Common_Get(now_private);
     mActor_name_t item = priv->inventory.pockets[slot_no];
     int res = FALSE;
+
+#ifdef TARGET_PC
+    if (pc_storage_active()) {
+        /* Item storage shares the gyroid's screen (pc_storage.c). */
+        return item == EMPTY_NO || (mPr_GET_ITEM_COND(priv->inventory.item_conditions, slot_no) == mPr_ITEM_COND_NORMAL &&
+                                    pc_storage_accepts(item));
+    }
+#endif
 
     if (item == EMPTY_NO ||
         mPr_GET_ITEM_COND(priv->inventory.item_conditions, slot_no) == mPr_ITEM_COND_NORMAL &&

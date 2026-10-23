@@ -519,6 +519,15 @@ static void mChoice_Change_ControlCode(u8* data, int max_size, ACTOR* actor) {
 }
 
 extern void mChoice_Load_ChoseStringFromRom(mChoice_c* choice, u8* str, int str_no, ACTOR* actor) {
+#ifdef TARGET_PC
+    {
+        /* City Folk characters' menu options (pc_cf_lines.c) */
+        extern int pc_cf_lines_choice(int str_no, u8* str, int len);
+        if (pc_cf_lines_choice(str_no, str, mChoice_CHOICE_STRING_LEN)) {
+            return;
+        }
+    }
+#endif
     if (str_no >= 0 && str_no < mChoice_SELECT_STR_NUM) {
         u32 addr;
         u32 size;

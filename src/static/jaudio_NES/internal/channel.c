@@ -12,6 +12,10 @@
 #include "jaudio_NES/audioheaders.h"
 #include <dolphin/os.h>
 
+#ifdef TARGET_PC
+#include "pc_music.h"
+#endif
+
 static void Nas_smzSetPitch(channel* chan, f32 pitch);
 static void Nas_AddListHead(link* list, link* l);
 
@@ -333,6 +337,12 @@ extern void Nas_UpdateChannel(void) {
                         param.playback.pitch = 0.0f;
                         param.playback.velocity = 0.0f;
                     }
+#ifdef TARGET_PC
+                    /* A custom music file is playing in place of this sequence. */
+                    if (pc_music_group_silenced(subtrack->group)) {
+                        param.playback.velocity = 0.0f;
+                    }
+#endif
 
                     break;
                 }
@@ -608,6 +618,12 @@ static void __Nas_Release_Channel_Main(note* n, int target) {
             if (subtrack->group->flags.muted && (subtrack->mute_flags & AUDIO_MUTE_FLAG_STOP_SAMPLES)) {
                 chan->common_ch.finished = TRUE;
             }
+#ifdef TARGET_PC
+            /* Released notes keep these params, so silence their tails too. */
+            if (pc_music_group_silenced(subtrack->group)) {
+                param->velocity = 0.0f;
+            }
+#endif
 
             if (*(u8*)&n->stereo_phase == 0) {
                 param->stereo_phase = subtrack->stereo_phase;

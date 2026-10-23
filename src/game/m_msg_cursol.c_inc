@@ -1,3 +1,57 @@
+#ifdef TARGET_PC
+/* Does the text from idx reach a "wait for a button" before the message
+ * continues or ends on its own? */
+static int mMsg_pc_page_waits_for_button(mMsg_Window_c* msg_p, int idx) {
+  u8* data = msg_p->msg_data->text_buf.data;
+  int len = msg_p->msg_data->msg_len;
+
+  while (idx < len) {
+    if (data[idx] == CHAR_CONTROL_CODE) {
+      int type = data[idx + 1];
+
+      if (type == mFont_CONT_CODE_BUTTON || type == mFont_CONT_CODE_BUTTON2) {
+        return TRUE;
+      }
+      if (type == mFont_CONT_CODE_LAST || type == mFont_CONT_CODE_CONTINUE) {
+        return FALSE;
+      }
+    }
+    {
+      int size = mMsg_Set_SizeCode(msg_p, idx);
+
+      if (size <= 0) {
+        return FALSE;
+      }
+      idx += size;
+    }
+  }
+  return FALSE;
+}
+
+/* Blathers' lines are full of written-in pauses and many set "cursor just",
+ * which locks out fast text, so holding B did nothing for him. On his pages that
+ * wait for a button press, let fast text through and cut the pauses short.
+ * Pages that move on by themselves keep their timing (otherwise they'd be gone
+ * before they could be read), and cancelling stays exactly as the game has it. */
+static int mMsg_pc_curator_speedup(mMsg_Window_c* msg_p, int idx) {
+  /* Celeste's City Folk lines are just as full of pauses */
+  return msg_p->client_actor_p != NULL &&
+         (msg_p->client_actor_p->npc_id == SP_NPC_CURATOR || msg_p->client_actor_p->npc_id == SP_NPC_CELESTE ||
+          msg_p->client_actor_p->npc_id == SP_NPC_BREWSTER) &&
+         mMsg_pc_page_waits_for_button(msg_p, idx);
+}
+#endif
+
+/* Fast text is off while "cursor just" is set (TARGET_PC: see mMsg_pc_curator_speedup). */
+static int mMsg_fast_text_allowed(mMsg_Window_c* msg_p) {
+#ifdef TARGET_PC
+  if (mMsg_pc_curator_speedup(msg_p, msg_p->end_text_cursor_idx)) {
+    return TRUE;
+  }
+#endif
+  return (msg_p->status_flags & mMsg_STATUS_FLAG_CURSOL_JUST) == 0;
+}
+
 static int mMsg_Check_CancelOrder(mMsg_Window_c* msg_p) {
   if (msg_p->cancelable_flag != FALSE && msg_p->cancel_flag == FALSE && (msg_p->status_flags & mMsg_STATUS_FLAG_CURSOL_JUST) == 0) {
     if (chkTrigger(BUTTON_A) || chkTrigger(BUTTON_B)) {
@@ -63,9 +117,14 @@ static int mMsg_Main_Cursol_CursolSetTime_ControlCursol(mMsg_Window_c* msg_p, in
   }
 
   if (set_time > 0.0f) {
+#ifdef TARGET_PC
+    if ((msg_p->status_flags & mMsg_STATUS_FLAG_FAST_TEXT) && mMsg_pc_curator_speedup(msg_p, *idx_p)) {
+      set_time *= 0.2f;
+    }
+#endif
     msg_p->cursor_timer = set_time;
 
-    if ((msg_p->status_flags & mMsg_STATUS_FLAG_FAST_TEXT) && (msg_p->status_flags & mMsg_STATUS_FLAG_CURSOL_JUST) == 0) {
+    if ((msg_p->status_flags & mMsg_STATUS_FLAG_FAST_TEXT) && mMsg_fast_text_allowed(msg_p)) {
       mMsg_sound_MessageSpeedForce(1.0f);
     }
     else {
@@ -1107,7 +1166,7 @@ static int mMsg_Main_Cursol_ControlCursol(mMsg_Window_c* msg_p) {
 
 #ifdef PC_ENHANCEMENTS
   /* B latches fast text for the rest of the message; L/R or DPAD also speed it up */
-  if ((msg_p->status_flags & mMsg_STATUS_FLAG_CURSOL_JUST) == 0 &&
+  if (mMsg_fast_text_allowed(msg_p) &&
       (chkTrigger(BUTTON_B) || chkButton(BUTTON_L) || chkButton(BUTTON_R) || chkButton(BUTTON_DDOWN) || chkButton(BUTTON_DUP) || chkButton(BUTTON_DLEFT) || chkButton(BUTTON_DRIGHT))) {
     msg_p->status_flags |= mMsg_STATUS_FLAG_FAST_TEXT;
   }
@@ -1129,7 +1188,7 @@ static int mMsg_Main_Cursol_ControlCursol(mMsg_Window_c* msg_p) {
   if (msg_p->cancel_flag  && (msg_p->status_flags & mMsg_STATUS_FLAG_CURSOL_JUST) == 0) {
     *cursor_timer = 0.0f;
   }
-  else if ((msg_p->status_flags & mMsg_STATUS_FLAG_FAST_TEXT) && (msg_p->status_flags & mMsg_STATUS_FLAG_CURSOL_JUST) == 0) {
+  else if ((msg_p->status_flags & mMsg_STATUS_FLAG_FAST_TEXT) && mMsg_fast_text_allowed(msg_p)) {
     /* Fast text drains at 2x. Keep negative overshoot so cadence is not quantized by host FPS. */
     (*cursor_timer) -= 2.0f * (f32)gamePT->graph->dt_num_60fps_frames;
   }
@@ -1188,7 +1247,7 @@ static int mMsg_Main_Cursol_ControlCursol(mMsg_Window_c* msg_p) {
       else {
         int cur_idx = idx;
 
-        if ((msg_p->status_flags & mMsg_STATUS_FLAG_FAST_TEXT) != 0 && (msg_p->status_flags & mMsg_STATUS_FLAG_CURSOL_JUST) == 0) {
+        if ((msg_p->status_flags & mMsg_STATUS_FLAG_FAST_TEXT) != 0 && mMsg_fast_text_allowed(msg_p)) {
           mMsg_sound_MessageSpeedClear(1);
         }
         else {

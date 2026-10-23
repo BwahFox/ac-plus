@@ -26,10 +26,18 @@ enum {
     ITEM_SHOP_VISITOR,
     ITEM_BORDERLESS_ACRES,
     ITEM_NES_ASPECT,
+    ITEM_WORLD_CURVE,
+    ITEM_CF_WEATHER,
     ITEM_MASTER_VOLUME,
     ITEM_STICK_DEADZONE,
     ITEM_CSTICK_DEADZONE,
     ITEM_BINDINGS,
+    ITEM_AUTOSAVE,
+    ITEM_SAVE_ON_QUIT,
+    ITEM_QUICK_LOAD,
+    ITEM_SERVER_SYNC,
+    ITEM_SERVER_HOST,
+    ITEM_MOUSE,
 };
 
 /* Per-item static metadata. restart=1 appends " *" and folds into the
@@ -55,6 +63,16 @@ static const Item tab_gameplay_items[] = {
     { "Shop upgrade",     ITEM_SHOP_VISITOR,     0 },
     { "Borderless acres", ITEM_BORDERLESS_ACRES, 0 },
     { "NES aspect",       ITEM_NES_ASPECT,       0 },
+    { "Curved world",     ITEM_WORLD_CURVE,      0 },
+    { "Weather",          ITEM_CF_WEATHER,       0 },
+};
+
+static const Item tab_saving_items[] = {
+    { "Autosave",     ITEM_AUTOSAVE,     0 },
+    { "Save on quit", ITEM_SAVE_ON_QUIT, 0 },
+    { "Quick load",   ITEM_QUICK_LOAD,   0 },
+    { "Server sync",  ITEM_SERVER_SYNC,  0 },
+    { "Server",       ITEM_SERVER_HOST,  0 },
 };
 
 static const Item tab_audio_items[] = {
@@ -64,6 +82,7 @@ static const Item tab_audio_items[] = {
 static const Item tab_controls_items[] = {
     { "Stick deadzone",   ITEM_STICK_DEADZONE,  0 },
     { "C-stick deadzone", ITEM_CSTICK_DEADZONE, 0 },
+    { "Mouse",            ITEM_MOUSE,           0 },
     { "Keybindings",      ITEM_BINDINGS,        0 },
 };
 
@@ -79,6 +98,7 @@ static const Tab s_tabs[] = {
     { "Audio",    TAB_ITEMS(tab_audio_items) },
     { "Controls", TAB_ITEMS(tab_controls_items) },
     { "Gameplay", TAB_ITEMS(tab_gameplay_items) },
+    { "Saving",   TAB_ITEMS(tab_saving_items) },
 };
 #define TAB_COUNT ((int)(sizeof(s_tabs) / sizeof(s_tabs[0])))
 
@@ -151,6 +171,9 @@ static int s_bind_sel = 0;
 static int s_bind_col = 0;      /* 0 = keyboard, 1 = gamepad */
 static int s_bind_scroll = 0;
 static int s_capture = 0;       /* waiting for the next key/button press */
+static int s_text_edit = 0;     /* typing the server address (ITEM_SERVER_HOST) */
+static char s_text_before[128]; /* restored if the typing is cancelled */
+static void text_edit_begin(void);
 static int s_capture_grace = 0; /* frames pad-driven hosts stay blocked after capture */
 
 static PCInputCode* bind_kb_slot(int row) {
@@ -255,9 +278,17 @@ static void recompute_dirty(void) {
         (s_pending.disable_shop_visitor_req != g_pc_settings.disable_shop_visitor_req) ||
         (s_pending.borderless_acres != g_pc_settings.borderless_acres) ||
         (s_pending.nes_aspect       != g_pc_settings.nes_aspect) ||
+        (s_pending.world_curve      != g_pc_settings.world_curve) ||
+        (s_pending.cf_weather       != g_pc_settings.cf_weather) ||
         (s_pending.master_volume    != g_pc_settings.master_volume) ||
         (s_pending.stick_deadzone   != g_pc_settings.stick_deadzone) ||
-        (s_pending.cstick_deadzone  != g_pc_settings.cstick_deadzone);
+        (s_pending.cstick_deadzone  != g_pc_settings.cstick_deadzone) ||
+        (s_pending.autosave_minutes != g_pc_settings.autosave_minutes) ||
+        (s_pending.save_on_quit     != g_pc_settings.save_on_quit) ||
+        (s_pending.quick_load       != g_pc_settings.quick_load) ||
+        (s_pending.server_sync      != g_pc_settings.server_sync) ||
+        strcmp(s_pending.server_sync_host, g_pc_settings.server_sync_host) != 0 ||
+        (s_pending.mouse_mode       != g_pc_settings.mouse_mode);
 }
 
 static void snapshot(void) {
@@ -316,6 +347,12 @@ static void item_cycle(int id, int dir) {
         case ITEM_NES_ASPECT:
             s_pending.nes_aspect = !s_pending.nes_aspect;
             break;
+        case ITEM_WORLD_CURVE: {
+            int v = s_pending.world_curve + (dir > 0 ? 25 : -25);
+            if (v < 0)   v = 0;
+            if (v > 300) v = 300;
+            s_pending.world_curve = v;
+        } break;
         case ITEM_MASTER_VOLUME: {
             int v = s_pending.master_volume + (dir > 0 ? 10 : -10);
             if (v < 0)   v = 0;
@@ -334,6 +371,32 @@ static void item_cycle(int id, int dir) {
             if (v > 40) v = 40;
             s_pending.cstick_deadzone = v;
         } break;
+        case ITEM_AUTOSAVE: {
+            static const int steps[] = { 0, 5, 10, 15, 30, 60 };
+            int idx = 0;
+            int count = sizeof(steps) / sizeof(steps[0]);
+            for (int i = 0; i < count; i++) if (s_pending.autosave_minutes == steps[i]) { idx = i; break; }
+            idx = (idx + (dir > 0 ? 1 : count - 1)) % count;
+            s_pending.autosave_minutes = steps[idx];
+        } break;
+        case ITEM_SAVE_ON_QUIT:
+            s_pending.save_on_quit = !s_pending.save_on_quit;
+            break;
+        case ITEM_CF_WEATHER:
+            s_pending.cf_weather = !s_pending.cf_weather;
+            break;
+        case ITEM_QUICK_LOAD:
+            s_pending.quick_load = !s_pending.quick_load;
+            break;
+        case ITEM_SERVER_SYNC:
+            s_pending.server_sync = !s_pending.server_sync;
+            break;
+        case ITEM_SERVER_HOST:
+            /* typed in: confirm starts editing (text_edit_begin) */
+            break;
+        case ITEM_MOUSE:
+            s_pending.mouse_mode = (s_pending.mouse_mode + (dir > 0 ? 1 : 2)) % 3;
+            break;
         case ITEM_BINDINGS:
             /* opened via confirm, left/right does nothing */
             break;
@@ -386,6 +449,13 @@ static void item_format(int id, char* buf, size_t n) {
         case ITEM_NES_ASPECT:
             snprintf(buf, n, "%s", s_pending.nes_aspect ? "< 4:3 >" : "< Stretch >");
             break;
+        case ITEM_WORLD_CURVE:
+            if (s_pending.world_curve == 0) {
+                snprintf(buf, n, "< Off >");
+            } else {
+                snprintf(buf, n, "< %d%% >", s_pending.world_curve);
+            }
+            break;
         case ITEM_MASTER_VOLUME:
             snprintf(buf, n, "< %d%% >", s_pending.master_volume);
             break;
@@ -394,6 +464,41 @@ static void item_format(int id, char* buf, size_t n) {
             break;
         case ITEM_CSTICK_DEADZONE:
             snprintf(buf, n, "< %d%% >", s_pending.cstick_deadzone);
+            break;
+        case ITEM_AUTOSAVE:
+            if (s_pending.autosave_minutes > 0) snprintf(buf, n, "< %d min >", s_pending.autosave_minutes);
+            else                                snprintf(buf, n, "< Off >");
+            break;
+        case ITEM_SAVE_ON_QUIT:
+            snprintf(buf, n, "%s", s_pending.save_on_quit ? "< On >" : "< Off >");
+            break;
+        case ITEM_CF_WEATHER:
+            snprintf(buf, n, "%s", s_pending.cf_weather ? "< City Folk >" : "< Original >");
+            break;
+        case ITEM_QUICK_LOAD:
+            snprintf(buf, n, "%s", s_pending.quick_load ? "< On >" : "< Off >");
+            break;
+        case ITEM_SERVER_SYNC:
+            snprintf(buf, n, "%s", s_pending.server_sync ? "< On >" : "< Off >");
+            break;
+        case ITEM_SERVER_HOST:
+            if (s_text_edit) {
+                /* the end of what's typed, with a cursor */
+                size_t len = strlen(s_pending.server_sync_host);
+                const char* tail = len > 22 ? s_pending.server_sync_host + len - 22 : s_pending.server_sync_host;
+                snprintf(buf, n, "%s%s", tail, (SDL_GetTicks() / 400) % 2 ? "_" : " ");
+            } else if (s_pending.server_sync_host[0] != '\0') {
+                snprintf(buf, n, "%.24s", s_pending.server_sync_host);
+                sanitize_glyphs(buf);
+            } else {
+                snprintf(buf, n, "Press A to type");
+            }
+            break;
+        case ITEM_MOUSE:
+            snprintf(buf, n, "%s",
+                s_pending.mouse_mode == 1 ? "< Menus >" :
+                s_pending.mouse_mode == 2 ? "< Designer only >" :
+                                            "< Off >");
             break;
         case ITEM_BINDINGS:
             snprintf(buf, n, "Edit...");
@@ -419,9 +524,17 @@ static int item_changed(int id) {
         case ITEM_SHOP_VISITOR: return s_pending.disable_shop_visitor_req != g_pc_settings.disable_shop_visitor_req;
         case ITEM_BORDERLESS_ACRES: return s_pending.borderless_acres != g_pc_settings.borderless_acres;
         case ITEM_NES_ASPECT:    return s_pending.nes_aspect    != g_pc_settings.nes_aspect;
+        case ITEM_WORLD_CURVE:   return s_pending.world_curve   != g_pc_settings.world_curve;
+        case ITEM_CF_WEATHER:    return s_pending.cf_weather    != g_pc_settings.cf_weather;
         case ITEM_MASTER_VOLUME: return s_pending.master_volume != g_pc_settings.master_volume;
         case ITEM_STICK_DEADZONE:  return s_pending.stick_deadzone  != g_pc_settings.stick_deadzone;
         case ITEM_CSTICK_DEADZONE: return s_pending.cstick_deadzone != g_pc_settings.cstick_deadzone;
+        case ITEM_AUTOSAVE:      return s_pending.autosave_minutes != g_pc_settings.autosave_minutes;
+        case ITEM_SAVE_ON_QUIT:  return s_pending.save_on_quit  != g_pc_settings.save_on_quit;
+        case ITEM_QUICK_LOAD:    return s_pending.quick_load    != g_pc_settings.quick_load;
+        case ITEM_SERVER_SYNC:   return s_pending.server_sync   != g_pc_settings.server_sync;
+        case ITEM_SERVER_HOST:   return strcmp(s_pending.server_sync_host, g_pc_settings.server_sync_host) != 0;
+        case ITEM_MOUSE:         return s_pending.mouse_mode    != g_pc_settings.mouse_mode;
         case ITEM_BINDINGS:      return 0; /* bindings save themselves */
     }
     return 0;
@@ -528,6 +641,7 @@ void pc_settings_menu_enter(void) {
     s_res_deadline = 0;
     s_capture = 0;
     s_capture_grace = 0;
+    s_text_edit = 0;
     s_active = 1;
 }
 
@@ -632,8 +746,9 @@ int pc_settings_menu_confirm(void) {
         s_sel = 0;
     } else if (s_sel < cur_item_count()) {
         int id = s_tabs[s_tab].items[s_sel].id;
-        if (id == ITEM_BINDINGS) bind_enter_page();
-        else                     item_cycle(id, +1);
+        if (id == ITEM_BINDINGS)         bind_enter_page();
+        else if (id == ITEM_SERVER_HOST) text_edit_begin();
+        else                             item_cycle(id, +1);
     } else if (s_sel == idx_apply()) {
         apply_pending();
     } else if (s_sel == idx_back()) {
@@ -685,10 +800,67 @@ void pc_settings_menu_tick(void) {
     }
 }
 
+/* --- Typing the server address --- */
+
+static void text_edit_begin(void) {
+    snprintf(s_text_before, sizeof(s_text_before), "%s", s_pending.server_sync_host);
+    s_text_edit = 1;
+    SDL_StartTextInput();
+}
+
+static void text_edit_finish(int keep) {
+    if (!keep) {
+        snprintf(s_pending.server_sync_host, sizeof(s_pending.server_sync_host), "%s", s_text_before);
+    }
+    s_text_edit = 0;
+    s_capture_grace = 15;
+    SDL_StopTextInput();
+    recompute_dirty();
+}
+
+/* Enter or A keeps it, Escape or B puts back what was there; on the Steam Deck,
+ * Steam + X brings up the keyboard */
+static int text_edit_event(const SDL_Event* e) {
+    char* host = s_pending.server_sync_host;
+    size_t len = strlen(host);
+
+    switch (e->type) {
+        case SDL_TEXTINPUT:
+            for (const char* c = e->text.text; *c; c++) {
+                /* ssh destinations: user@host, host names, ports in ~/.ssh/config */
+                if (glyph_ok((unsigned char)*c) && *c != ' ' && *c != '"' && *c != '\'' &&
+                    len + 1 < sizeof(s_pending.server_sync_host)) {
+                    host[len++] = *c;
+                    host[len] = '\0';
+                }
+            }
+            break;
+        case SDL_KEYDOWN:
+            switch (e->key.keysym.sym) {
+                case SDLK_BACKSPACE:
+                    if (len > 0) host[len - 1] = '\0';
+                    break;
+                case SDLK_RETURN:
+                case SDLK_KP_ENTER:
+                    text_edit_finish(1);
+                    break;
+                case SDLK_ESCAPE:
+                    text_edit_finish(0);
+                    break;
+            }
+            break;
+        case SDL_CONTROLLERBUTTONDOWN:
+            if (e->cbutton.button == SDL_CONTROLLER_BUTTON_A) text_edit_finish(1);
+            if (e->cbutton.button == SDL_CONTROLLER_BUTTON_B) text_edit_finish(0);
+            break;
+    }
+    return 1;
+}
+
 /* --- Keybinding capture --- */
 
 int pc_settings_menu_capture_active(void) {
-    return s_active && s_capture;
+    return s_active && (s_capture || s_text_edit);
 }
 
 int pc_settings_menu_capture_blocking(void) {
@@ -697,6 +869,7 @@ int pc_settings_menu_capture_blocking(void) {
 
 int pc_settings_menu_handle_capture_event(const SDL_Event* e) {
     if (!pc_settings_menu_capture_active()) return 0;
+    if (s_text_edit) return text_edit_event(e);
     int row = s_bind_sel;
     if (row >= BIND_ROW_COUNT) { s_capture = 0; return 1; }
 
@@ -773,10 +946,15 @@ static void draw_tab_row(struct game_s* game, f32 y) {
     /* Pre-measure widths and total horizontal extent so we can centre. */
     int widths[TAB_COUNT];
     int total = 0;
-    const int gap_px = 18;
+    int gap_px = 18;
     for (int t = 0; t < TAB_COUNT; t++) {
         widths[t] = pc_text_width(s_tabs[t].name);
         total += widths[t];
+    }
+    /* Narrow the gaps if the tabs would run off a 16 px margin. */
+    if (total + gap_px * (TAB_COUNT - 1) > (int)SCREEN_WIDTH_F - 32) {
+        gap_px = ((int)SCREEN_WIDTH_F - 32 - total) / (TAB_COUNT - 1);
+        if (gap_px < 6) gap_px = 6;
     }
     total += gap_px * (TAB_COUNT - 1);
 

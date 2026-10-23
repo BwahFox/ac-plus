@@ -437,6 +437,10 @@ static int aNPC_setupActor_proc(GAME_PLAY* play, mActor_name_t name, s8 idx, int
         mAc_PROFILE_EV_TURKEY,
         mAc_PROFILE_NPC_HEM,
         mAc_PROFILE_KAMAKURA_NPC0,
+#ifdef TARGET_PC
+        mAc_PROFILE_NPC_CELESTE,
+        mAc_PROFILE_NPC_BREWSTER,
+#endif
     };
     // clang-format on
 

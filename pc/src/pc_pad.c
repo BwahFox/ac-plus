@@ -164,6 +164,15 @@ u32 PADRead(PADStatus* status) {
         status[0].triggerRight = pad_trigger_value(pb->r);
     }
 
+    {
+        extern u32 pc_devtest_buttons(void);
+        extern void pc_devtest_stick(s8* x, s8* y);
+        buttons |= pc_devtest_buttons();
+        extern void pc_devtest_cstick(s8* x, s8* y);
+        pc_devtest_stick(&stickX, &stickY);
+        pc_devtest_cstick(&cstickX, &cstickY);
+    }
+
     status[0].button = buttons;
     status[0].stickX = stickX;
     status[0].stickY = stickY;

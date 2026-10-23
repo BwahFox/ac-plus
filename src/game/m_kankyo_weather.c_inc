@@ -64,6 +64,10 @@ static int mEnv_GetWeatherChangeStep() {
     (((heavy_sakura) & 0xF) << 4) \
   )
 
+#ifdef TARGET_PC
+static int l_mEnv_pc_roll = -1;
+#endif
+
 extern void mEnv_RandomWeather(s16* next_weather, s16* next_intensity) {
   /* note: entries must add up to 10 for this to function properly */
   static const u32 weather_table[mEnv_WEATHER_TERM_NUM] = {
@@ -89,9 +93,8 @@ extern void mEnv_RandomWeather(s16* next_weather, s16* next_intensity) {
     mEnv_MAKE_WEATHER_TABLE_ENTRY(10, 0, 0, 0, 0, 0, 0)  // 100% chance of clear weather
   };
 
-  int step = mEnv_GetWeatherChangeStep();
-  
-  u32 weather = weather_table[step];
+  int step;
+  u32 weather;
   u32 selected;
   u32 c0;
   u32 c1;
@@ -99,6 +102,17 @@ extern void mEnv_RandomWeather(s16* next_weather, s16* next_intensity) {
   u32 c3;
   u32 c4;
   u32 c5;
+
+#ifdef TARGET_PC
+  /* City Folk weather: the day's schedule decides (pc_weather.c), rolling through mEnv_PC_RollWeather */
+  if (l_mEnv_pc_roll < 0 && pc_weather_active()) {
+    pc_weather_now(next_weather, next_intensity);
+    return;
+  }
+#endif
+
+  step = mEnv_GetWeatherChangeStep();
+  weather = weather_table[step];
 
   c0 = (weather >> 24) & 0xF; // clear
   c1 = (weather >> 16) & 0xF; // light rain
@@ -111,6 +125,11 @@ extern void mEnv_RandomWeather(s16* next_weather, s16* next_intensity) {
   c5 = (weather >>  0) & 0xF; // light cherry blossoms
   #endif
   
+#ifdef TARGET_PC
+  if (l_mEnv_pc_roll >= 0) {
+    selected = l_mEnv_pc_roll;
+  } else
+#endif
   selected = RANDOM_F(10.0f);
 
   if (selected < c0) {
@@ -142,6 +161,32 @@ extern void mEnv_RandomWeather(s16* next_weather, s16* next_intensity) {
     next_intensity[0] = mEnv_WEATHER_INTENSITY_HEAVY;
   }
 }
+
+#ifdef TARGET_PC
+/* The season's weather for a roll of 0-9 instead of a random one */
+extern void mEnv_PC_RollWeather(int roll, s16* weather, s16* intensity) {
+  l_mEnv_pc_roll = roll;
+  mEnv_RandomWeather(weather, intensity);
+  l_mEnv_pc_roll = -1;
+}
+
+/* What the day's weather would be decided as right now: the schedule, then events (as mEnv_DecideWeather_GameStart) */
+extern void mEnv_PC_ScheduledWeather(s16* weather, s16* intensity) {
+  s16 event_weather;
+  s16 event_intensity;
+
+  mEnv_RandomWeather(weather, intensity);
+  mEv_GetEventWeather(&event_weather, &event_intensity);
+  if (event_weather != -1) {
+    *weather = event_weather;
+    *intensity = event_intensity;
+  }
+  if (mEv_CheckRealArbeit() == TRUE && *weather == mEnv_WEATHER_RAIN) {
+    *weather = mEnv_WEATHER_CLEAR;
+    *intensity = mEnv_WEATHER_INTENSITY_NONE;
+  }
+}
+#endif
 
 typedef struct wind_power_range_s {
   int calm_percent;
@@ -510,6 +555,23 @@ extern void mEnv_DecideWeather_NormalGameStart() {
   else {
     weather = mEnv_SAVE_GET_WEATHER_TYPE(Save_Get(weather));
     intensity = mEnv_SAVE_GET_WEATHER_INTENSITY(Save_Get(weather));
+
+#ifdef TARGET_PC
+    /* the schedule may have moved on while the game was closed */
+    if (pc_weather_active()) {
+      s16 now_weather;
+      s16 now_intensity;
+
+      mEnv_PC_ScheduledWeather(&now_weather, &now_intensity);
+      if ((now_weather == mEnv_WEATHER_CLEAR || now_weather == mEnv_WEATHER_SAKURA) &&
+          (weather == mEnv_WEATHER_SNOW || weather == mEnv_WEATHER_RAIN)) {
+        mEnv_PreRainNowFine_Init();
+      }
+      weather = now_weather;
+      intensity = now_intensity;
+      Save_Set(weather, (intensity | (u8)weather << 4));
+    }
+#endif
 
     if (mEv_CheckRealArbeit() == TRUE && weather == mEnv_WEATHER_RAIN) {
       weather = mEnv_WEATHER_CLEAR;

@@ -415,12 +415,26 @@ static void aMR_MsgControlFullPlayerItem(ACTOR* actorx, GAME* game) {
     }
 }
 
+#ifdef TARGET_PC
+/* The owner's storage furniture opens ac-plus item storage (pc_storage.c). */
+static int l_aMR_pc_storage = FALSE;
+#endif
+
 static void aMR_MsgControlOpenSubmenu(ACTOR* actorx, GAME* game) {
     MY_ROOM_ACTOR* my_room = (MY_ROOM_ACTOR*)actorx;
     GAME_PLAY* play = (GAME_PLAY*)game;
     Submenu* submenu = &play->submenu;
 
     if (mDemo_CheckDemo() == FALSE) {
+#ifdef TARGET_PC
+        if (l_aMR_pc_storage && pc_storage_begin()) {
+            mSM_open_submenu(submenu, mSM_OVL_INVENTORY, mSM_IV_OPEN_HANIWA_ENTRUST, 0);
+            mChoice_Clear_ChoseNum(mChoice_Get_base_window_p());
+            my_room->requested_msg_type = aMR_MSG_STATE_ITEM_PUT_IN;
+            return;
+        }
+        l_aMR_pc_storage = FALSE;
+#endif
         mSM_open_submenu(submenu, mSM_OVL_INVENTORY, mSM_IV_OPEN_PUTIN_FTR, 0);
         mChoice_Clear_ChoseNum(mChoice_Get_base_window_p());
         my_room->requested_msg_type = aMR_MSG_STATE_ITEM_PUT_IN;
@@ -435,6 +449,11 @@ static void aMR_MsgControlItemPutIn(ACTOR* actorx, GAME* game) {
     if (submenu->process_status == mSM_PROCESS_WAIT) {
         Submenu_Item_c* submenu_item = submenu->item_p;
 
+#ifdef TARGET_PC
+        if (l_aMR_pc_storage) {
+            submenu_item = NULL; /* storage handled its items itself */
+        }
+#endif
         if (submenu_item != NULL && submenu_item->item != EMPTY_NO) {
             FTR_ACTOR* ftr_actor = aMR_GetNowDemoFtr(actorx);
 
@@ -444,6 +463,9 @@ static void aMR_MsgControlItemPutIn(ACTOR* actorx, GAME* game) {
         if (mPlib_request_main_close_furniture_type1(game)) {
             aMR_ChangeDemoFtrStatus(actorx, 5);
             my_room->requested_msg_type = aMR_MSG_STATE_WAIT_CLOSE_FTR;
+#ifdef TARGET_PC
+            l_aMR_pc_storage = FALSE;
+#endif
         }
     }
 }

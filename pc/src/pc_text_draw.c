@@ -249,3 +249,45 @@ void pc_text_draw(struct game_s* game, const char* s, f32 x, f32 y,
     SET_FONT_DISP(gfx);
     CLOSE_DISP(graph);
 }
+
+void pc_image_draw_ci4(struct game_s* game, const void* tex, const u16* tlut, int tex_w, int tex_h,
+                       f32 x, f32 y, f32 w, f32 h) {
+    if (!game || !game->graph || !tex || !tlut) return;
+
+    GRAPH* graph = game->graph;
+    const f32 half_sw = (f32)SCREEN_WIDTH * 0.5f;
+    const f32 half_sh = (f32)SCREEN_HEIGHT * 0.5f;
+    Vtx* vtx = GRAPH_ALLOC_TYPE(graph, Vtx, 4);
+    if (!vtx) return;
+
+    /* Screen quad in mFont's centred coordinates; one texel is 64 tc units here. */
+    int ulx = (int)((x - half_sw) * mFont_SCALE_F);
+    int uly = (int)(-(y - half_sh) * mFont_SCALE_F);
+    int lrx = (int)((x + w - half_sw) * mFont_SCALE_F);
+    int lry = (int)(-(y + h - half_sh) * mFont_SCALE_F);
+    int s1 = tex_w << 6;
+    int t1 = tex_h << 6;
+
+    pc_text_set_vtx(vtx + 0, ulx, uly, 0, 0);
+    pc_text_set_vtx(vtx + 1, ulx, lry, 0, t1);
+    pc_text_set_vtx(vtx + 2, lrx, lry, s1, t1);
+    pc_text_set_vtx(vtx + 3, lrx, uly, s1, 0);
+
+    OPEN_DISP(graph);
+    Gfx* gfx = NOW_FONT_DISP;
+
+    mFont_gppSetMode(&gfx);
+    gDPPipeSync(gfx++);
+    gDPSetTextureFilter(gfx++, G_TF_POINT);
+    gDPSetCombineMode(gfx++, G_CC_DECALRGBA, G_CC_DECALRGBA);
+    gDPLoadTLUT_Dolphin(gfx++, 15, 16, 1, tlut);
+    gDPSetTextureImage_Dolphin(gfx++, G_IM_FMT_CI, G_IM_SIZ_4b, tex_w, tex_h, tex);
+    gDPSetTile_Dolphin(gfx++, G_DOLPHIN_TLUT_DEFAULT_MODE, 0, 15, GX_CLAMP, GX_CLAMP, 0, 0);
+    gSPVertex(gfx++, vtx, 4, 0);
+    pc_trin_init_5b(&gfx, 2, 0, 1, 2, 0, 2, 3, 0, 0, 0);
+    gDPPipeSync(gfx++);
+    gDPSetTextureFilter(gfx++, G_TF_BILERP);
+
+    SET_FONT_DISP(gfx);
+    CLOSE_DISP(graph);
+}

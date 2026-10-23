@@ -367,6 +367,11 @@ mActor_name_t ftr_listEvent[] = {
     FTR_START(FTR_FAMICOM_COMMON01),
     FTR_START(FTR_FAMICOM_COMMON04),
     FTR_START(FTR_FAMICOM_COMMON06),
+#ifdef TARGET_PC
+    /* ac-plus: the "forbidden four" are given out like the other NES games */
+    FTR_START(FTR_FAMICOM_COMMON15),
+    FTR_START(FTR_FAMICOM_COMMON16),
+#endif
     FTR_START(FTR_KOB_DISKSYSTEM8),
     FTR_START(FTR_SUM_CHIKUON02),
     FTR_START(FTR_SUM_CONPO02),
@@ -424,6 +429,10 @@ mActor_name_t ftr_listLottery[] = {
     FTR_START(FTR_FAMICOM_COMMON03),
     FTR_START(FTR_FAMICOM_COMMON05),
     FTR_START(FTR_FAMICOM_COMMON13),
+#ifdef TARGET_PC
+    FTR_START(FTR_FAMICOM_COMMON17),
+    FTR_START(FTR_FAMICOM_COMMON18),
+#endif
     FTR_START(FTR_SUM_JUKEBOX),
     FTR_START(FTR_SUM_STEREO02),
     FTR_START(FTR_SUM_ROBOCONPO),
@@ -532,10 +541,12 @@ mActor_name_t ftr_listNintendo64[] = {
 };
 
 mActor_name_t ftr_listSpecialPresent[] = {
+#ifndef TARGET_PC /* ac-plus: now in the event and lottery lists */
     FTR_START(FTR_FAMICOM_COMMON15),
     FTR_START(FTR_FAMICOM_COMMON16),
     FTR_START(FTR_FAMICOM_COMMON17),
     FTR_START(FTR_FAMICOM_COMMON18),
+#endif
     EMPTY_NO,
 };
 

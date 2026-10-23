@@ -1,6 +1,9 @@
 #include "m_tag_ovl.h"
 
 #include "m_common_data.h"
+#ifdef TARGET_PC
+#include "pc_pattern.h"
+#endif
 #include "m_inventory_ovl.h"
 #include "m_hand_ovl.h"
 #include "m_cpmail_ovl.h"
@@ -15,6 +18,11 @@
 #include "ac_my_room.h"
 #include "m_needlework.h"
 #include "m_haniwa_ovl.h"
+#ifdef TARGET_PC
+#include "pc_storage.h"
+#else
+#define pc_storage_slot(home, idx) (&Save_Get(homes[home]).haniwa.items[idx])
+#endif
 #include "m_player_lib.h"
 #include "m_warning_ovl.h"
 #include "m_mailbox_ovl.h"
@@ -150,6 +158,31 @@ static mTG_tag_data_table_c mTG_table_data[] = {
     { 1, 1, mTG_card_col_pos, mTG_card_line_pos },                         /* mTG_TABLE_CARD */
     { 2, 4, mTG_gba_nw_col_pos, mTG_gba_nw_line_pos },                     /* mTG_TABLE_CARD_NW */
 };
+
+#ifdef TARGET_PC
+/* Item storage pages: 5 x 3 above the pockets, in the pockets' columns. */
+static s16 mTG_pc_storage_col_pos[] = { -77, -53, -29, -5, 19 };
+static s16 mTG_pc_storage_line_pos[] = { 84, 60, 36 };
+
+extern void mTG_pc_set_storage_table(int storage) {
+    static mTG_tag_data_table_c haniwa_table;
+    static int saved = FALSE;
+    mTG_tag_data_table_c* table = &mTG_table_data[mTG_TABLE_HANIWA];
+
+    if (!saved) {
+        haniwa_table = *table;
+        saved = TRUE;
+    }
+    if (storage) {
+        table->col_num = 5;
+        table->row_num = 3;
+        table->col_pos = mTG_pc_storage_col_pos;
+        table->row_pos = mTG_pc_storage_line_pos;
+    } else {
+        *table = haniwa_table;
+    }
+}
+#endif
 
 static u8 str_omikuji[7] = "fortune";
 static u8 str_happy_room[7] = "the HRA";
@@ -504,6 +537,15 @@ static mTG_tag_word_c mTG_tag_word_nw_st_umbrella = {
     "Use on Umbrella ",
     &mTG_nw_st_umbrella_proc,
 };
+
+#ifdef TARGET_PC
+static void mTG_nw_st_ground_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info);
+
+static mTG_tag_word_c mTG_tag_word_nw_st_ground = {
+    "Lay on Ground   ",
+    &mTG_nw_st_ground_proc,
+};
+#endif
 
 static mTG_tag_word_c mTG_tag_word_nw_cover = {
     "Use on Walls    ",
@@ -991,6 +1033,16 @@ static mTG_tag_word_c* mTG_tag_nw_or_sel_stick[] = {
     &mTG_tag_word_nw_st_umbrella,
     &mTG_tag_word_yameru,
 };
+
+#ifdef TARGET_PC
+/* The same list outdoors in town, with ground patterns (pc_ground_pattern.c). */
+static mTG_tag_word_c* mTG_tag_nw_fg_sel_stick[] = {
+    &mTG_tag_word_nw_st_wear,
+    &mTG_tag_word_nw_st_umbrella,
+    &mTG_tag_word_nw_st_ground,
+    &mTG_tag_word_yameru,
+};
+#endif
 
 static mTG_tag_word_c* mTG_tag_nw_sel_stk_pattern[] = {
     &mTG_tag_word_nw_stk_pat_nrml,
@@ -1945,6 +1997,13 @@ static void mTG_init_tag_data_item_win_sub_mail_item(Submenu* submenu, mTG_tag_c
         if (itemCond == mPr_ITEM_COND_PRESENT) {
             mem_copy(tag->str0, present_str, sizeof(present_str));
         } else if (itemNo >= ITM_MY_ORG_UMBRELLA0 && itemNo <= ITM_MY_ORG_UMBRELLA7) {
+#ifdef TARGET_PC
+            const mNW_original_design_c* umb =
+                pc_pattern_umbrella(Common_Get(player_no), (itemNo - ITM_MY_ORG_UMBRELLA0) & 7);
+            if (umb != NULL) {
+                mem_copy(tag->str0, (u8*)umb->name, mNW_ORIGINAL_DESIGN_NAME_LEN);
+            } else
+#endif
             mem_copy(tag->str0, Now_Private->my_org[(itemNo - ITM_MY_ORG_UMBRELLA0) & 7].name,
                      mNW_ORIGINAL_DESIGN_NAME_LEN);
         } else {
@@ -2035,7 +2094,7 @@ static void mTG_init_tag_data_set_itemNo(mActor_name_t* itemNo, Mail_c** mail_pp
             *itemNo = Now_Private->equipment;
             break;
         case mTG_TABLE_HANIWA:
-            *itemNo = Save_Get(homes[submenu->overlay->menu_info[mSM_OVL_HANIWA].data1]).haniwa.items[idx].item;
+            *itemNo = pc_storage_slot(submenu->overlay->menu_info[mSM_OVL_HANIWA].data1, idx)->item;
             break;
         case mTG_TABLE_COLLECT: {
             mIV_Ovl_c* inv_ovl = submenu->overlay->inventory_ovl;
@@ -3088,6 +3147,11 @@ static int mTG_nw_drop_furniture(GAME_PLAY* play, int type, int image_no) {
                 aMR_CLIP->reserve_ftr_proc(game, FTR_MYFUMBRELLA0 + (image_no & 7), idx, ux, uz, rot, sq_ofs, layer);
                 break;
         }
+#ifdef TARGET_PC
+        /* Mannequins / stands of this slot in this house keep this pattern. */
+        pc_pattern_bind_use(type == mNW_TYPE_MANEKIN ? PC_PAT_USE_MANNEQUIN : PC_PAT_USE_UMBRELLA_STAND,
+                            (mFI_GetFieldId() - mFI_FIELD_PLAYER0_ROOM) & 3, Common_Get(player_no), image_no & 7);
+#endif
     }
 
     return idx;
@@ -3631,6 +3695,11 @@ static void mTG_nw_carpet_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
             changed_flag = FALSE;
         }
     }
+#ifdef TARGET_PC
+    if (changed_flag) { /* the room keeps this pattern */
+        pc_pattern_bind_use(PC_PAT_USE_FLOOR, mFI_GetFieldId(), Common_Get(player_no), img_no);
+    }
+#endif
 
     if (changed_flag) {
         if (inv_ovl != NULL) {
@@ -3703,6 +3772,11 @@ static void mTG_nw_cover_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
             changed_flag = FALSE;
         }
     }
+#ifdef TARGET_PC
+    if (changed_flag) { /* the room keeps this pattern */
+        pc_pattern_bind_use(PC_PAT_USE_WALL, mFI_GetFieldId(), Common_Get(player_no), img_no);
+    }
+#endif
 
     if (changed_flag) {
         if (inv_ovl != NULL) {
@@ -4165,6 +4239,18 @@ static void mTG_next_open_needlework_sel_stick_proc(Submenu* submenu, mSM_MenuIn
             break;
     }
 
+#ifdef TARGET_PC
+    /* Outdoors in town the list gains "Lay on Ground"; elsewhere it is the original. */
+    if (Common_Get(field_type) == mFI_FIELDTYPE2_FG && mFI_GetFieldId() == mFI_FIELD_FG &&
+        Common_Get(player_no) < PLAYER_NUM) {
+        mTG_label_table[mTG_TYPE_TAG_NW_OR_SEL_STICK].words = mTG_tag_nw_fg_sel_stick;
+        mTG_label_table[mTG_TYPE_TAG_NW_OR_SEL_STICK].lines = ARRAY_COUNT(mTG_tag_nw_fg_sel_stick);
+    } else {
+        mTG_label_table[mTG_TYPE_TAG_NW_OR_SEL_STICK].words = mTG_tag_nw_or_sel_stick;
+        mTG_label_table[mTG_TYPE_TAG_NW_OR_SEL_STICK].lines = ARRAY_COUNT(mTG_tag_nw_or_sel_stick);
+    }
+#endif
+
     mTG_chg_tag_func2(submenu, menu_info, tag, next_type);
     sAdo_SysTrgStart(NA_SE_33);
 }
@@ -4227,8 +4313,8 @@ static void mTG_catch_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
     } else {
         switch (cur_tag->table) {
             case mTG_TABLE_HANIWA:
-                idx = tag->tag_col;
-                item_p = &Save_Get(homes[menu_info->data1]).haniwa.items[idx].item;
+                idx = mTG_get_table_idx(tag);
+                item_p = &pc_storage_slot(menu_info->data1, idx)->item;
                 break;
             case mTG_TABLE_PLAYER:
                 item_p = &Now_Private->equipment;
@@ -4261,8 +4347,8 @@ static void mTG_catch_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
 
         mTG_mark_main_CLR(submenu, menu_info);
         if (cur_tag->table == mTG_TABLE_HANIWA) {
-            hand_ovl->info.haniwa_item_cond = Save_Get(homes[menu_info->data1]).haniwa.items[idx].exchange_type;
-            hand_ovl->info.haniwa_item_price = Save_Get(homes[menu_info->data1]).haniwa.items[idx].extra_data;
+            hand_ovl->info.haniwa_item_cond = pc_storage_slot(menu_info->data1, idx)->exchange_type;
+            hand_ovl->info.haniwa_item_price = pc_storage_slot(menu_info->data1, idx)->extra_data;
         } else {
             hand_ovl->info.haniwa_item_cond = mPr_ITEM_COND_PRESENT;
             hand_ovl->info.haniwa_item_price = 0;
@@ -5243,6 +5329,9 @@ static void mTG_nw_st_umbrella_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info)
         (ITEM_IS_MYUMBRELLA_TOOL(Now_Private->equipment) || Now_Private->equipment == EMPTY_NO)) {
         hand_ovl->info.next_act = mHD_ACTION_SASU2;
         hand_ovl->info.item = ITM_MY_ORG_UMBRELLA0 + mNW_get_image_no(submenu, idx);
+#ifdef TARGET_PC
+        pc_pattern_bind_umbrella(Common_Get(player_no), mNW_get_image_no(submenu, idx)); /* keeps this pattern */
+#endif
         hand_ovl->info.hold_tbl = mTG_TABLE_NUM;
 
         mTG_return_tag_init(submenu, mTG_TYPE_NONE, mTG_RETURN_CLOSE);
@@ -5253,6 +5342,22 @@ static void mTG_nw_st_umbrella_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info)
         mTG_open_warning_window(submenu, menu_info, mWR_WARNING_ORIGINAL);
     }
 }
+
+#ifdef TARGET_PC
+static void mTG_nw_st_ground_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
+    extern void pc_ground_pattern_request(int image);
+    mTG_tag_c* tag = &submenu->overlay->tag_ovl->tags[0];
+    int idx = mTG_get_table_idx(tag);
+
+    /* Laid (or picked up) once the menus have closed, as for walls and floors. */
+    pc_ground_pattern_request(mNW_get_image_no(submenu, idx));
+    if (submenu->overlay->inventory_ovl != NULL) {
+        submenu->overlay->inventory_ovl->original_flag = TRUE; /* the inventory closes behind it */
+    }
+    mTG_return_tag_init(submenu, mTG_TYPE_NONE, mTG_RETURN_CLOSE);
+    mTG_close_window(submenu, menu_info, FALSE);
+}
+#endif
 
 static void mTG_nw_st_wear_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
     mHD_Ovl_c* hand_ovl = submenu->overlay->hand_ovl;
@@ -6337,6 +6442,21 @@ static int mTG_move_cursol_between_table_music(Submenu* submenu, mTG_tag_c* tag,
 static int mTG_move_cursol_between_table_haniwa(mTG_tag_c* tag, u32 trigger) {
     int res = FALSE;
 
+#ifdef TARGET_PC
+    if (pc_storage_active()) {
+        if ((trigger & BUTTON_CDOWN) != 0 && tag->table == mTG_TABLE_HANIWA) {
+            tag->table = mTG_TABLE_ITEM;
+            tag->tag_row = 0;
+            res = TRUE;
+        } else if ((trigger & BUTTON_CUP) != 0 && tag->table == mTG_TABLE_ITEM) {
+            tag->table = mTG_TABLE_HANIWA;
+            tag->tag_row = mTG_table_data[mTG_TABLE_HANIWA].row_num - 1;
+            res = TRUE;
+        }
+        return res;
+    }
+#endif
+
     if ((trigger & BUTTON_CDOWN) != 0 && tag->table == mTG_TABLE_HANIWA) {
         if (tag->tag_col == 3) {
             tag->tag_col = 4;
@@ -7401,6 +7521,13 @@ static void mTG_hand_return_item(Submenu* submenu, mTG_tag_c* tag) {
             }
             break;
         case mTG_TABLE_HANIWA:
+#ifdef TARGET_PC
+            /* Storage pages may have turned since: only into a free slot. */
+            if (pc_storage_active() &&
+                pc_storage_slot(0, hand_ovl->info.hold_idx)->item != EMPTY_NO) {
+                break;
+            }
+#endif
             hand_ovl->info.ret_flag = TRUE;
             break;
     }
@@ -7577,6 +7704,15 @@ static void mTG_move_decide(Submenu* submenu, mSM_MenuInfo_c* menu_info, mTG_tag
         return;
     }
 
+#ifdef TARGET_PC
+    /* Storage: A takes the item straight into the hand, no tag menu. */
+    if (pc_storage_active() && mTG_check_hand_condition(submenu) &&
+        (tag->table == mTG_TABLE_ITEM || tag->table == mTG_TABLE_HANIWA)) {
+        mTG_catch_proc(submenu, menu_info);
+        return;
+    }
+#endif
+
     if (mTG_check_hand_condition(submenu) == TRUE || tag->table == mTG_TABLE_CPMAIL_WC ||
         tag->table == mTG_TABLE_CPORIGINAL_WC || tag->table == mTG_TABLE_CARD_NW || tag->table == mTG_TABLE_GBA_NW) {
         int tag_type = (*decide_proc[tag->table])(submenu, menu_info, tag);
@@ -7684,6 +7820,20 @@ static void mTG_move_move(Submenu* submenu, mSM_MenuInfo_c* menu_info, mTG_tag_c
     }
 }
 
+#ifdef TARGET_PC
+static void mTG_pc_storage_turn_page(Submenu* submenu, int dir) {
+    mHD_Ovl_c* hand_ovl = submenu->overlay->hand_ovl;
+
+    /* Only while the hand is still (it may be holding an item to carry over). */
+    if (hand_ovl->info.act != mHD_ACTION_CLOSE_KEEP && hand_ovl->info.act != mHD_ACTION_SASU) {
+        return;
+    }
+    pc_storage_turn_page(dir);
+    mTG_init_tag_data_item_win(submenu);
+    sAdo_SysTrgStart(NA_SE_41C);
+}
+#endif
+
 static void mTG_move_base(Submenu* submenu, mSM_MenuInfo_c* menu_info, mTG_tag_c* tag) {
     u32 trigger = submenu->overlay->menu_control.trigger;
 
@@ -7691,6 +7841,10 @@ static void mTG_move_base(Submenu* submenu, mSM_MenuInfo_c* menu_info, mTG_tag_c
         mTG_move_cancel(submenu, menu_info, tag);
     } else if (trigger & BUTTON_A) {
         mTG_move_decide(submenu, menu_info, tag);
+#ifdef TARGET_PC
+    } else if (pc_storage_active() && (trigger & (BUTTON_L | BUTTON_R))) {
+        mTG_pc_storage_turn_page(submenu, (trigger & BUTTON_R) ? 1 : -1);
+#endif
     } else if (trigger & BUTTON_L) {
         mTG_move_catch(submenu, menu_info, tag);
     } else if (trigger & BUTTON_R) {
@@ -8054,11 +8208,426 @@ static int mTG_normal_move(Submenu* submenu, mSM_MenuInfo_c* menu_info, mTG_Ovl_
     return FALSE;
 }
 
+#ifdef MOUSE_INPUT
+typedef struct tag_table_mouse_data_s {
+    s16* col_mouse_pos;      // X positions for mouse selection (if NULL, use default col_pos)
+    s16* line_mouse_pos;     // Y positions for mouse selection (if NULL, use default row_pos)
+    s16* col_mouse_hitbox;   // Half-width hitbox per column (if NULL, use default 10.0f)
+    s16* line_mouse_hitbox;  // Half-height hitbox per row (if NULL, use default 10.0f)
+} mTG_table_mouse_data_c;
+
+// mTG_TABLE_MONEY
+static s16 mTG_money_col_mouse_pos[] = { 0 };
+static s16 mTG_money_line_mouse_pos[] = { 11 };
+static s16 mTG_item_col_hitbox[] = { 20 };
+static s16 mTG_item_line_hitbox[] = { 5 };
+
+// mTG_TABLE_PLAYER
+static s16 mTG_player_col_mouse_pos[] = { -78 };
+static s16 mTG_player_line_mouse_pos[] = { 45 };
+static s16 mTG_player_col_hitbox[] = { 22 };
+static s16 mTG_player_line_hitbox[] = { 20 };
+
+// mTG_TABLE_CPMAIL_TI
+static s16 mTG_cpmail_ti_col_hitbox[] = { 58 };
+
+// mTG_TABLE_CATALOG
+static s16 mTG_catalog_col_mouse_pos[] = { 10 };
+static s16 mTG_catalog_col_hitbox[] = { 55 };
+
+// mTG_TABLE_NEEDLEWORK
+static s16 mTG_needlework_col_hitbox[] = { 15, 15 };
+static s16 mTG_needlework_line_hitbox[] = { 15, 15, 15, 15 };
+
+// mTG_TABLE_CPORIGINAL_TI
+static s16 mTG_cporiginal_ti_col_hitbox[] = { 58 };
+
+// Table mouse data array
+static mTG_table_mouse_data_c mTG_table_mouse_data[] = {
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_ITEM (default)
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_MAIL (default)
+    { mTG_money_col_mouse_pos, mTG_money_line_mouse_pos, mTG_item_col_hitbox, mTG_item_line_hitbox }, // mTG_TABLE_MONEY
+    { mTG_player_col_mouse_pos, mTG_player_line_mouse_pos, mTG_player_col_hitbox, mTG_player_line_hitbox }, // mTG_TABLE_PLAYER
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_BG (default)
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_MBOX (default)
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_HANIWA (default)
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_COLLECT (default)
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_WCHANGE (default)
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_CPMAIL (default)
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_CPMAIL_WC (default)
+    { NULL, NULL, mTG_cpmail_ti_col_hitbox, NULL }, // mTG_TABLE_CPMAIL_TI
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_CPEDIT (stub)
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_CPEDIT_END (stub)
+    { mTG_catalog_col_mouse_pos, NULL, mTG_catalog_col_hitbox, NULL }, // mTG_TABLE_CATALOG
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_CATALOG_WC (default)
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_MUSIC_MAIN (default)
+    { NULL, NULL, mTG_needlework_col_hitbox, mTG_needlework_line_hitbox }, // mTG_TABLE_NEEDLEWORK
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_CPORIGINAL (default)
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_INVENTORY_WC_ORG (default)
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_CPORIGINAL_NW (default)
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_CPORIGINAL_WC (default)
+    { NULL, NULL, mTG_cporiginal_ti_col_hitbox, NULL }, // mTG_TABLE_CPORIGINAL_TI
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_GBA (stub)
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_GBA_NW (stub)
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_CARD (stub)
+    { NULL, NULL, NULL, NULL }, // mTG_TABLE_CARD_NW (stub)
+};
+
+static void mTG_get_mouse_slot_pos(Submenu* submenu, f32* pos, int table, int idx, mTG_table_mouse_data_c* mouse_data) {
+    mTG_tag_data_table_c* data_p = &mTG_table_data[table];
+    int col = idx % data_p->col_num;
+    int row = idx / data_p->col_num;
+    f32 pos_x;
+    f32 pos_y;
+    
+    // Use mouse-specific X position if available, otherwise use default
+    if (mouse_data->col_mouse_pos != NULL) {
+        pos_x = mouse_data->col_mouse_pos[col];
+    } else {
+        pos_x = data_p->col_pos[col];
+    }
+    
+    // Use mouse-specific Y position if available, otherwise use default
+    if (mouse_data->line_mouse_pos != NULL) {
+        pos_y = mouse_data->line_mouse_pos[row];
+    } else {
+        pos_y = data_p->row_pos[row];
+    }
+    
+    f32 ofs = mTG_set_hand_pos_offset(submenu, table);
+    pos[0] = pos_x + ofs;
+    pos[1] = pos_y;
+}
+
+static void mTG_mouse_move_func(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
+    mTG_Ovl_c* tag_ovl = submenu->overlay->tag_ovl;
+    mTG_tag_c* tag = &tag_ovl->tags[tag_ovl->sel_tag_idx];
+
+    /* Setup mouse logic */
+    s32 mouse_x, mouse_y;
+    pc_mouse_get_native_position(&mouse_x, &mouse_y);
+    f32 logical_mouse_x = mouse_x * 0.5;
+    f32 logical_mouse_y = mouse_y * 0.5;
+
+    u32 mouse_pressed = pc_mouse_button_pressed();
+    s32 mouse_wheel = pc_mouse_scroll_wheel();
+    s32 mouse_moved = pc_mouse_moved();
+
+    /* Controller and mouse active checks */
+    if (submenu->overlay->menu_control.trigger) {
+        tag_ovl->mouse_active = 0;
+    }
+    if (mouse_moved || mouse_pressed || mouse_wheel != 0) {
+        tag_ovl->mouse_active = 1;
+    }
+
+    tag_ovl->mouse_x = logical_mouse_x;
+    tag_ovl->mouse_y = logical_mouse_y;
+
+    if (!tag_ovl->mouse_active) {
+        return;
+    }
+
+    /* Mouse scroll wheel logic */
+    if (mouse_wheel != 0 && tag_ovl->sel_tag_idx == 0) {
+        if (tag_ovl->hovered_table == mTG_TABLE_CATALOG) {
+            mCL_Ovl_c* catalog_ovl = submenu->overlay->catalog_ovl;
+            mCL_Menu_c* catalog_menu = &catalog_ovl->menu_data[catalog_ovl->page_order[0]];
+
+            if (mouse_wheel > 0) {  // Scroll up
+                if (catalog_menu->top_idx != 0) {
+                    catalog_menu->top_idx--;
+                    catalog_ovl->change_flag = TRUE;
+                    sAdo_SysTrgStart(NA_SE_CURSOL);
+                }
+            } else {  // Scroll down
+                if (catalog_menu->top_idx + mCL_MENU_PAGE_SIZE < catalog_menu->item_count) {
+                    catalog_menu->top_idx++;
+                    catalog_ovl->change_flag = TRUE;
+                    sAdo_SysTrgStart(NA_SE_CURSOL);
+                }
+            }
+        }
+    }
+
+    /* Mouse movement logic */
+    if (mouse_moved) {
+        if (tag_ovl->sel_tag_idx == 0) {
+            f32 hand_x = (logical_mouse_x - 160.0f);
+            f32 hand_y = (120.0f - logical_mouse_y);
+
+            int hit_table = -1;
+            int hit_col = -1;
+            int hit_row = -1;
+
+            int tables_to_check[7];
+            int num_tables = 0;
+
+            // Determine which tables are active based on menu type
+            switch (menu_info->menu_type) {
+                case mSM_OVL_INVENTORY: // Pause inventory
+                    switch (menu_info->data0) {
+                        case mSM_IV_OPEN_NORMAL:
+                            if (submenu->overlay->inventory_ovl->page_order[0] == mIV_PAGE_INVENTORY) { // Main page inventory
+                                if (mTG_move_check_hand_item(submenu, mTG_TABLE_ITEM)) { // Items
+                                    tables_to_check[num_tables++] = mTG_TABLE_ITEM;
+                                }
+                                if (mTG_move_check_hand_item(submenu, mTG_TABLE_MAIL)) { // Letters
+                                    tables_to_check[num_tables++] = mTG_TABLE_MAIL;
+                                }
+                                if (mTG_move_check_hand_item(submenu, mTG_TABLE_MONEY)) { // Bells
+                                    tables_to_check[num_tables++] = mTG_TABLE_MONEY;
+                                }
+                                if (mTG_move_check_hand_item(submenu, mTG_TABLE_PLAYER)) { // Player
+                                    tables_to_check[num_tables++] = mTG_TABLE_PLAYER;
+                                }
+                                if (mTG_move_check_hand_item(submenu, mTG_TABLE_BG)) { // Background color change
+                                    tables_to_check[num_tables++] = mTG_TABLE_BG;
+                                }
+                                if (mTG_check_hand_condition(submenu)) { // Right labels (Fish, Inventory, Bugs)
+                                    tables_to_check[num_tables++] = mTG_TABLE_WCHANGE;
+                                }
+                                if (mTG_check_hand_condition(submenu)) { // Left label (Pattern clothes)
+                                    tables_to_check[num_tables++] = mTG_TABLE_INVENTORY_WC_ORG;
+                                }
+                            } else { // collection page (fish/bugs)
+                                tables_to_check[num_tables++] = mTG_TABLE_COLLECT;  // Fish/Bugs
+                                tables_to_check[num_tables++] = mTG_TABLE_WCHANGE;
+                            }
+                            break;
+                        case mSM_IV_OPEN_SEND_MAIL:
+                            tables_to_check[num_tables++] = mTG_TABLE_MAIL;
+                            break;
+                        default:
+                            tables_to_check[num_tables++] = mTG_TABLE_ITEM;
+                            break;
+                    }
+                    break;
+                case mSM_OVL_HANIWA: // Gyroid storage
+                    tables_to_check[num_tables++] = mTG_TABLE_HANIWA; // Gyroid top items
+                    tables_to_check[num_tables++] = mTG_TABLE_ITEM;
+                    break;
+                case mSM_OVL_CATALOG: // Tom Nook shop catalog
+                    tables_to_check[num_tables++] = mTG_TABLE_CATALOG;    // Catalog list
+                    tables_to_check[num_tables++] = mTG_TABLE_CATALOG_WC; // Right label (Catalog tabs)
+                    break;
+                case mSM_OVL_MAILBOX: // Mailbox
+                    tables_to_check[num_tables++] = mTG_TABLE_MBOX;  // Mailbox list
+                    tables_to_check[num_tables++] = mTG_TABLE_MAIL;  
+                    break;
+                case mSM_OVL_CPMAIL: // Post office save letter
+                    tables_to_check[num_tables++] = mTG_TABLE_MAIL;
+                    tables_to_check[num_tables++] = mTG_TABLE_CPMAIL;    // Letters saved
+                    tables_to_check[num_tables++] = mTG_TABLE_CPMAIL_TI; // Letter menu title
+                    tables_to_check[num_tables++] = mTG_TABLE_CPMAIL_WC; // Right label (Letter color tag)
+                    break;
+                case mSM_OVL_NEEDLEWORK: // Pattern menu
+                    tables_to_check[num_tables++] = mTG_TABLE_NEEDLEWORK;  // Pattern labels
+                    break;
+                case mSM_OVL_MUSIC: // Music box menu
+                    tables_to_check[num_tables++] = mTG_TABLE_MUSIC_MAIN;  // Music box list
+                    break;
+                case mSM_OVL_CPORIGINAL: // Save pattern menu
+                    tables_to_check[num_tables++] = mTG_TABLE_CPORIGINAL;    // Patterns saved
+                    tables_to_check[num_tables++] = mTG_TABLE_CPORIGINAL_NW; // Left label (patterns created)
+                    tables_to_check[num_tables++] = mTG_TABLE_CPORIGINAL_WC; // Right label (pattern color tag)
+                    tables_to_check[num_tables++] = mTG_TABLE_CPORIGINAL_TI; // Pattern menu title
+                    break;
+                case mSM_OVL_CPEDIT:  // N64 controller pak menu
+                    // This submenu is stubbed in GC, just here for convenience
+                    tables_to_check[num_tables++] = mTG_TABLE_CPEDIT;
+                    tables_to_check[num_tables++] = mTG_TABLE_CPEDIT_END;
+                    break;
+                case mSM_OVL_GBA:  // GBA menu
+                    // Port doesn't support gba connectivity but again, convenience
+                    switch (menu_info->data0) {
+                        case 3:
+                            tables_to_check[num_tables++] = mTG_TABLE_GBA;
+                            tables_to_check[num_tables++] = mTG_TABLE_GBA_NW;
+                            break;
+                        case 4:
+                            tables_to_check[num_tables++] = mTG_TABLE_CARD;
+                            tables_to_check[num_tables++] = mTG_TABLE_CARD_NW;
+                            break;
+                    }
+                    break;
+                default:
+                    // Just check the current table
+                    tables_to_check[num_tables++] = tag->table; 
+                    break;
+            }
+
+            for (int t = 0; t < num_tables; t++) {
+                int table = tables_to_check[t];
+                mTG_tag_data_table_c* data_p = &mTG_table_data[table];
+                mTG_table_mouse_data_c* mouse_data = &mTG_table_mouse_data[table];
+            
+                for (int row = 0; row < data_p->row_num; row++) {
+                    for (int col = 0; col < data_p->col_num; col++) {
+                        f32 slot_pos[2];
+                        mTG_get_mouse_slot_pos(submenu, slot_pos, table, row * data_p->col_num + col, mouse_data);
+                    
+                        // Get hitbox sizes, default to 10, commonly used for item cells
+                        f32 x_hitbox = 10.0f;
+                        f32 y_hitbox = 10.0f;
+                    
+                        if (mouse_data->col_mouse_hitbox != NULL) {
+                            x_hitbox = mouse_data->col_mouse_hitbox[col];
+                        }
+                        if (mouse_data->line_mouse_hitbox != NULL) {
+                            y_hitbox = mouse_data->line_mouse_hitbox[row];
+                        }
+                    
+                        // Rectangular hitbox check
+                        f32 dx = hand_x - slot_pos[0];
+                        f32 dy = hand_y - slot_pos[1];
+                    
+                        if (fabsf(dx) <= x_hitbox && fabsf(dy) <= y_hitbox) {
+                            hit_table = table;
+                            hit_col = col;
+                            hit_row = row;
+                        }
+                    }
+                }
+            }
+
+            if (hit_table >= 0) {
+                tag_ovl->hovered_table = hit_table;
+                tag_ovl->hovered_col = hit_col;
+                tag_ovl->hovered_row = hit_row;
+                tag_ovl->hovered_idx = hit_row * mTG_table_data[hit_table].col_num + hit_col;
+            } else {
+                tag_ovl->hovered_table = -1;
+                tag_ovl->hovered_col = -1;
+                tag_ovl->hovered_row = -1;
+                tag_ovl->hovered_idx = -1;
+            }
+
+            // Update cursor if we found a close slot and it's different from current
+            if (hit_table >= 0 && (hit_table != tag->table || 
+                hit_col != tag->tag_col || hit_row != tag->tag_row)) {
+
+                // Update the main tag to the hovered position
+                tag->table = hit_table;
+                tag->tag_col = hit_col;
+                tag->tag_row = hit_row;
+
+                if (hit_table == mTG_TABLE_CATALOG) {
+                    mCL_Ovl_c* catalog_ovl = submenu->overlay->catalog_ovl;
+                    catalog_ovl->change_flag = TRUE;
+                }
+
+                // Update hand position using the mouse position
+                int idx = hit_row * mTG_table_data[hit_table].col_num + hit_col;
+                mTG_set_hand_pos(submenu, tag->base_pos, hit_table, idx);
+
+                // Re-initialize the item window
+                mTG_init_tag_data_item_win(submenu);
+                sAdo_SysTrgStart(NA_SE_CURSOL);
+            }
+        } else {
+            // We're in a selection submenu - handle mouse over the options
+            mTG_tag_c* submenu_tag = &tag_ovl->tags[tag_ovl->sel_tag_idx];
+            mTG_tag_data_c* tag_data = &mTG_label_table[submenu_tag->type];
+
+            f32 scale = submenu_tag->scale;
+            f32 scale_rate = scale * 0.875f;
+
+            // Calculate the screen-space anchor for the text list
+            f32 tag_screen_x = 160.0f + (submenu_tag->base_pos[0] + menu_info->position[0] + 
+                scale * (submenu_tag->body_ofs[0] + submenu_tag->text_ofs[0]));
+            f32 tag_screen_y = 120.0f - (submenu_tag->base_pos[1] + menu_info->position[1] + 
+                scale * (submenu_tag->body_ofs[1] + submenu_tag->text_ofs[1]));
+
+            int hovered_option = -1;
+            f32 option_height = 16.0f * scale_rate; 
+
+            for (int i = 0; i < tag_data->lines; i++) {
+                // Set top and bottom option hitbox
+                f32 option_top = tag_screen_y + (i * option_height);
+                f32 option_bottom = option_top + option_height;
+
+                // Set horizontal - adjust width based on highlighted text 
+                int len = mMl_strlen(tag_data->words[i]->str, mTG_TAG_STR_LEN, CHAR_SPACE);
+                f32 option_width = mFont_GetStringWidth(tag_data->words[i]->str, len, TRUE) * scale_rate;
+
+                // Check if mouse_x/y (scaled/translated) falls within this rect
+                if ((tag_ovl->mouse_x >= tag_screen_x && tag_ovl->mouse_x <= (tag_screen_x + option_width)) &&
+                    (tag_ovl->mouse_y >= option_top && tag_ovl->mouse_y <= option_bottom)) {
+                    hovered_option = i;
+                    break;
+                }
+                
+            }
+
+            // Update cursor if hovering over a different option
+            if (hovered_option >= 0 && hovered_option != submenu_tag->tag_row) {
+                submenu_tag->tag_row = hovered_option;
+                sAdo_SysTrgStart(NA_SE_CURSOL);
+            }
+
+            tag_ovl->hovered_option = hovered_option;
+        }
+    }
+
+    /* Mouse click logic */
+    if (tag_ovl->sel_tag_idx == 0) {
+        if (tag_ovl->hovered_table >= 0) {
+            if (mouse_pressed & (1 << 0)) { // Left click
+                u32 old_trigger = submenu->overlay->menu_control.trigger;
+                submenu->overlay->menu_control.trigger = BUTTON_A;
+                mTG_move_decide(submenu, menu_info, tag);
+                submenu->overlay->menu_control.trigger = old_trigger;
+            }
+        }
+
+        if (mouse_pressed & (1 << 2)) { // Right click
+            u32 old_trigger = submenu->overlay->menu_control.trigger;
+            submenu->overlay->menu_control.trigger = BUTTON_B;
+            mTG_move_cancel(submenu, menu_info, tag);
+            submenu->overlay->menu_control.trigger = old_trigger;
+        }
+    } else {
+        if (tag_ovl->hovered_option >= 0) {
+            if (mouse_pressed & (1 << 0)) { // Left click
+                u32 old_trigger = submenu->overlay->menu_control.trigger;
+                submenu->overlay->menu_control.trigger = BUTTON_A;
+
+                mTG_tag_c* submenu_tag = &tag_ovl->tags[tag_ovl->sel_tag_idx];
+                mTG_label_table[submenu_tag->type].words[tag_ovl->hovered_option]->move_proc(submenu, menu_info);
+
+                submenu->overlay->menu_control.trigger = old_trigger;
+            }
+        }
+
+        if (mouse_pressed & (1 << 2)) { // Right click
+            u32 old_trigger = submenu->overlay->menu_control.trigger;
+            submenu->overlay->menu_control.trigger = BUTTON_B;
+
+            if (menu_info->menu_type == mSM_OVL_INVENTORY && menu_info->data0 == mSM_IV_OPEN_QUEST) {
+                mTG_close_window(submenu, menu_info, TRUE);
+            } else {
+                mTG_tag_c* last_tag = &tag_ovl->tags[tag_ovl->sel_tag_idx - 1];
+
+                mTG_return_tag_init(submenu, last_tag->type, mTG_RETURN_KEEP);
+                sAdo_SysTrgStart(MONO(NA_SE_3));
+            }
+
+            submenu->overlay->menu_control.trigger = old_trigger;
+        }
+    }
+}
+#endif
+
 static void mTG_move_func(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
     mTG_Ovl_c* tag_ovl = submenu->overlay->tag_ovl;
     mTG_tag_c* tag = &tag_ovl->tags[tag_ovl->sel_tag_idx];
     mHD_Ovl_c* hand_ovl = submenu->overlay->hand_ovl;
     mIV_Ovl_c* inv_ovl = submenu->overlay->inventory_ovl;
+
+#ifdef MOUSE_INPUT
+    mTG_mouse_move_func(submenu, menu_info);
+#endif
 
     if (tag_ovl->sel_tag_idx < 0 || tag_ovl->sel_tag_idx >= mTG_TAG_NUM) {
         return;
@@ -8938,6 +9507,15 @@ extern void mTG_tag_ovl_construct(Submenu* submenu) {
 
         tag_ovl_p->sel_tag_idx = -1;
         tag_ovl_p->ret_tag_idx = -1;
+#ifdef MOUSE_INPUT
+        tag_ovl_p->mouse_active = 0;
+        tag_ovl_p->mouse_x = 160;
+        tag_ovl_p->mouse_y = 120;
+        tag_ovl_p->hovered_table = -1;
+        tag_ovl_p->hovered_idx = -1;
+        tag_ovl_p->hovered_col = -1;
+        tag_ovl_p->hovered_row = -1;
+#endif
     }
 }
 

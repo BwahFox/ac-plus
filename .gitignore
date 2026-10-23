@@ -47,3 +47,7 @@ temp/
 include/PR/
 include/gcc/
 include/compiler/gcc/stdlib.h
+
+# ac-plus container build output
+/dist/
+pc/build-container/

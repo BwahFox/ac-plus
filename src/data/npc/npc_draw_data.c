@@ -5301,6 +5301,13 @@ extern unsigned char end_1_mouth5_TA_tex_txt[];
 extern unsigned char end_1_mouth6_TA_tex_txt[];
 extern unsigned char end_1_tmem_txt[];
 
+#ifdef TARGET_PC
+extern u16 pc_celeste_pal[16];
+extern unsigned char pc_celeste_tmem[];
+extern unsigned char pc_celeste_eye[8][0x100];
+extern cKF_Skeleton_R_c pc_brewster_skel;
+#endif
+
 extern aNPC_draw_data_c npc_draw_data_tbl[] = {
     {
         ACTOR_OBJ_BANK_133,
@@ -21346,4 +21353,93 @@ extern aNPC_draw_data_c npc_draw_data_tbl[] = {
         -1,
         -1,
     },
+#ifdef TARGET_PC
+    /* Celeste (SP_NPC_CELESTE): Blathers' model with her own textures (pc_celeste.c fills them) */
+    {
+        ACTOR_OBJ_BANK_401,
+        ACTOR_OBJ_BANK_402,
+        &cKF_bs_r_owl_1,
+        {
+            pc_celeste_tmem,
+            pc_celeste_pal,
+            {
+                pc_celeste_eye[0],
+                pc_celeste_eye[1],
+                pc_celeste_eye[2],
+                pc_celeste_eye[3],
+                pc_celeste_eye[4],
+                pc_celeste_eye[5],
+                pc_celeste_eye[6],
+                pc_celeste_eye[7],
+            },
+            {
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+            },
+            40,
+            0,
+            0,
+        },
+        0.009499999694526196,
+        1,
+        0,
+        0,
+        40,
+        0,
+        0,
+        280,
+        20,
+        50,
+        -1,
+        -1,
+    },
+    /* Brewster (SP_NPC_BREWSTER): Blathers' skeleton drawing nothing, for City Folk's Brewster
+     * (pc_brewster.c, pc_cf_char.c) to stand on; Blathers' textures are never shown */
+    {
+        ACTOR_OBJ_BANK_401,
+        ACTOR_OBJ_BANK_402,
+        &pc_brewster_skel,
+        {
+            owl_1_tmem_txt,
+            owl_1_pal,
+            {
+                owl_1_eye1_TA_tex_txt,
+                owl_1_eye2_TA_tex_txt,
+                owl_1_eye3_TA_tex_txt,
+                owl_1_eye4_TA_tex_txt,
+                owl_1_eye5_TA_tex_txt,
+                owl_1_eye6_TA_tex_txt,
+                owl_1_eye7_TA_tex_txt,
+                owl_1_eye8_TA_tex_txt,
+            },
+            {
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+                NULL,
+            },
+            40,
+            0,
+            0,
+        },
+        0.009499999694526196,
+        1,
+        0,
+        0,
+        40,
+        0,
+        0,
+        280,
+        20,
+        50,
+        -1,
+        -1,
+    },
+#endif
 };

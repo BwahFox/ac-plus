@@ -1,39 +1,31 @@
-# Frequently Asked Questions
+# Frequently asked questions
 
-## Is the PC Port compatible with the Animal Crossing Deluxe mod by Cuyler?
+## How is this different from ACGC-PC-Port?
 
-No. Deluxe makes massive changes to the code, making them incompatible. Some QoL
-features may be ported over (such as borderless acre transitions and true unlocked
-framerate) with Cuyler's permission or by Cuyler himself, but a one-to-one port is
-not planned.
+ac-plus is built on [ACGC-PC-Port](https://github.com/flyngmt/ACGC-PC-Port) and keeps everything
+it does. On top of that it adds quality-of-life features and City Folk touches; the README's
+[What's new](README.md#whats-new) lists them.
 
-If you don't know what deluxe mod is, and you're looking for a different Animal Crossing experience, I highly recommend
-checking out the [Deluxe mod](https://discord.gg/HcpymVA).
+## Is it compatible with the Animal Crossing Deluxe mod?
 
-## Will there be mod support?
-
-While anyone can make mods by modifying the decompilation source code directly,
-I'll look into making a proper mod loader after the 1.0 release. No promises!
+No. Deluxe changes the game's code too much for the two to combine.
 
 ## Will there be online play?
 
-Not planned. Putting aside the amount of work needed to include multiplayer, the
-original game was never designed with network security in mind. Adding online play
-onto that would be a likely security nightmare.
+Online multiplayer is planned, but not started. The original game was never designed with network
+security in mind, so it has to be approached carefully.
 
-## Does it work on Linux / Steam Deck?
+## Does it work on Linux and the Steam Deck?
 
-The Windows binary runs under Proton/Wine and seems to work fine from what I've
-heard. Native Linux is not officially supported yet, hopefully will happen in the
-future.
+Yes, the Windows build runs through Wine or Proton (see the README's
+[Setting up](README.md#setting-up)). A native Linux build may come later.
 
-## Is this vibecoded?
+## Why do the City Folk extras need my City Folk disc?
 
-No. AI can't write a functional PC port by itself. There were many issues that
-current AI's aren't good enough to solve by themselves. AI was used as a tool to speed up
-development. The AI usage disclaimer is there for transparency.
+None of City Folk's files can be included here. The `extract-cf` step converts them from your own
+copy, on your computer.
 
-## Why is the initial version one big commit?
+## Can I use my Dolphin save?
 
-This started out as a hobby project I had no intention of sharing with anyone, so my local repository contains assets from the game. 
-I made a new repository just to upload it to github. Sharing the original could result in this project getting taken down.
+Yes. Export it from Dolphin's Memory Card Manager as a `.gci` and put it in `save/card_a/`. See the
+README's [Saves](README.md#saves).

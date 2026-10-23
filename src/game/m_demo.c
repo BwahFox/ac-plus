@@ -795,7 +795,23 @@ static int talk_check() {
     return mPlib_check_request_main_talk_type1_priority(gamePT) != 0;
 }
 
+#ifdef TARGET_PC
+/* ac-plus: a speaker who may talk to the player sitting down (the Roost's counter, ac_npc_brewster.c);
+ * the player stays seated (change_player off) */
+ACTOR* pc_mDemo_seated_speaker = NULL;
+
+static int pc_mDemo_seated_speak_ok(void) {
+    return pc_mDemo_seated_speaker != NULL &&
+           mPlib_get_player_actor_main_index(gamePT) == mPlayer_INDEX_SITDOWN_WAIT;
+}
+#endif
+
 static int speak_check() {
+#ifdef TARGET_PC
+    if (pc_mDemo_seated_speak_ok()) {
+        return TRUE;
+    }
+#endif
     return mPlib_check_request_main_speak_type1_priority(gamePT) != 0;
 }
 
@@ -986,7 +1002,11 @@ extern int mDemo_Request(int type, ACTOR* actor, mDemo_REQUEST_PROC req_proc) {
                 if (weight < 0.0f) {
                     return FALSE;
                 }
-            } else if (type == mDemo_TYPE_SPEAK && mPlib_Check_able_force_speak_label(gamePT, actor) == FALSE) {
+            } else if (type == mDemo_TYPE_SPEAK && mPlib_Check_able_force_speak_label(gamePT, actor) == FALSE
+#ifdef TARGET_PC
+                       && !(actor == pc_mDemo_seated_speaker && pc_mDemo_seated_speak_ok())
+#endif
+            ) {
                 return FALSE;
             }
 

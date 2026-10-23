@@ -767,6 +767,13 @@ extern int cKF_SkeletonInfo_R_play(cKF_SkeletonInfo_R_c* keyframe) {
 }
 #endif
 
+#ifdef TARGET_PC
+/* ac-plus: while set, the skeleton draw keeps each joint's world matrix in [1 + joint] and the
+ * matrix it starts from (the actor's) in [0], for City Folk characters (pc_cf_char.h) */
+MtxF* pc_cKF_capture = NULL;
+int pc_cKF_capture_num = 0;
+#endif
+
 extern void cKF_Si3_draw_SV_R_child(GAME* game, cKF_SkeletonInfo_R_c* keyframe, int* joint_num,
                                     cKF_draw_callback prerender_callback, cKF_draw_callback postrender_callback,
                                     void* arg, Mtx** mtxpp) {
@@ -817,6 +824,11 @@ extern void cKF_Si3_draw_SV_R_child(GAME* game, cKF_SkeletonInfo_R_c* keyframe, 
 
     graph = game->graph;
     OPEN_DISP(graph);
+#ifdef TARGET_PC
+    if (pc_cKF_capture != NULL && *joint_num == 0) {
+        pc_cKF_capture[0] = *get_Matrix_now();
+    }
+#endif
     Matrix_push();
 
     joint_m = skel_c_joint->model;
@@ -829,6 +841,11 @@ extern void cKF_Si3_draw_SV_R_child(GAME* game, cKF_SkeletonInfo_R_c* keyframe, 
         ((prerender_callback != NULL) &&
          (prerender_callback(game, keyframe, *joint_num, &mjoint_m, &joint_f, arg, &joint1, &trans)) != FALSE)) {
         Matrix_softcv3_mult(&trans, &joint1);
+#ifdef TARGET_PC
+        if (pc_cKF_capture != NULL && *joint_num + 1 < pc_cKF_capture_num) {
+            pc_cKF_capture[1 + *joint_num] = *get_Matrix_now();
+        }
+#endif
         if (mjoint_m != NULL) {
             _Matrix_to_Mtx(*mtxpp);
             if (joint_f & cKF_JOINT_FLAG_DISP_XLU) {

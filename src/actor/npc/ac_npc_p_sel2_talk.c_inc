@@ -1448,3 +1448,58 @@ static int aNPS2_talk_end_chk(ACTOR* actorx, GAME* game) {
 
     return res;
 }
+
+#ifdef TARGET_PC
+/* Quick load (quick_load setting): the town's only resident, if they are at
+ * home and have saved before, skips this conversation. This does what picking
+ * them in it would (aNPS2_select_player + aNPS2_game_start_wait): the clock and
+ * cheat checks, the birthday flag and the card load. start_flag then sends them
+ * out of their front door as usual, along with Resetti or a birthday visit.
+ * New players, visitors with a passport and towns with several residents get the
+ * normal conversation. */
+static int aNPS2_pc_quick_load(NPC_P_SEL2_ACTOR* p_sel2, GAME_PLAY* play) {
+    Private_c* priv = Save_Get(private_data);
+    int pl_no = -1;
+    int i;
+
+    if (!g_pc_settings.quick_load || p_sel2->player_sum != 1 || mCD_CheckPassportFile() != -1) {
+        return FALSE;
+    }
+
+    for (i = 0; i < PLAYER_NUM; i++) {
+        if (mPr_NullCheckPersonalID(&priv[i].player_ID) == FALSE) {
+            pl_no = i;
+        }
+    }
+    if (pl_no < 0 || priv[pl_no].exists != TRUE || !Save_Get(homes[mHS_get_arrange_idx(pl_no)]).flags.has_saved) {
+        return FALSE;
+    }
+
+    p_sel2->player_no = pl_no;
+    p_sel2->card_file_idx = -1;
+    p_sel2->talk_idx = aNPS2_TALK_START_TYPE0;
+    aNPS2_set_str_ct_player_name(pl_no);
+
+    if (lbRTC_IsOverTime(&Save_Get(save_check).time, Common_GetPointer(time.rtc_time)) == lbRTC_LESS) {
+        Save_Set(cheated_flag, TRUE);
+        Save_Set(npc_force_go_home, TRUE);
+    }
+
+    aNPS2_time_check();
+    if (aNPS2_chk_setup_birthday_demo() == TRUE) {
+        Now_Private->state_flags |= mPr_FLAG_BIRTHDAY_ACTIVE;
+    } else {
+        Now_Private->state_flags &= ~mPr_FLAG_BIRTHDAY_ACTIVE;
+    }
+
+    if (aNPS2_setup_load_data(p_sel2, play) != mCD_TRANS_ERR_NONE) {
+        /* Back to the title screen's choice of player; the conversation takes over. */
+        aNPS2_set_str_ct_player_name(0);
+        return FALSE;
+    }
+
+    OSReport("[quick-load] Starting %d straight in town\n", pl_no);
+    p_sel2->start_flag = TRUE;
+    return TRUE;
+}
+#endif
