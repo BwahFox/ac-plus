@@ -242,12 +242,15 @@ static void mHW_haniwa_ovl_move(Submenu* submenu) {
     };
     
     mSM_MenuInfo_c* menu_info = &submenu->overlay->menu_info[mSM_OVL_HANIWA];
+#ifdef TARGET_PC
+    int storage = pc_storage_active(); /* asked first: closing ends storage mode along with the overlay */
+#endif
 
     menu_info->pre_move_func(submenu);
     (*ovl_move_proc[menu_info->proc_status])(submenu, menu_info);
 
 #ifdef TARGET_PC
-    if (pc_storage_active()) {
+    if (storage) {
         /* Storage: no gyroid to talk or animate. Keep the save copy current. */
         pc_storage_sync();
         submenu->overlay->menu_control.animation_flag = menu_info->proc_status == mSM_OVL_PROC_PLAY;
