@@ -1,4 +1,7 @@
 #include "m_shop.h"
+#ifdef TARGET_PC
+#include "pc_basement.h"
+#endif
 
 #include "game.h"
 #include "m_cockroach.h"
@@ -660,6 +663,11 @@ extern u32 mSP_ItemNo2ItemPrice(mActor_name_t item_no) {
     if (item_no == ITM_HUKUBUKURO_BAG) {
         return year;
     }
+#ifdef TARGET_PC
+    if (PC_ITEM_IS_BASEMENT_LOOK(item_no)) {
+        return PC_BASEMENT_LOOK_PRICE;
+    }
+#endif
 
     item_no = mRmTp_FtrItemNo2Item1ItemNo(item_no, FALSE);
     if (item_no >= ITM_SHELL0 && item_no <= ITM_SHELL7) {

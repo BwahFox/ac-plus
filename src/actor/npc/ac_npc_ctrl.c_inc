@@ -440,6 +440,7 @@ static int aNPC_setupActor_proc(GAME_PLAY* play, mActor_name_t name, s8 idx, int
 #ifdef TARGET_PC
         mAc_PROFILE_NPC_CELESTE,
         mAc_PROFILE_NPC_BREWSTER,
+        mAc_PROFILE_NPC_KK_ROOST,
 #endif
     };
     // clang-format on
@@ -506,6 +507,16 @@ static int aNPC_setupActor_proc(GAME_PLAY* play, mActor_name_t name, s8 idx, int
             break;
         case NAME_TYPE_NPC:
             profile = mAc_PROFILE_NORMAL_NPC;
+#ifdef TARGET_PC
+            {
+                /* at the Roost: a villager dropping in for a cup, themselves (their own talk and favors), sitting */
+                extern int aRGT_is_guest(mActor_name_t npc_id);
+
+                if (aRGT_is_guest(name)) {
+                    profile = mAc_PROFILE_ROOST_GUEST;
+                }
+            }
+#endif
             break;
     }
 

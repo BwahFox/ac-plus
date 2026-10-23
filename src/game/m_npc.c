@@ -155,6 +155,8 @@ static mNpc_Sp_Npc_Name_c l_sp_actor_name[] = {
     { SP_NPC_CELESTE, mPr_SEX_FEMALE, 0x4E4, 4 }, /* a female voice, as Pelly and Sabel */
     // Brewster (likewise)
     { SP_NPC_BREWSTER, mPr_SEX_MALE, 0x4E4, 3 }, /* a low voice, as Wendell and Pete */
+    // K.K. at the Roost: K.K. Slider's name and voice
+    { SP_NPC_KK_ROOST, mPr_SEX_OTHER, 0x214, 2 },
 #endif
 };
 
@@ -2967,6 +2969,50 @@ extern void mNpc_AddNpc_inBlock(mFM_move_actor_c* move_actor_list, u8 bx, u8 bz)
             move_actor_list[move_actor_idx].npc_info_idx = -1;
             move_actor_list[move_actor_idx].arg = -1;
             mFI_SetMoveActorBitData_ON(move_actor_idx, bx, bz);
+        }
+        /* K.K. on the stage in the evening, except on Saturdays (ac_npc_kk_roost.c) */
+        {
+            extern int aKKR_on_stage_hours(void);
+
+            move_actor_idx = mFI_GetMoveActorListIdx(move_actor_list, mFM_MOVE_ACTOR_NUM, EMPTY_NO);
+            if (getenv("PC_KK_LOG") != NULL) {
+                printf("[K.K.] café block: hours %d, free slot %d\n", aKKR_on_stage_hours(), move_actor_idx);
+            }
+            if (pc_brewster_available() && aKKR_on_stage_hours() && move_actor_idx != -1 &&
+                mFI_GetMoveActorListIdx(move_actor_list, mFM_MOVE_ACTOR_NUM, SP_NPC_KK_ROOST) == -1) {
+                move_actor_list[move_actor_idx].name_id = SP_NPC_KK_ROOST;
+                move_actor_list[move_actor_idx].ut_x = 6;
+                move_actor_list[move_actor_idx].ut_z = 6; /* the stage; he settles on its light (240, 271) */
+                move_actor_list[move_actor_idx].npc_info_idx = -1;
+                move_actor_list[move_actor_idx].arg = -1;
+                mFI_SetMoveActorBitData_ON(move_actor_idx, bx, bz);
+            }
+        }
+        /* a villager or two having a cup at the tables (ac_roost_guest.c) */
+        if (pc_brewster_available()) {
+            extern int aRGT_regist_guests(void);
+            extern void aRGT_guest(int n, mActor_name_t* npc_id, int* animal_idx);
+            extern void aRGT_seat_unit(int n, int* ut_x, int* ut_z);
+            int guests = aRGT_regist_guests();
+            int n;
+
+            for (n = 0; n < guests; n++) {
+                int ut_x, ut_z, animal_idx;
+                mActor_name_t npc_id;
+
+                move_actor_idx = mFI_GetMoveActorListIdx(move_actor_list, mFM_MOVE_ACTOR_NUM, EMPTY_NO);
+                if (move_actor_idx == -1) {
+                    break;
+                }
+                aRGT_guest(n, &npc_id, &animal_idx);
+                aRGT_seat_unit(n, &ut_x, &ut_z);
+                move_actor_list[move_actor_idx].name_id = npc_id; /* themselves, as in their house */
+                move_actor_list[move_actor_idx].ut_x = ut_x;
+                move_actor_list[move_actor_idx].ut_z = ut_z;
+                move_actor_list[move_actor_idx].npc_info_idx = animal_idx;
+                move_actor_list[move_actor_idx].arg = -1;
+                mFI_SetMoveActorBitData_ON(move_actor_idx, bx, bz);
+            }
         }
         return;
     }

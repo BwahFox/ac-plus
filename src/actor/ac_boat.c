@@ -9,6 +9,9 @@
 #include "libultra/libultra.h"
 #include "sys_matrix.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+
 #define aBT_FURROW_MAX_SPEED FRAMERATE_ADJ(0.625f)
 
 enum {

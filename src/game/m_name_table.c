@@ -1,4 +1,7 @@
 #include "m_name_table.h"
+#ifdef TARGET_PC
+#include "pc_basement.h"
+#endif
 
 #include "m_actor.h"
 #include "m_npc_personal_id.h"
@@ -408,6 +411,12 @@ extern int mNT_check_unknown(mActor_name_t item_no) {
 
     int index = ITEM_NAME_GET_INDEX(item_no);
     int res = FALSE;
+
+#ifdef TARGET_PC
+    if (PC_ITEM_IS_BASEMENT_LOOK(item_no)) {
+        return FALSE; /* the basement's rock wall/floor items, just past the GameCube's (pc_basement.h) */
+    }
+#endif
 
     switch (ITEM_NAME_GET_TYPE(item_no)) {
         case NAME_TYPE_ITEM1: {

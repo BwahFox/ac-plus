@@ -2,14 +2,17 @@
  *
  * He is City Folk's Brewster: his model (pc_cf_char.c) posed by Blathers' skeleton, and his
  * lines (pc_cf_lines.c). It goes the City Folk way: A by a stool sits the player at the
- * counter, and he greets them and offers a cup for 200 Bells, once a day ("Care for a cup of
+ * counter, and he greets them and offers a cup for 200 Bells, once a day (from 6 AM) ("Care for a cup of
  * joe?", pigeon milk or not). The cup comes on the counter (City Folk's own); "Thank you!"
  * drinks it, "It's gotta cool" gets him telling the player to drink it while it's hot, and then
  * the player says what they think of it. Talked to standing up, he points to the stools.
  *
  * With City Folk's animations extracted (pc_cf_anim.h) it all moves as there: he polishes a cup while
  * he waits, brews the coffee (and the pigeon milk) and pushes it over, and the player lifts it, sips,
- * says what they think and sets it down. When they get up he takes the cup back. */
+ * says what they think and sets it down. When they get up he takes the cup back.
+ *
+ * He warms up over the days a player has a cup (pc_brewster_familiarity): plain greetings for a
+ * stranger, then "Good to see you", then their name and "The usual, right?". */
 #include "ac_npc_brewster.h"
 
 #include "m_common_data.h"
@@ -20,6 +23,7 @@
 #include "m_player_lib.h"
 #include "m_player.h"
 #include "pc_brewster.h"
+#include "ac_npc_kk_roost.h"
 #include "pc_cf_anim.h"
 #include "pc_cf_char.h"
 #include "pc_cf_lines.h"
@@ -76,6 +80,18 @@ ACTOR_PROFILE Npc_Brewster_Profile = {
 #define aBRW_MSG_THANK_YOU 61
 #define aBRW_MSG_HAD 69    /* 69-74 after today's cup */
 #define aBRW_MSG_HAD_N 6
+
+/* Greeting, offer and serving lines warm up as he gets to know the player (pc_brewster_familiarity):
+ * first and count for a stranger, someone he knows, and a regular */
+static const u8 aBRW_greet_lines[3][2] = { { 2, 3 }, { 5, 2 }, { 7, 3 } };   /* "Hi." / "Good to see you." / by name */
+static const u8 aBRW_offer_lines[3][2] = { { 17, 2 }, { 19, 2 }, { 21, 2 } }; /* .../ "What's your blend?" / "The usual" */
+static const u8 aBRW_serve_lines[3][2] = { { 30, 2 }, { 30, 3 }, { 32, 2 } }; /* .../ "just the way you like it" */
+
+static int aBRW_pick_known(const u8 lines[3][2]) {
+    const u8* l = lines[pc_brewster_familiarity(Common_Get(player_no))];
+
+    return l[0] + RANDOM(l[1]);
+}
 
 /* The counter stools (the Roost's room, pc_museum_rooms.c): seat centres and the counter top */
 #define aBRW_STOOL_X 295.0f
@@ -332,10 +348,10 @@ static void aBRW_cf_draw(NPC_BREWSTER_ACTOR* brw, GAME_PLAY* play) {
 
     pc_cf_anim_place(owner, aBRW_HOME_X, actorx->world.position.y, actorx->world.position.z, DEG2SHORT_ANGLE(-90.0f));
     pc_cf_anim_draw(play, brw->body_anim != NULL ? brw->body_anim : "pge_wait1", brw->body_frame, owner,
-                    brw->stool >= 0 ? (const float(*)[4])brw->seat : NULL, cup, eye, 1.0f, parts);
+                    brw->stool >= 0 ? (const float(*)[4])brw->seat : NULL, cup, eye, aKKR_room_light(), parts);
     if (brw->cup_anim != NULL && brw->cup != aBRW_CUP_NONE) {
         pc_cf_anim_draw(play, brw->cup_anim, brw->cup_frame, owner, brw->stool >= 0 ? (const float(*)[4])brw->seat : NULL,
-                        cup, eye, 1.0f, PC_CF_ANIM_CUP);
+                        cup, eye, aKKR_room_light(), PC_CF_ANIM_CUP);
     }
 }
 
@@ -382,7 +398,7 @@ static void aBRW_line_done(NPC_BREWSTER_ACTOR* brw, int msg, int choice) {
         } else if (pc_brewster_had_coffee_today(Common_Get(player_no))) {
             aBRW_say_last(brw, aBRW_pick(aBRW_MSG_HAD, aBRW_MSG_HAD_N));
         } else {
-            aBRW_say(brw, aBRW_pick(aBRW_MSG_OFFER, aBRW_MSG_OFFER_N));
+            aBRW_say(brw, aBRW_pick_known(aBRW_offer_lines));
         }
     } else if (msg >= aBRW_MSG_OFFER && msg < aBRW_MSG_OFFER + aBRW_MSG_OFFER_N) {
         if (choice != 0) {
@@ -397,7 +413,7 @@ static void aBRW_line_done(NPC_BREWSTER_ACTOR* brw, int msg, int choice) {
         if (!aBRW_cf()) {
             brw->cup = aBRW_CUP_COFFEE; /* here you go */
         }
-        aBRW_say(brw, aBRW_pick(aBRW_MSG_SERVE, aBRW_MSG_SERVE_N));
+        aBRW_say(brw, aBRW_pick_known(aBRW_serve_lines));
     } else if (msg >= aBRW_MSG_SERVE && msg < aBRW_MSG_SERVE + aBRW_MSG_SERVE_N) {
         if (aBRW_cf()) {
             brw->cup = aBRW_CUP_COFFEE;
@@ -468,7 +484,7 @@ static void aBRW_talk_wait_line(NPC_BREWSTER_ACTOR* brw, GAME_PLAY* play) {
 
 static void aBRW_set_talk_info(ACTOR* actorx) {
     NPC_BREWSTER_ACTOR* brw = (NPC_BREWSTER_ACTOR*)actorx;
-    int msg = aBRW_pick(aBRW_MSG_GREET, aBRW_MSG_GREET_N);
+    int msg = aBRW_pick_known(aBRW_greet_lines);
 
     pc_cf_lines_set_talking(PC_CF_BREWSTER);
     if (brw->seated_talk) {
@@ -750,7 +766,7 @@ static void aBRW_draw_cup(NPC_BREWSTER_ACTOR* brw, GAME_PLAY* play) {
     m[0][0] = c, m[0][1] = -sn, m[0][2] = 0.0f, m[0][3] = pos.x;
     m[1][0] = sn, m[1][1] = c, m[1][2] = 0.0f, m[1][3] = pos.y;
     m[2][0] = 0.0f, m[2][1] = 0.0f, m[2][2] = aBRW_CUP_SCALE, m[2][3] = pos.z;
-    pc_cf_char_play_draw(play, models[cup], m, 0, NULL, NULL, 0, 1.0f);
+    pc_cf_char_play_draw(play, models[cup], m, 0, NULL, NULL, 0, aKKR_room_light());
 }
 
 /* Blathers' skeleton draws nothing (pc_brewster_skeleton); City Folk's Brewster goes where it stood */

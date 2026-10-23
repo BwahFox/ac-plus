@@ -24,6 +24,11 @@
  *                    stay missing after: the real trip refills them when it moves to the island)
  * PC_CONST_EDIT_AT=F  open Celeste's telescope (PC_CONST_EDIT_MODE: 0 stargazing, 1 make one)
  * PC_WARP_AT=F       go through the museum's door at frame F (pc_devwarp.c)
+ * PC_CLOCK_LAG_AT=F:S set the town's clock S seconds behind at frame F, as sleeping would (pc_os.c)
+ * PC_VTX_DUMP_AT=F   log the bounds of the basement's and the house rooms' wall/floor models
+ * PC_HOUSE_DUMP_AT=F log each house's size, basement and the basement's wallpaper/carpet state
+ * PC_EVENT_DUMP_AT=F log the special event, Redd's hours today and his tent (m_event.c)
+ * PC_TELEPORT_AT=F   put the player at PC_TELEPORT_POS=x,z[,degrees] at frame F (pc_devwarp.c)
  * PC_SFX_AT=F:name   play cf_sky/sfx/<name>.wav at frame F (pc_sfx.c)
  * PC_TYPE=F:text;...  type text at frame F (as a keyboard would into a text field)
  * PC_PAT_PAINT_AT=F  paint pattern slot 0 with stripes (an edit)
@@ -39,6 +44,7 @@
  * same moment with or without --no-framelimit.
  */
 #include "pc_platform.h"
+#include "PR/gbi.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -164,6 +170,53 @@ u32 pc_devtest_buttons(void) {
         extern void pc_dev_warp(void* play, int which);
         extern void* gamePT;
         pc_dev_warp(gamePT, devtest_env_int("PC_WARP_SCENE"));
+    }
+    {
+        const char* lag = getenv("PC_CLOCK_LAG_AT");
+
+        if (lag != NULL && strchr(lag, ':') != NULL && s_frame == (u32)atoi(lag)) {
+            extern void pc_os_dev_clock_lag(int secs);
+            pc_os_dev_clock_lag(atoi(strchr(lag, ':') + 1));
+            printf("[PC] clock: dev lag %s s at frame %u\n", strchr(lag, ':') + 1, s_frame);
+        }
+    }
+    if (s_frame == (u32)devtest_env_int("PC_VTX_DUMP_AT")) {
+        extern Vtx rom_myhome_ug_v[], rom_myhome4_1_wall_v[], rom_myhome4_1_floor_v[], rom_myhome3_wall_v[];
+        static const struct { const char* name; Vtx* v; int n; } models[] = {
+            { "basement (ug)", rom_myhome_ug_v, 0x980 / 16 },
+            { "LL1 wall", rom_myhome4_1_wall_v, 0x4F0 / 16 },
+            { "LL1 floor", rom_myhome4_1_floor_v, 0x5B0 / 16 },
+            { "L wall", rom_myhome3_wall_v, 0x4F0 / 16 },
+        };
+        int m, i;
+
+        for (m = 0; m < 4; m++) {
+            int n = models[m].n ? models[m].n : 64;
+            int lo[3] = { 99999, 99999, 99999 }, hi[3] = { -99999, -99999, -99999 }, k;
+
+            for (i = 0; i < n; i++) {
+                for (k = 0; k < 3; k++) {
+                    int c = models[m].v[i].v.ob[k];
+                    lo[k] = c < lo[k] ? c : lo[k];
+                    hi[k] = c > hi[k] ? c : hi[k];
+                }
+            }
+            printf("[Vtx] %s: x %d..%d y %d..%d z %d..%d\n", models[m].name, lo[0], hi[0], lo[1], hi[1], lo[2], hi[2]);
+        }
+        fflush(stdout);
+    }
+    if (s_frame == (u32)devtest_env_int("PC_HOUSE_DUMP_AT")) {
+        extern void pc_basement_dev_dump(void);
+        pc_basement_dev_dump();
+    }
+    if (s_frame == (u32)devtest_env_int("PC_EVENT_DUMP_AT")) {
+        extern void pc_mEv_dev_dump(void);
+        pc_mEv_dev_dump();
+    }
+    if (s_frame == (u32)devtest_env_int("PC_TELEPORT_AT")) {
+        extern void pc_dev_teleport(void* play);
+        extern void* gamePT;
+        pc_dev_teleport(gamePT);
     }
     if (s_frame == (u32)devtest_env_int("PC_LOBBY_DUMP_AT")) {
         /* Vtx: s16 ob[3], u16 flag, s16 tc[2], u8 cn[4] */

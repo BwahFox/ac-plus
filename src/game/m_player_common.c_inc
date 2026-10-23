@@ -2761,6 +2761,12 @@ static int Player_actor_CheckScene_AbleOutItem(int scene_no) {
     };
     // clang-format on
 
+#ifdef TARGET_PC
+    /* ac-plus's museum rooms come after the table above: as the museum's entrance */
+    if (mSc_IS_SCENE_MUSEUM_PC_ROOM(scene_no)) {
+        scene_no = SCENE_MUSEUM_ENTRANCE;
+    }
+#endif
     if (!(scene_no >= 0 && scene_no < SCENE_NUM)) {
         return FALSE;
     }
@@ -7613,6 +7619,12 @@ static int Player_actor_CheckAndRequest_main_pickup_all(GAME* game) {
 static int Player_actor_CheckScene_AbleSubmenu(void) {
     int scene_no = Save_Get(scene_no);
 
+#ifdef TARGET_PC
+    /* ac-plus's museum rooms (the observatory, the Roost) come after the table below: as the museum's entrance */
+    if (mSc_IS_SCENE_MUSEUM_PC_ROOM(scene_no)) {
+        scene_no = SCENE_MUSEUM_ENTRANCE;
+    }
+#endif
     if (!(scene_no >= 0 && scene_no < SCENE_NUM)) {
         return FALSE;
     } else {

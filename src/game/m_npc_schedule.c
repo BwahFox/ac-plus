@@ -1,3 +1,5 @@
+#include <stdio.h>
+#include <stdlib.h>
 #include "m_npc_schedule.h"
 
 #include "m_common_data.h"
@@ -174,6 +176,23 @@ static void mNPS_schedule_manager_sub(mNPS_schedule_c* schedule, int forced_tick
   else {
     schedule->current_type = schedule->saved_type;
   }
+#ifdef TARGET_PC
+  {
+    /* over at the Roost for a cup (ac_roost_guest.c): not out in town meanwhile */
+    extern int aRGT_at_roost_now(mActor_name_t npc_id);
+
+    if (schedule != Common_GetPointer(npc_schedule[ANIMAL_NUM_MAX]) && aRGT_at_roost_now(schedule->id->npc_id)) {
+      static int logged = FALSE; /* dev */
+
+      if (!logged && getenv("PC_GUEST_LOG") != NULL) {
+        printf("[Guest] %04X is at the Roost: indoors in town\n", schedule->id->npc_id);
+        fflush(stdout);
+        logged = TRUE;
+      }
+      schedule->current_type = mNPS_SCHED_IN_HOUSE;
+    }
+  }
+#endif
 }
 
 static void mNPS_schedule_manager_sub0() {

@@ -1037,6 +1037,8 @@ enum actor_profile_table {
 #ifdef TARGET_PC
     mAc_PROFILE_NPC_CELESTE,
     mAc_PROFILE_NPC_BREWSTER,
+    mAc_PROFILE_NPC_KK_ROOST,
+    mAc_PROFILE_ROOST_GUEST,
 #endif
 
     mAc_PROFILE_NUM

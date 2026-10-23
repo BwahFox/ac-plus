@@ -126,6 +126,7 @@ void pc_platform_init(void) {
 }
 
 extern void PADCleanup(void);
+extern void pc_inhibit_start(void); /* pc_inhibit.c */
 
 static void pc_speedhack_toggle(void) {
     g_pc_speedhack_enabled = !g_pc_speedhack_enabled;
@@ -412,6 +413,7 @@ int main(int argc, char* argv[]) {
     pc_settings_load();
     pc_keybindings_load();
     pc_platform_init();
+    pc_inhibit_start();
     pc_disc_init();
     if (!pc_assets_init()) {
         const char* msg =

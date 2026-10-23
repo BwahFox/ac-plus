@@ -1,4 +1,11 @@
 #include "ac_quest_talk_normal_init.h"
+#ifdef TARGET_PC
+#include "pc_basement.h"
+/* the basement's rock wall/floor items (pc_basement.h) aren't for trading: m_private.c's counts skip them too */
+#define aQMgr_PC_SKIP(item) PC_ITEM_IS_BASEMENT_LOOK(item)
+#else
+#define aQMgr_PC_SKIP(item) FALSE
+#endif
 
 #include "m_font.h"
 #include "m_msg.h"
@@ -883,7 +890,7 @@ static int aQMgr_get_possession_ftr_cpt_wl_rnd(mActor_name_t* item_p, mActor_nam
     if (item_cnt > 0 && item_cnt <= mPr_POCKETS_SLOT_COUNT) {
         sel_idx = RANDOM(item_cnt);
         for (i = 0; i < mPr_POCKETS_SLOT_COUNT; i++) {
-            if (mPr_GET_ITEM_COND(Now_Private->inventory.item_conditions, i) == mPr_ITEM_COND_NORMAL && *pockets_p != cancel_item && (ITEM_IS_FTR(*pockets_p) || (ITEM_NAME_GET_TYPE(*pockets_p) == NAME_TYPE_ITEM1 && (ITEM_NAME_GET_CAT(*pockets_p) == ITEM1_CAT_CARPET || ITEM_NAME_GET_CAT(*pockets_p) == ITEM1_CAT_WALL)))) {
+            if (mPr_GET_ITEM_COND(Now_Private->inventory.item_conditions, i) == mPr_ITEM_COND_NORMAL && *pockets_p != cancel_item && (ITEM_IS_FTR(*pockets_p) || (ITEM_NAME_GET_TYPE(*pockets_p) == NAME_TYPE_ITEM1 && (ITEM_NAME_GET_CAT(*pockets_p) == ITEM1_CAT_CARPET || ITEM_NAME_GET_CAT(*pockets_p) == ITEM1_CAT_WALL) && !aQMgr_PC_SKIP(*pockets_p)))) {
                 if (sel_idx <= 0) {
                     ret_idx = i;
                     *item_p = *pockets_p;

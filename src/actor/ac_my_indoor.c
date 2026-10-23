@@ -5,6 +5,9 @@
 #include "m_room_type.h"
 #include "m_name_table.h"
 #include "m_common_data.h"
+#ifdef TARGET_PC
+#include "pc_basement.h"
+#endif
 #include "m_rcp.h"
 #include "m_mark_room.h"
 #include "sys_matrix.h"
@@ -128,6 +131,18 @@ static aMI_size_disp_data_c aMI_size_dsp_table[aMI_ROOM_KIND_NUM] = {
 };
 // clang-format on
 
+#ifdef TARGET_PC
+/* ac-plus: wallpaper and carpets in the basement (pc_basement.c). Its main area is the L room's 8x8, so the L
+ * room's walls and floor carry them; the basement's own model is drawn without its rock walls once there's
+ * wallpaper, and the carpet lies a hair above its rock floor (which also runs on under the stairs). */
+extern Gfx rom_myhome_ug_nowall_model[];
+static f32 l_pc_floor_lift;
+
+static int aMI_pc_basement(MY_INDOOR_ACTOR* my_indoor) {
+    return my_indoor->room_kind == aMI_ROOM_KIND_BASEMENT;
+}
+#endif
+
 extern Gfx obj_myhome_step_down_model[];
 extern Gfx obj_myhome_step_up_model[];
 
@@ -245,7 +260,11 @@ static void aMI_MyIndoorDma(ACTOR* actorx, GAME* game) {
     aMI_CopyWallTexture(actorx, my_indoor->wall_num, aMI_BANK_NUM);
     aMI_CopyFloorTexture(actorx, my_indoor->floor_num, aMI_BANK_NUM);
 
-    if (mSc_IS_SCENE_BASEMENT(Save_Get(scene_no))) {
+    if (mSc_IS_SCENE_BASEMENT(Save_Get(scene_no))
+#ifdef TARGET_PC
+        && !pc_basement_custom(aMI_GetPlayerRoomIdx(), PC_BASEMENT_FLOOR)
+#endif
+    ) {
         Common_Set(floor_idx, FLOOR_BASEMENT);
     } else {
         aNI_SetFloorSE(my_indoor->floor_num);
@@ -449,7 +468,11 @@ static void aMI_DrawMyFloor(ACTOR* actorx, GAME* game) {
         graph = game->graph;
 
         _texture_z_light_fog_prim(graph);
+#ifdef TARGET_PC
+        Matrix_translate(0.0f, l_pc_floor_lift, 0.0f, MTX_LOAD);
+#else
         Matrix_translate(0.0f, 0.0f, 0.0f, MTX_LOAD);
+#endif
         Matrix_scale(0.0625f, 0.0625f, 0.0625f, MTX_MULT);
 
         OPEN_DISP(graph);
@@ -599,7 +622,11 @@ static void aMI_DrawMyOriginalFloor(ACTOR* actorx, GAME* game) {
         graph = game->graph;
 
         _texture_z_light_fog_prim(graph);
+#ifdef TARGET_PC
+        Matrix_translate(0.0f, l_pc_floor_lift, 0.0f, MTX_LOAD);
+#else
         Matrix_translate(0.0f, 0.0f, 0.0f, MTX_LOAD);
+#endif
         Matrix_scale(0.0625f, 0.0625f, 0.0625f, MTX_MULT);
 
         OPEN_DISP(graph);
@@ -704,6 +731,39 @@ static void aMI_DrawMyOriginalWall(ACTOR* actorx, GAME* game) {
 static void My_Indoor_Actor_draw(ACTOR* actorx, GAME* game) {
     MY_INDOOR_ACTOR* my_indoor = (MY_INDOOR_ACTOR*)actorx;
 
+#ifdef TARGET_PC
+    if (aMI_pc_basement(my_indoor)) {
+        int house = aMI_GetPlayerRoomIdx();
+        int wall = pc_basement_custom(house, PC_BASEMENT_WALL);
+        int floor = pc_basement_custom(house, PC_BASEMENT_FLOOR);
+        GRAPH* graph = game->graph;
+
+        /* the basement itself: rock walls only until there's wallpaper */
+        Global_kankyo_set_room_prim(game);
+        _texture_z_light_fog_prim(graph);
+        Matrix_translate(0.0f, 0.0f, 0.0f, MTX_LOAD);
+        Matrix_scale(0.0625f, 0.0625f, 0.0625f, MTX_MULT);
+        OPEN_DISP(graph);
+        gSPMatrix(NEXT_POLY_OPA_DISP, _Matrix_to_Mtx_new(graph), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+        gSPDisplayList(NEXT_POLY_OPA_DISP, wall ? rom_myhome_ug_nowall_model : aMI_size_dsp_table[aMI_ROOM_KIND_BASEMENT].main.floor_model);
+        CLOSE_DISP(graph);
+
+        /* the L room's walls and floor, with the basement's wallpaper and carpet */
+        my_indoor->room_kind = aMI_ROOM_KIND_L;
+        if (wall) {
+            (*my_indoor->banks[my_indoor->wall_bank_idx & 1].wall_draw_proc)(actorx, game);
+        }
+        if (floor) {
+            l_pc_floor_lift = 0.5f;
+            (*my_indoor->banks[my_indoor->floor_bank_idx & 1].floor_draw_proc)(actorx, game);
+            l_pc_floor_lift = 0.0f;
+        }
+        my_indoor->room_kind = aMI_ROOM_KIND_BASEMENT;
+        aMI_DrawMyStep(actorx, game);
+        return;
+    }
+#endif
+
     // Draw the wall
     (*my_indoor->banks[my_indoor->wall_bank_idx & 1].wall_draw_proc)(actorx, game);
 
@@ -730,6 +790,11 @@ static void aMI_Change2ReservedWall(ACTOR* actorx, GAME* game) {
             my_indoor->wall_is_original_design = my_indoor->wall_reserve.is_original_flag;
 
             aMI_CopyWallTexture(actorx, my_indoor->wall_num, my_indoor->wall_bank_idx);
+#ifdef TARGET_PC
+            if (aMI_pc_basement(my_indoor)) {
+                pc_basement_set_custom(player_room_idx, PC_BASEMENT_WALL);
+            }
+#endif
 
             if (Save_Get(scene_no) == SCENE_COTTAGE_MY) {
                 Save_Get(island).cottage.room.wall_floor.wallpaper_idx = my_indoor->wall_num;
@@ -761,6 +826,11 @@ static void aMI_Change2ReservedFloor(ACTOR* actorx, GAME* game) {
             my_indoor->floor_is_original_design = my_indoor->floor_reserve.is_original_flag;
 
             aMI_CopyFloorTexture(actorx, my_indoor->floor_num, my_indoor->floor_bank_idx);
+#ifdef TARGET_PC
+            if (aMI_pc_basement(my_indoor)) {
+                pc_basement_set_custom(player_room_idx, PC_BASEMENT_FLOOR);
+            }
+#endif
 
             if (Save_Get(scene_no) == SCENE_COTTAGE_MY) {
                 Save_Get(island).cottage.room.wall_floor.flooring_idx = my_indoor->floor_num;
@@ -782,13 +852,45 @@ static void My_Indoor_Actor_move(ACTOR* actorx, GAME* game) {
     aMI_Change2ReservedFloor(actorx, game);
 }
 
+#ifdef TARGET_PC
+/* The basement's rock wall/floor item put down there: the rock back, and what covered it back to the player */
+static mActor_name_t aMI_pc_restore_basement(mActor_name_t item, int what) {
+    MY_INDOOR_ACTOR* my_indoor =
+        Common_Get(clip).my_indoor_clip != NULL ? Common_Get(clip).my_indoor_clip->my_indoor_actor_p : NULL;
+    int house = aMI_GetPlayerRoomIdx();
+    mActor_name_t old;
+
+    if (my_indoor == NULL || !aMI_pc_basement(my_indoor) || !pc_basement_custom(house, what)) {
+        return item; /* nothing to do: they keep it */
+    }
+    if (what == PC_BASEMENT_FLOOR) {
+        old = FLOOR_IS_MY_ORIG(my_indoor->floor_num) ? EMPTY_NO : (mActor_name_t)(ITM_CARPET00 + my_indoor->floor_num);
+        Common_Set(floor_idx, FLOOR_BASEMENT);
+    } else {
+        old = WALL_IS_MY_ORIG(my_indoor->wall_num) ? EMPTY_NO : (mActor_name_t)(ITM_WALL00 + my_indoor->wall_num);
+    }
+    pc_basement_clear_custom(house, what);
+    mMkRm_ReportChangePlayerRoom();
+    sAdo_SysTrgStart(0x11B);
+    return old;
+}
+#endif
+
 static mActor_name_t aMI_ChangeCarpet(mActor_name_t item) {
     mActor_name_t old_floor;
 
+#ifdef TARGET_PC
+    if (item == PC_ITM_BASEMENT_FLOOR) {
+        return aMI_pc_restore_basement(item, PC_BASEMENT_FLOOR);
+    }
+#endif
+
+#ifndef TARGET_PC /* ac-plus: the basement takes carpets too */
     // Do not allow changing the floor in the basement
     if (mFI_GetNowPlayerHouseFloorNo() == 2) {
         return EMPTY_NO;
     }
+#endif
 
     if (Common_Get(clip).my_indoor_clip != NULL &&
         (item >= ITM_CARPET00 && item < (ITM_CARPET00 + FLOOR_PLAYER_ROOM_END))) {
@@ -796,6 +898,11 @@ static mActor_name_t aMI_ChangeCarpet(mActor_name_t item) {
 
         if (my_indoor != NULL && my_indoor->floor_reserve.reserve_flag == FALSE) {
             old_floor = ITM_CARPET00 + my_indoor->floor_num;
+#ifdef TARGET_PC
+            if (aMI_pc_basement(my_indoor) && !pc_basement_custom(aMI_GetPlayerRoomIdx(), PC_BASEMENT_FLOOR)) {
+                old_floor = PC_ITM_BASEMENT_FLOOR; /* the rock floor, as an item to put back */
+            }
+#endif
             my_indoor->floor_reserve.reserve_flag = TRUE;
             my_indoor->floor_reserve.idx = item - ITM_CARPET00;
             my_indoor->floor_reserve.is_original_flag = FALSE;
@@ -814,7 +921,11 @@ static mActor_name_t aMI_FloorIdx2ChangeFloor(int idx, int is_original_flag) {
     if (my_indoor != NULL) {
         old_floor = ITM_CARPET00 + my_indoor->floor_num;
 
+#ifdef TARGET_PC
+        if (my_indoor->floor_reserve.reserve_flag == FALSE) {
+#else
         if (mFI_GetNowPlayerHouseFloorNo() != 2 && my_indoor->floor_reserve.reserve_flag == FALSE) {
+#endif
             my_indoor->floor_reserve.reserve_flag = TRUE;
             my_indoor->floor_reserve.idx = idx;
             my_indoor->floor_reserve.is_original_flag = is_original_flag;
@@ -823,6 +934,11 @@ static mActor_name_t aMI_FloorIdx2ChangeFloor(int idx, int is_original_flag) {
             if (FLOOR_IS_MY_ORIG(my_indoor->floor_num)) {
                 return EMPTY_NO;
             }
+#ifdef TARGET_PC
+            if (aMI_pc_basement(my_indoor) && !pc_basement_custom(aMI_GetPlayerRoomIdx(), PC_BASEMENT_FLOOR)) {
+                return PC_ITM_BASEMENT_FLOOR;
+            }
+#endif
 
             return old_floor;
         }
@@ -834,10 +950,18 @@ static mActor_name_t aMI_FloorIdx2ChangeFloor(int idx, int is_original_flag) {
 static mActor_name_t aMI_ChangeWall(mActor_name_t item) {
     mActor_name_t old_wall;
 
+#ifdef TARGET_PC
+    if (item == PC_ITM_BASEMENT_WALL) {
+        return aMI_pc_restore_basement(item, PC_BASEMENT_WALL);
+    }
+#endif
+
+#ifndef TARGET_PC /* ac-plus: and wallpaper */
     // Do not allow changing the wall in the basement
     if (mFI_GetNowPlayerHouseFloorNo() == 2) {
         return EMPTY_NO;
     }
+#endif
 
     if (Common_Get(clip).my_indoor_clip != NULL) {
         MY_INDOOR_ACTOR* my_indoor = Common_Get(clip).my_indoor_clip->my_indoor_actor_p;
@@ -845,6 +969,11 @@ static mActor_name_t aMI_ChangeWall(mActor_name_t item) {
         if (my_indoor != NULL && (item >= ITM_WALL00 && item < (ITM_WALL00 + WALL_ETC_END)) &&
             my_indoor->wall_reserve.reserve_flag == FALSE) {
             old_wall = ITM_WALL00 + my_indoor->wall_num;
+#ifdef TARGET_PC
+            if (aMI_pc_basement(my_indoor) && !pc_basement_custom(aMI_GetPlayerRoomIdx(), PC_BASEMENT_WALL)) {
+                old_wall = PC_ITM_BASEMENT_WALL; /* the rock wall, as an item to put back */
+            }
+#endif
             my_indoor->wall_reserve.reserve_flag = TRUE;
             my_indoor->wall_reserve.idx = item - ITM_WALL00;
             my_indoor->wall_reserve.is_original_flag = FALSE;
@@ -863,7 +992,11 @@ static mActor_name_t aMI_WallIdx2ChangeWall(int idx, int is_original_flag) {
     if (my_indoor != NULL) {
         wall_floor = ITM_WALL00 + my_indoor->wall_num;
 
+#ifdef TARGET_PC
+        if (my_indoor->wall_reserve.reserve_flag == FALSE) {
+#else
         if (mFI_GetNowPlayerHouseFloorNo() != 2 && my_indoor->wall_reserve.reserve_flag == FALSE) {
+#endif
             my_indoor->wall_reserve.reserve_flag = TRUE;
             my_indoor->wall_reserve.idx = idx;
             my_indoor->wall_reserve.is_original_flag = is_original_flag;
@@ -872,6 +1005,11 @@ static mActor_name_t aMI_WallIdx2ChangeWall(int idx, int is_original_flag) {
             if (WALL_IS_MY_ORIG(my_indoor->wall_num)) {
                 return EMPTY_NO;
             }
+#ifdef TARGET_PC
+            if (aMI_pc_basement(my_indoor) && !pc_basement_custom(aMI_GetPlayerRoomIdx(), PC_BASEMENT_WALL)) {
+                return PC_ITM_BASEMENT_WALL;
+            }
+#endif
 
             return wall_floor;
         }

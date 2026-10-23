@@ -24,6 +24,34 @@ static s64 gc_epoch_offset_ticks = 0; /* Ticks from GC epoch to program start */
 /* GC epoch: Jan 1, 2000 (946684800 seconds after Unix epoch) */
 #define GC_UNIX_EPOCH_DIFF 946684800LL
 
+static s64 s_wall_shift_secs = 0; /* --time / --date: how far the game's clock is set from the real one */
+static s64 s_calendar_fix = 0;    /* added to OSGetTime for the calendar (pc_os_calendar_ticks) */
+
+/* GC ticks of a real time, as local time (daylight saving included) plus the --time/--date shift */
+static s64 pc_os_wall_ticks(time_t real_now) {
+    struct tm* gmt = gmtime(&real_now);
+    struct tm utc_tm;
+    s64 tz_offset_secs;
+
+    if (gmt == NULL) {
+        return 0;
+    }
+    utc_tm = *gmt;
+    utc_tm.tm_isdst = -1; /* let mktime determine DST */
+    tz_offset_secs = (s64)difftime(real_now, mktime(&utc_tm));
+    return ((s64)(real_now - GC_UNIX_EPOCH_DIFF) + tz_offset_secs + s_wall_shift_secs) * (s64)GC_TIMER_CLOCK;
+}
+
+/* dev: PC_CLOCK_SPEED=n runs the calendar clock n times faster from startup */
+static int pc_os_clock_speed(void) {
+    static int clock_speed = -1;
+
+    if (clock_speed < 0) {
+        clock_speed = getenv("PC_CLOCK_SPEED") != NULL ? atoi(getenv("PC_CLOCK_SPEED")) : 0;
+    }
+    return clock_speed;
+}
+
 s64 osGetTime(void) {
     u64 now = SDL_GetPerformanceCounter();
     u64 freq = SDL_GetPerformanceFrequency();
@@ -32,6 +60,36 @@ s64 osGetTime(void) {
 }
 
 s64 OSGetTime(void) { return osGetTime(); }
+
+/* The time the town's calendar reads (lbRTC_GetHardTime). OSGetTime counts on from the clock read at startup,
+ * and under Wine that counter stops while the computer sleeps (a Steam Deck suspended mid-game came back with
+ * the town hours behind); NTP and daylight saving changes were missed too. So once a second this checks the
+ * computer's clock and catches up when it has run ahead. Never back (a daylight saving change in the autumn,
+ * the clock set back): time going backwards in a running town is worse than an hour off until the restart.
+ * OSGetTime itself stays smooth for everything that measures time with it. */
+void OSReport(const char* fmt, ...);
+
+/* dev (pc_devtest.c PC_CLOCK_LAG_AT): set the calendar secs behind, as a sleep would */
+void pc_os_dev_clock_lag(int secs) {
+    s_calendar_fix -= (s64)secs * GC_TIMER_CLOCK;
+}
+
+s64 pc_os_calendar_ticks(void) {
+    static time_t last_check = 0;
+    time_t real_now = time(NULL);
+
+    if (real_now != last_check && pc_os_clock_speed() <= 1) {
+        s64 wall = pc_os_wall_ticks(real_now);
+        s64 drift = wall - (osGetTime() + s_calendar_fix);
+
+        last_check = real_now;
+        if (drift > 2 * (s64)GC_TIMER_CLOCK) {
+            s_calendar_fix += drift;
+            OSReport("[PC] clock: caught up %lld s with the computer's clock\n", (long long)(drift / GC_TIMER_CLOCK));
+        }
+    }
+    return osGetTime() + s_calendar_fix;
+}
 
 /* same as OSGetTime on PC (no time_adjust needed) */
 s64 __OSGetSystemTime(void) { return OSGetTime(); }
@@ -109,12 +167,8 @@ void OSTicksToCalendarTime(s64 ticks, void* td_ptr) {
     int* td = (int*)td_ptr;
     int days, secs;
     s64 d;
-    static int clock_speed = -1;
+    int clock_speed = pc_os_clock_speed();
 
-    /* dev: PC_CLOCK_SPEED=n runs the calendar clock n times faster from startup */
-    if (clock_speed < 0) {
-        clock_speed = getenv("PC_CLOCK_SPEED") != NULL ? atoi(getenv("PC_CLOCK_SPEED")) : 0;
-    }
     if (clock_speed > 1 && ticks > gc_epoch_offset_ticks) {
         ticks = gc_epoch_offset_ticks + (ticks - gc_epoch_offset_ticks) * clock_speed;
     }
@@ -258,16 +312,10 @@ void OSInit(void) {
         arena_hi = arena_memory + PC_MAIN_MEMORY_SIZE;
     }
     time_base_start = SDL_GetPerformanceCounter();
-    /* compute ticks from GC epoch (Jan 1, 2000) to now, with timezone */
+    /* ticks from GC epoch (Jan 1, 2000) to now, local time; --time / --date shift it */
     {
-        time_t unix_now = time(NULL);
-
-        struct tm* gmt = gmtime(&unix_now);
-        if (!gmt) { gc_epoch_offset_ticks = 0; return; }
-        struct tm utc_tm = *gmt;
-        utc_tm.tm_isdst = -1; /* let mktime determine DST */
-        time_t utc_as_local = mktime(&utc_tm);
-        s64 tz_offset_secs = (s64)difftime(unix_now, utc_as_local);
+        time_t real_now = time(NULL);
+        time_t unix_now = real_now;
 
         if (g_pc_time_override >= 0 || g_pc_date_month > 0) {
             /* --time H[:M[:S]] / --date M/D[/Y] overrides */
@@ -287,9 +335,8 @@ void OSInit(void) {
                 if (ovr_time != (time_t)-1) unix_now = ovr_time;
             }
         }
-
-        s64 gc_secs = (s64)(unix_now - GC_UNIX_EPOCH_DIFF) + tz_offset_secs;
-        gc_epoch_offset_ticks = gc_secs * (s64)GC_TIMER_CLOCK;
+        s_wall_shift_secs = (s64)(unix_now - real_now);
+        gc_epoch_offset_ticks = pc_os_wall_ticks(real_now);
     }
 }
 

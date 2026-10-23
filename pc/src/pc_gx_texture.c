@@ -613,6 +613,20 @@ static void pc_gx_load_tex_obj_impl(void* obj, u32 id) {
      * request, while disabled forces nearest-neighbor for every game texture. */
     u32 filter_mode = g_pc_settings.texture_filtering ? o[TEXOBJ_MIN_FILTER] : GX_NEAR;
 
+#ifdef _WIN32
+    /* a texture whose image isn't readable memory (a stale or garbled pointer): skip it rather than crash */
+    if (image_ptr != NULL && IsBadReadPtr(image_ptr, 32)) {
+        static int logged;
+
+        if (logged++ < 8) {
+            fprintf(stderr, "[GX] skipped a texture with unreadable image %p (%dx%d fmt %u tlut %d)\n", image_ptr, width,
+                    height, (unsigned)format, (int)o[TEXOBJ_TLUT_NAME]);
+            fflush(stderr);
+        }
+        return;
+    }
+#endif
+
     if (format == GX_TF_C4 || format == GX_TF_C8) {
         int tlut_name = (int)o[TEXOBJ_TLUT_NAME];
         if (tlut_name >= 0 && tlut_name < 16 && g_gx.tlut[tlut_name].data) {

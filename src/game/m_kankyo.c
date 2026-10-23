@@ -2419,6 +2419,14 @@ extern void staffroll_light_dt(GAME_PLAY* play) {
     Global_light_list_delete(&play->global_light, S_get_light_list);
 }
 
+#ifdef TARGET_PC
+/* K.K.'s show at the Roost (ac_npc_kk_roost.c): the scene's lights down by dim (0-1), as his Saturday show
+ * fades them (staffroll_fade_rate); the next scene starts at full again (mEnv_ct) */
+extern void pc_mEnv_SetShowDim(f32 dim) {
+    l_mEnv_electric_light.staffroll_fade_rate = 1.0f - dim;
+}
+#endif
+
 extern void mEnv_GetShadowPrimColor_Light(u8* r, u8* g, u8* b, GAME* game) {
     GAME_PLAY* play = (GAME_PLAY*)game;
 

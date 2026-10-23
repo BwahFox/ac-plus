@@ -14,7 +14,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 ROOT="$PWD"
-IMAGE=ac-plus-build:2
+IMAGE=ac-plus-build:3
 DIST="$ROOT/dist/ac-plus"
 
 if command -v podman > /dev/null 2>&1; then
@@ -46,6 +46,7 @@ case "${1:-}" in
         mkdir -p "$DIST/rom" "$DIST/save" "$DIST/texture_pack" "$DIST/music" "$DIST/shaders"
         cp pc/build-container/bin/AnimalCrossing.exe "$DIST/"
         cp pc/build-container/bin/shaders/* "$DIST/shaders/"
+        cp pc/build-container/bin/ac-plus-inhibit "$DIST/"
         cp pc/tools/ac-sync.sh "$DIST/"
         # the City Folk converter the game runs on its first start: the tools and a Windows Python
         rm -rf "$DIST/cf-tools"
@@ -90,7 +91,7 @@ case "${1:-}" in
         run -i "$IMAGE" python3 - "dist/ac-plus-$version.zip" <<'PY'
 import os, sys, zipfile
 out = sys.argv[1]
-keep = ['AnimalCrossing.exe', 'ac-sync.sh', 'README.md', 'LICENSE', 'shaders/default.vert', 'shaders/default.frag',
+keep = ['AnimalCrossing.exe', 'ac-plus-inhibit', 'ac-sync.sh', 'README.md', 'LICENSE', 'shaders/default.vert', 'shaders/default.frag',
         'rom/PUT_YOUR_DISCS_HERE.txt']
 for top, dirs, files in os.walk('dist/ac-plus/cf-tools'):  # the City Folk converter
     dirs[:] = [d for d in dirs if d != '__pycache__']

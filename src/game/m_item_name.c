@@ -1,4 +1,8 @@
 #include "m_item_name.h"
+#ifdef TARGET_PC
+#include "pc_basement.h"
+#include <string.h>
+#endif
 
 #include "m_name_table.h"
 #include "m_lib.h"
@@ -500,6 +504,19 @@ extern void mIN_copy_name_str(u8* dst, mActor_name_t item) {
                                                       CHAR_SPACE, CHAR_SPACE, CHAR_SPACE, CHAR_SPACE,
                                                       CHAR_SPACE, CHAR_SPACE, CHAR_SPACE, CHAR_SPACE };
 
+#ifdef TARGET_PC
+    if (PC_ITEM_IS_BASEMENT_LOOK(item)) {
+        static const char* names[] = { "basement floor", "basement wall" };
+        const char* name = names[item == PC_ITM_BASEMENT_WALL];
+        int k;
+
+        for (k = 0; k < mIN_ITEM_NAME_LEN; k++) {
+            dst[k] = name[k] != '\0' && k < (int)strlen(name) ? (u8)name[k] : CHAR_SPACE;
+        }
+        return;
+    }
+#endif
+
     u8 item_name[mIN_ITEM_NAME_LEN];
     u32 itm = item;
     mActor_name_t item_no = mRmTp_FtrItemNo2Item1ItemNo(item, FALSE);
@@ -572,6 +589,12 @@ extern int mIN_get_item_article(mActor_name_t item) {
     int article = mIN_ARTICLE_NONE;
     mActor_name_t item_no = mRmTp_FtrItemNo2Item1ItemNo(item, FALSE);
     int index = item_no & 0xFF;
+
+#ifdef TARGET_PC
+    if (PC_ITEM_IS_BASEMENT_LOOK(item_no)) {
+        return itemArt_Carpet[0]; /* as the carpets and wallpapers: past the end of their tables */
+    }
+#endif
 
     switch (ITEM_NAME_GET_TYPE(item_no)) {
         case NAME_TYPE_ITEM1: {

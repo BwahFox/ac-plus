@@ -21,6 +21,9 @@ struct game_play_s;
  * light: 0-1 brightness of the room's light; y_offset raises the room (City Folk floors are at 0).
  * Returns FALSE if the room isn't there. */
 int pc_cf_room_play_draw(struct game_play_s* play, const char* name, float light, float y_offset);
+/* Game side, before pc_cf_room_play_draw: a pool of light around (x, z) in room units, radius r, at strength
+ * 0-1 (0 = none), lifting the room's light there to full and a little warm. For one frame. */
+void pc_cf_room_set_spot(float x, float z, float r, float strength);
 int pc_cf_room_exists(const char* name);
 /* The room's 16x16 floor plan (nonzero = walkable, row-major by z), or NULL */
 const unsigned char* pc_cf_room_grid(const char* name);

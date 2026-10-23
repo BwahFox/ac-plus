@@ -1,4 +1,12 @@
 #include "m_private.h"
+#ifdef TARGET_PC
+#include "pc_basement.h"
+/* the basement's rock wall/floor items (pc_basement.h): not catalogued, and not what a request for "a carpet" or
+ * "a wallpaper" finds */
+#define mPr_PC_SKIP(item) PC_ITEM_IS_BASEMENT_LOOK(item)
+#else
+#define mPr_PC_SKIP(item) FALSE
+#endif
 
 #include "m_land.h"
 #include "m_font.h"
@@ -383,7 +391,7 @@ extern int mPr_GetPossessionItemIdxItem1Category(Private_c* priv, u8 item1_type)
         int i;
 
         for (i = 0; i < mPr_POCKETS_SLOT_COUNT; i++) {
-            if (ITEM_NAME_GET_TYPE(*pockets) == NAME_TYPE_ITEM1 && GET_NAME_ITEM1_CATEGORY(*pockets) == item1_type) {
+            if (ITEM_NAME_GET_TYPE(*pockets) == NAME_TYPE_ITEM1 && GET_NAME_ITEM1_CATEGORY(*pockets) == item1_type && !mPr_PC_SKIP(*pockets)) {
                 idx = i;
                 break;
             }
@@ -403,7 +411,7 @@ extern int mPr_GetPossessionItemIdxItem1CategoryWithCond_cancel(Private_c* priv,
         int i;
 
         for (i = 0; i < mPr_POCKETS_SLOT_COUNT; i++) {
-            if (ITEM_NAME_GET_TYPE(*pockets) == NAME_TYPE_ITEM1 && GET_NAME_ITEM1_CATEGORY(*pockets) == item1_type &&
+            if (ITEM_NAME_GET_TYPE(*pockets) == NAME_TYPE_ITEM1 && GET_NAME_ITEM1_CATEGORY(*pockets) == item1_type && !mPr_PC_SKIP(*pockets) &&
                 cond == mPr_GET_ITEM_COND(priv->inventory.item_conditions, i) && *pockets != cancel_item) {
                 idx = i;
                 break;
@@ -501,7 +509,7 @@ extern u32 mPr_GetPossessionItemSumItemCategoryWithCond_cancel(Private_c* priv, 
         int i;
 
         for (i = 0; i < mPr_POCKETS_SLOT_COUNT; i++) {
-            if (ITEM_NAME_GET_TYPE(*pockets) == NAME_TYPE_ITEM1 && GET_NAME_ITEM1_CATEGORY(*pockets) == item1_type &&
+            if (ITEM_NAME_GET_TYPE(*pockets) == NAME_TYPE_ITEM1 && GET_NAME_ITEM1_CATEGORY(*pockets) == item1_type && !mPr_PC_SKIP(*pockets) &&
                 cond == mPr_GET_ITEM_COND(priv->inventory.item_conditions, i) && *pockets != cancel_item) {
                 sum++;
             }
@@ -520,7 +528,7 @@ extern u32 mPr_GetPossessionItemSumItemCategoryWithCond(Private_c* priv, u8 item
         int i;
 
         for (i = 0; i < mPr_POCKETS_SLOT_COUNT; i++) {
-            if (ITEM_NAME_GET_TYPE(*pockets) == NAME_TYPE_ITEM1 && GET_NAME_ITEM1_CATEGORY(*pockets) == item1_type &&
+            if (ITEM_NAME_GET_TYPE(*pockets) == NAME_TYPE_ITEM1 && GET_NAME_ITEM1_CATEGORY(*pockets) == item1_type && !mPr_PC_SKIP(*pockets) &&
                 cond == mPr_GET_ITEM_COND(priv->inventory.item_conditions, i)) {
                 sum++;
             }
@@ -554,6 +562,10 @@ extern u32 mPr_GetPossessionItemSumKindWithCond(Private_c* priv, mActor_name_t k
 extern void mPr_SetItemCollectBit(mActor_name_t item) {
     mActor_name_t ftr_item_no = mRmTp_Item1ItemNo2FtrItemNo_AtPlayerRoom(item, 0);
     int item_type;
+
+    if (mPr_PC_SKIP(item)) {
+        return; /* not a catalog item */
+    }
 
     if ((ftr_item_no >= FTR_FISH_START && ftr_item_no <= FTR_FISH_END) ||
         (ftr_item_no >= FTR_INSECT_START && ftr_item_no <= FTR_INSECT_END)) {

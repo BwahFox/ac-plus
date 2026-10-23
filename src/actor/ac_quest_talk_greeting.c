@@ -238,6 +238,14 @@ static int aQMgr_get_hello_msg_npc_feel_normal(Animal_c* animal, int looks, int 
     } else {
         mActor_name_t field_type = mFI_GET_TYPE(mFI_GetFieldId());
 
+#ifdef TARGET_PC
+        extern int pc_museum_rooms_scene(void);
+
+        /* a guest at the Roost: out and about, not at home (the café counts as a room) */
+        if (pc_museum_rooms_scene() == SCENE_MUSEUM_CAFE) {
+            field_type = mFI_FIELD_FG;
+        }
+#endif
         if (field_type == mFI_FIELD_ROOM0 || field_type == mFI_FIELD_NPCROOM0) {
             hello_msg = l_indoor_hello_msg_tbl[last_meet_time_type];
         } else {

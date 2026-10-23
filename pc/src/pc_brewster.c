@@ -2,6 +2,7 @@
 #include "pc_brewster.h"
 #include "pc_cf_char.h"
 #include "pc_cf_lines.h"
+#include "ac_npc_kk_roost.h"
 
 #include "m_play.h"
 #include "m_actor.h"
@@ -81,33 +82,57 @@ void pc_brewster_draw_end(GAME_PLAY* play, ACTOR* actorx, int eye) {
         pc_brewster_mtx34(joints[i], &l_capture[1 + i]);
     }
     pc_cf_char_play_draw(play, PC_BREWSTER_CHAR, actor, PC_BREWSTER_JOINTS, l_joint_names,
-                         (const pc_cf_mtx34*)joints, eye, 1.0f);
+                         (const pc_cf_mtx34*)joints, eye, aKKR_room_light());
 }
 
-/* --- today's cup --- */
+/* --- today's cup, and how well he knows the player --- */
+
+typedef struct {
+    u16 year;
+    u8 month, day; /* the day of the last cup */
+    u16 cups;      /* days they've had one */
+    u16 pad;
+} pc_brewster_cup_c;
 
 typedef struct {
     u16 year;
     u8 month, day;
-} pc_brewster_date_c;
+} pc_brewster_cup_v1_c; /* ROST before cups were counted */
 
-static pc_brewster_date_c l_cup[4]; /* per player; saved as ROST */
+static pc_brewster_cup_c l_cup[4]; /* per player; saved as ROST */
+
+/* The Roost's day starts at 6 AM, as City Folk's do: a cup after midnight still counts for the night before */
+static void pc_brewster_today(lbRTC_time_c* day) {
+    lbRTC_TimeCopy(day, Common_GetPointer(time.rtc_time));
+    lbRTC_Sub_hh(day, 6);
+}
 
 int pc_brewster_had_coffee_today(int player) {
-    const lbRTC_time_c* t = Common_GetPointer(time.rtc_time);
+    lbRTC_time_c t;
 
-    return player >= 0 && player < 4 && l_cup[player].year == t->year && l_cup[player].month == t->month &&
-           l_cup[player].day == t->day;
+    pc_brewster_today(&t);
+    return player >= 0 && player < 4 && l_cup[player].year == t.year && l_cup[player].month == t.month &&
+           l_cup[player].day == t.day;
 }
 
 void pc_brewster_set_coffee_today(int player) {
-    const lbRTC_time_c* t = Common_GetPointer(time.rtc_time);
+    lbRTC_time_c t;
 
-    if (player >= 0 && player < 4) {
-        l_cup[player].year = t->year;
-        l_cup[player].month = t->month;
-        l_cup[player].day = t->day;
+    if (player >= 0 && player < 4 && !pc_brewster_had_coffee_today(player)) {
+        pc_brewster_today(&t);
+        l_cup[player].year = t.year;
+        l_cup[player].month = t.month;
+        l_cup[player].day = t.day;
+        if (l_cup[player].cups < 0xFFFF) {
+            l_cup[player].cups++;
+        }
     }
+}
+
+int pc_brewster_familiarity(int player) {
+    int cups = player >= 0 && player < 4 ? l_cup[player].cups : 0;
+
+    return cups >= PC_BREWSTER_REGULAR_CUPS ? 2 : cups >= PC_BREWSTER_KNOWN_CUPS ? 1 : 0;
 }
 
 void pc_brewster_reset(void) {
@@ -116,15 +141,30 @@ void pc_brewster_reset(void) {
 
 int pc_brewster_read_chunk(const char tag[4], void* fp, unsigned int size) {
     FILE* f = (FILE*)fp;
+    pc_brewster_cup_v1_c v1[4];
+    int i;
 
     if (memcmp(tag, "ROST", 4) != 0) {
         return FALSE;
     }
-    if (size != sizeof(l_cup) || fread(l_cup, 1, size, f) != size) {
-        pc_brewster_reset();
-        if (size != sizeof(l_cup)) {
-            fseek(f, (long)size, SEEK_CUR);
+    if (size == sizeof(l_cup)) {
+        if (fread(l_cup, 1, size, f) != size) {
+            pc_brewster_reset();
         }
+    } else if (size == sizeof(v1)) {
+        /* cups weren't counted: a player who's had one has had one */
+        pc_brewster_reset();
+        if (fread(v1, 1, size, f) == size) {
+            for (i = 0; i < 4; i++) {
+                l_cup[i].year = v1[i].year;
+                l_cup[i].month = v1[i].month;
+                l_cup[i].day = v1[i].day;
+                l_cup[i].cups = v1[i].year != 0 ? 1 : 0;
+            }
+        }
+    } else {
+        pc_brewster_reset();
+        fseek(f, (long)size, SEEK_CUR);
     }
     return TRUE;
 }

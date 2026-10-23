@@ -3332,6 +3332,7 @@ enum ftr1_e {
 #ifdef TARGET_PC
 #define SP_NPC_CELESTE (SP_NPC_START + 144) // ac-plus: Celeste in the museum (ac_npc_celeste.c)
 #define SP_NPC_BREWSTER (SP_NPC_START + 145) // ac-plus: Brewster at the Roost (ac_npc_brewster.c)
+#define SP_NPC_KK_ROOST (SP_NPC_START + 146) // ac-plus: K.K. playing at the Roost (ac_npc_kk_roost.c)
 #endif
 
 #define NPC_START    0xE000 // 0xE000

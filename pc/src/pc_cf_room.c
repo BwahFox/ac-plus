@@ -45,6 +45,7 @@ static pc_cf_room_c l_rooms[PC_CF_ROOM_MAX];
 static struct {
     pc_cf_room_c* room;
     float light;
+    float spot[4]; /* pc_cf_room_set_spot: x, z, radius, strength */
     float y_offset;
 } l_frame;
 
@@ -168,6 +169,15 @@ const u8* pc_cf_room_grid(const char* name) {
     return r != NULL && r->loaded == 1 && r->has_grid ? r->grid : NULL;
 }
 
+static float l_next_spot[4];
+
+void pc_cf_room_set_spot(float x, float z, float r, float strength) {
+    l_next_spot[0] = x;
+    l_next_spot[1] = z;
+    l_next_spot[2] = r > 1.0f ? r : 1.0f;
+    l_next_spot[3] = strength;
+}
+
 int pc_cf_room_play_draw(GAME_PLAY* play, const char* name, float light, float y_offset) {
     pc_cf_room_c* r = pc_cf_room_get(name);
     GRAPH* graph = play->game.graph;
@@ -178,6 +188,8 @@ int pc_cf_room_play_draw(GAME_PLAY* play, const char* name, float light, float y
     l_frame.room = r;
     l_frame.light = light;
     l_frame.y_offset = y_offset;
+    memcpy(l_frame.spot, l_next_spot, sizeof(l_frame.spot));
+    l_next_spot[3] = 0.0f; /* this frame only */
     OPEN_DISP(graph);
     if (getenv("PC_CF_ROOM_LATE") != NULL) {
         gDPNoOpTag(NEXT_POLY_XLU_DISP, PC_NOOP_CF_ROOM); /* dev: after everything else */
@@ -202,8 +214,10 @@ static const char* l_vert_src =
     "out vec2 v_uv;\n"
     "out vec4 v_col;\n"
     "out vec3 v_nrm;\n"
+    "out vec3 v_pos;\n"
     "void main() {\n"
     "    gl_Position = u_proj * (u_view * vec4(a_pos, 1.0));\n"
+    "    v_pos = a_pos;\n"
     "    v_uv = a_uv;\n"
     "    v_col = a_col;\n"
     "    v_nrm = a_nrm;\n"
@@ -214,22 +228,26 @@ static const char* l_frag_src =
     "in vec2 v_uv;\n"
     "in vec4 v_col;\n"
     "in vec3 v_nrm;\n"
+    "in vec3 v_pos;\n"
     "out vec4 frag;\n"
     "uniform sampler2D u_tex;\n"
     "uniform int u_has_tex;\n"
     "uniform int u_alpha_test;\n"
     "uniform float u_light;\n"
+    "uniform vec4 u_spot; /* x, z, radius, strength */\n"
     "void main() {\n"
     "    vec4 c = v_col;\n"
     "    if (u_has_tex != 0) c *= texture(u_tex, v_uv);\n"
     "    if (u_alpha_test != 0 && c.a < 0.5) discard;\n"
     "    /* a little shape from the normals, as the room's own lights would */\n"
     "    float shade = 0.82 + 0.18 * clamp(dot(normalize(v_nrm), normalize(vec3(0.3, 1.0, 0.6))), 0.0, 1.0);\n"
-    "    frag = vec4(c.rgb * shade * u_light, c.a);\n"
+    "    float spot = u_spot.w * (1.0 - smoothstep(0.55 * u_spot.z, u_spot.z, length(v_pos.xz - u_spot.xy)));\n"
+    "    vec3 lit = mix(vec3(u_light), vec3(1.08, 1.0, 0.86), spot);\n"
+    "    frag = vec4(c.rgb * shade * lit, c.a);\n"
     "}\n";
 
 static GLuint l_prog;
-static GLint l_u_proj, l_u_view, l_u_has_tex, l_u_alpha_test, l_u_light;
+static GLint l_u_proj, l_u_view, l_u_has_tex, l_u_alpha_test, l_u_light, l_u_spot;
 
 static GLuint pc_cf_compile(GLenum type, const char* src) {
     GLuint sh = glCreateShader(type);
@@ -273,6 +291,7 @@ static int pc_cf_init(void) {
     l_u_has_tex = glGetUniformLocation(l_prog, "u_has_tex");
     l_u_alpha_test = glGetUniformLocation(l_prog, "u_alpha_test");
     l_u_light = glGetUniformLocation(l_prog, "u_light");
+    l_u_spot = glGetUniformLocation(l_prog, "u_spot");
     glUseProgram(l_prog);
     glUniform1i(glGetUniformLocation(l_prog, "u_tex"), 0);
     return TRUE;
@@ -351,6 +370,7 @@ static void pc_cf_draw(const float view[3][4]) {
     glUniformMatrix4fv(l_u_proj, 1, GL_TRUE, proj); /* both row-major, as pc_gx.c uploads them */
     glUniformMatrix4fv(l_u_view, 1, GL_TRUE, v);
     glUniform1f(l_u_light, l_frame.light);
+    glUniform4fv(l_u_spot, 1, l_frame.spot);
     glDisable(GL_SCISSOR_TEST);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);

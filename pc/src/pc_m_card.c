@@ -243,7 +243,7 @@ static void put_be16(u8* dst, u16 val) {
 }
 
 /* rotate backups: .bak3→delete, .bak2→.bak3, .bak1→.bak2, current→.bak1 */
-static void pc_save_rotate_backups(const char* base_path) {
+void pc_save_rotate_backups(const char* base_path) {
     char older[300], newer[300];
     int i;
     struct stat st;
@@ -612,6 +612,98 @@ static int pc_save_read_gci(const char* path) {
     /* The ac-plus companion save always goes with the home town's main file,
      * also when this read was a recovery from a backup. */
     pc_ext_save_load(PC_GCI_PATH);
+    {
+        /* dev: PC_GRANT_BASEMENT=1 gives every house a basement (and at least the M room, whose stairs reach it),
+         * to try the basement on a save without one */
+        /* dev: PC_GIVE_ITEM=hex,n puts n of that item in the first player's empty pocket slots */
+        const char* give = getenv("PC_GIVE_ITEM");
+        const char* grant = getenv("PC_GRANT_BASEMENT");
+
+        if (give != NULL && strchr(give, ',') != NULL) {
+            mActor_name_t item = (mActor_name_t)strtoul(give, NULL, 16);
+            int n = atoi(strchr(give, ',') + 1), i;
+            Private_c* priv = Save_GetPointer(private_data[0]);
+
+            for (i = 0; i < mPr_POCKETS_SLOT_COUNT && n > 0; i++) {
+                if (priv->inventory.pockets[i] == EMPTY_NO) {
+                    priv->inventory.pockets[i] = item;
+                    n--;
+                }
+            }
+            printf("[PC] gave item %04X, %d short\n", item, n);
+            fflush(stdout);
+        }
+        int h;
+
+        /* dev: PC_FAVOR_TEST=1 puts a delivery favor in the first player's pockets, from the first villager to the
+         * second, and seats the second at the Roost all day (ac_roost_guest.c) to try handing favors to guests;
+         * PC_FAVOR_TEST=2 instead has the first villager send the player to fetch something from the second */
+        if (getenv("PC_FAVOR_TEST") != NULL) {
+            extern int pc_favor_test_guest;
+            Private_c* priv = Save_GetPointer(private_data[0]);
+            int from = -1, to = -1, slot = -1, i;
+
+            for (i = 0; i < ANIMAL_NUM_MAX; i++) {
+                if (!mNpc_CheckFreeAnimalInfo(Save_GetPointer(animals[i]))) {
+                    if (from < 0) {
+                        from = i;
+                    } else if (to < 0) {
+                        to = i;
+                    }
+                }
+            }
+            for (i = 0; i < mPr_POCKETS_SLOT_COUNT; i++) {
+                if (priv->inventory.pockets[i] == EMPTY_NO && mQst_CheckFreeQuest(&priv->deliveries[i].base)) {
+                    slot = i;
+                    break;
+                }
+            }
+            if (to >= 0 && atoi(getenv("PC_FAVOR_TEST")) == 2) {
+                for (i = 0; i < mPr_ERRAND_QUEST_NUM; i++) {
+                    if (mQst_CheckFreeQuest(&priv->errands[i].base)) {
+                        mQst_errand_c* errand = &priv->errands[i];
+
+                        mQst_ClearErrand(errand, 1);
+                        errand->base.quest_type = mQst_QUEST_TYPE_ERRAND;
+                        errand->base.quest_kind = mQst_ERRAND_REQUEST;
+                        errand->base.time_limit_enabled = FALSE;
+                        errand->base.progress = 1; /* the last link: the second hands it over */
+                        mNpc_CopyAnimalPersonalID(&errand->sender, &Save_Get(animals[from]).id);
+                        mNpc_CopyAnimalPersonalID(&errand->recipient, &Save_Get(animals[to]).id);
+                        errand->item = ITM_QST_WATCH;
+                        errand->pockets_idx = -1;
+                        errand->errand_type = mQst_ERRAND_TYPE_CHAIN;
+                        mNpc_CopyAnimalPersonalID(&errand->info.chain.used_ids[0], &Save_Get(animals[from]).id);
+                        errand->info.chain.used_num = 1;
+                        pc_favor_test_guest = to;
+                        slot = i;
+                        break;
+                    }
+                }
+                printf("[PC] favor test: fetch from villager %d for %d, errand %d\n", to, from, slot);
+            } else if (to >= 0 && slot >= 0) {
+                mQst_delivery_c* delivery = &priv->deliveries[slot];
+
+                mQst_ClearDelivery(delivery, 1);
+                delivery->base.quest_type = mQst_QUEST_TYPE_DELIVERY;
+                delivery->base.quest_kind = mQst_DELIVERY_KIND_NORMAL;
+                delivery->base.time_limit_enabled = FALSE;
+                delivery->base.progress = 0;
+                mNpc_CopyAnimalPersonalID(&delivery->sender, &Save_Get(animals[from]).id);
+                mNpc_CopyAnimalPersonalID(&delivery->recipient, &Save_Get(animals[to]).id);
+                mPr_SetPossessionItem(priv, slot, ITM_CLOTH001 + 4, mPr_ITEM_COND_QUEST);
+                pc_favor_test_guest = to;
+            }
+            printf("[PC] favor test: villager %d -> %d, pocket %d\n", from, to, slot);
+            fflush(stdout);
+        }
+        for (h = 0; grant != NULL && atoi(grant) && h < PLAYER_NUM; h++) {
+            Save_Get(homes[h]).flags.has_basement = TRUE;
+            if (Save_Get(homes[h]).size_info.size < 1) {
+                Save_Get(homes[h]).size_info.size = Save_Get(homes[h]).size_info.next_size = 1;
+            }
+        }
+    }
     return TRUE;
 }
 

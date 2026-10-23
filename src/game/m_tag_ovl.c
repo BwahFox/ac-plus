@@ -1,4 +1,7 @@
 #include "m_tag_ovl.h"
+#ifdef TARGET_PC
+#include "pc_basement.h"
+#endif
 
 #include "m_common_data.h"
 #ifdef TARGET_PC
@@ -4223,7 +4226,11 @@ static void mTG_next_open_needlework_sel_stick_proc(Submenu* submenu, mSM_MenuIn
     /* @BUG - if Save::field_type is out of the normal enum value range then next_type will be undefined */
     switch (Common_Get(field_type)) {
         case mFI_FIELDTYPE2_PLAYER_ROOM:
+#ifdef TARGET_PC /* ac-plus: the basement takes designs as wallpaper and carpet too (pc_basement.c) */
+            if (Save_Get(scene_no) == SCENE_COTTAGE_MY) {
+#else
             if (Save_Get(scene_no) == SCENE_COTTAGE_MY || mSc_IS_SCENE_BASEMENT(Save_Get(scene_no))) {
+#endif
                 next_type = mTG_TYPE_TAG_NW_OR_SEL_STICK;
             } else {
                 next_type = mTG_TYPE_TAG_NW_MR_SEL_STICK;
@@ -6868,7 +6875,15 @@ static int mTG_select_tag_decide_item_normal(Submenu* submenu, mActor_name_t ite
 
         ret_tag_type = tag_type[Common_Get(field_type)][category];
 
+#ifdef TARGET_PC
+        /* the basement's rock wall/floor items (pc_basement.h) only go down in a basement */
+        if (PC_ITEM_IS_BASEMENT_LOOK(item) &&
+            !(Common_Get(field_type) == mFI_FIELDTYPE2_PLAYER_ROOM && mSc_IS_SCENE_BASEMENT(Save_Get(scene_no)))) {
+            ret_tag_type = (Common_Get(field_type) == mFI_FIELDTYPE2_PLAYER_ROOM) ? mTG_TYPE_ROOM_DEFAULT : ret_tag_type;
+        }
+#endif
         /* Don't allow wallpaper & carpet options in the player basement */
+#ifndef TARGET_PC /* ac-plus: allowed (pc_basement.c) */
         if (Common_Get(field_type) == mFI_FIELDTYPE2_PLAYER_ROOM) {
             if (mSc_IS_SCENE_BASEMENT(Save_Get(scene_no)) &&
             /* @BUG - developers missed a | for || here */
@@ -6880,6 +6895,7 @@ static int mTG_select_tag_decide_item_normal(Submenu* submenu, mActor_name_t ite
                 ret_tag_type = mTG_TYPE_ROOM_DEFAULT;
             }
         }
+#endif
     }
 
     if (inv_ovl != NULL) {
@@ -7234,7 +7250,11 @@ static int mTG_select_tag_decide_needlework(Submenu* submenu, mSM_MenuInfo_c* me
     switch (menu_info->data0) {
         case 1:
             if (Common_Get(field_type) == mFI_FIELDTYPE2_PLAYER_ROOM && Save_Get(scene_no) != SCENE_COTTAGE_MY) {
+#ifndef TARGET_PC /* ac-plus: the basement takes designs as wallpaper and carpet (pc_basement.c) */
                 if (mSc_IS_SCENE_BASEMENT(Save_Get(scene_no))) {
+#else
+                if (FALSE) {
+#endif
                     return mTG_TYPE_TAG_NW_UG_ROOM;
                 } else {
                     return mTG_TYPE_TAG_NW_MY_ROOM;

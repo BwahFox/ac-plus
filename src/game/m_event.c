@@ -3025,3 +3025,33 @@ extern void mMC_set_time() {
 
     lbRTC_TimeCopy(&mask_cat->time, rtc_time);
 }
+
+#ifdef TARGET_PC
+#include <stdio.h>
+
+/* dev (pc_devtest.c PC_EVENT_DUMP_AT): the special event, Redd's hours today and where his tent stands */
+void pc_mEv_dev_dump(void) {
+    u8 index = index_today[mEv_EVENT_BROKER_SALE];
+    u16* dates = Save_Get(event_save_common).dates;
+    int bx, bz, ut_x, ut_z;
+
+    printf("[Event] special type %d (broker %d), today %04X start %04X end %04X hour %d, now %d/%d %d:00\n",
+           Save_Get(event_save_common).special_event.type, mEv_EVENT_BROKER_SALE, dates[mEv_SAVE_DATE_SPECIAL0],
+           dates[mEv_SAVE_DATE_SPECIAL1], dates[mEv_SAVE_DATE_SPECIAL2], dates[mEv_SAVE_DATE_SPECIAL3],
+           Common_Get(time.rtc_time.month), Common_Get(time.rtc_time.day), Common_Get(time.rtc_time.hour));
+    if (index != 0xFF) {
+        printf("[Event] broker today: hours %06X status %X\n", (unsigned)event_today[index].active_hours,
+               (unsigned)event_today[index].status);
+    } else {
+        printf("[Event] broker not scheduled today\n");
+    }
+    for (bx = 1; bx < mFI_GetBlockXMax() - 1; bx++) {
+        for (bz = 1; bz < mFI_GetBlockZMax() - 1; bz++) {
+            if (mFI_SearchFGInBlock(&ut_x, &ut_z, BROKER_TENT, bx, bz)) {
+                printf("[Event] Redd's tent in block %d,%d unit %d,%d\n", bx, bz, ut_x, ut_z);
+            }
+        }
+    }
+    fflush(stdout);
+}
+#endif

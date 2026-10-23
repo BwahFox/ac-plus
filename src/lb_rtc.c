@@ -59,8 +59,16 @@ static BOOL l_lbRTC_IsSampled;
  *
  * @return OSTime representing the current hardware time in ticks.
  */
+#ifdef TARGET_PC
+extern s64 pc_os_calendar_ticks(void); /* pc_os.c: kept in step with the computer's clock */
+#endif
+
 static OSTime lbRTC_GetHardTime() {
+#ifdef TARGET_PC
+  return pc_os_calendar_ticks();
+#else
   return OSGetTime();
+#endif
 }
 
 /**

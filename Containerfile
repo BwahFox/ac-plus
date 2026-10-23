@@ -1,9 +1,10 @@
-# Build environment for ac-plus: the Windows build (MinGW, 32-bit) and the City Folk converter.
+# Build environment for ac-plus: the Windows build (MinGW, 32-bit), its small Linux helper (gcc) and the City
+# Folk converter.
 # Used by ./ac-plus.sh; nothing here needs to be run by hand.
 FROM docker.io/library/debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        gcc-mingw-w64-i686 g++-mingw-w64-i686 cmake make \
+        gcc-mingw-w64-i686 g++-mingw-w64-i686 gcc libc6-dev cmake make \
         python3 python3-numpy curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 

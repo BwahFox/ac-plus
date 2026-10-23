@@ -117,7 +117,12 @@ disc-preservation database.
 - **The museum's observatory**, upstairs from the lobby. Celeste is there, with her City Folk
   look and lines, and her telescope for drawing your own constellations in the night sky.
 - **The Roost**, the café downstairs from the lobby. It has Brewster, his City Folk lines and
-  music, and coffee once a day, made and drunk with City Folk's own animations.
+  music, and coffee once a day, made and drunk with City Folk's own animations. Brewster warms up
+  to you as you keep coming back.
+- **K.K. Slider at the Roost:** from 6 PM to midnight, every day but Saturday, he plays his songs
+  on the stage with the lights down.
+- **Villagers at the Roost:** one or two of your villagers drop in each day for an hour or two of
+  coffee. You can chat with them and do their favors there, as anywhere else.
 - **Fishing:** City Folk's plop when a fish takes the float.
 
 ## What's new
@@ -130,6 +135,8 @@ mouse, controllers), ac-plus adds:
 - City Folk weather: the weather can change during the day, with overcast spells and rainbows
   after rain (`cf_weather` setting).
 - Borderless acres: walking between acres doesn't stop the camera (`borderless_acres`).
+- The town's clock keeps up with your computer's: putting a PC or Steam Deck to sleep with the game
+  open no longer leaves the town behind.
 
 **Patterns**
 - Design a Pattern from the pause menu (Esc, or Back on a controller), once you've designed five
@@ -148,6 +155,8 @@ mouse, controllers), ac-plus adds:
 
 **Home**
 - City Folk style storage: your own dressers, wardrobes and closets open a large shared storage.
+- The basement takes wallpaper and carpets. Its rock wall and floor come back to you as items, so
+  you can put them back later.
 
 **Items**
 - The four NES games that were only available through e-Reader cards (Ice Climber,
@@ -157,6 +166,8 @@ mouse, controllers), ac-plus adds:
 **Saving and music**
 - Save anywhere with **Z + Start** (where the game allows it).
 - Save on quit, and an optional autosave every few minutes.
+- The `.acplus` file carries a checksum, and the last three copies are kept. A damaged one is set
+  aside and the newest good copy is loaded instead.
 - Quick load: returning players start straight in town.
 - Optional save syncing: through a synced folder (Syncthing, Nextcloud…), or with your own server
   over ssh (`ac-sync.sh`, see [Saves](#saves)).
@@ -204,7 +215,8 @@ default back.
 - **Where they are:** your town is in `save/card_a/`, as two files:
   - `DobutsunomoriP_MURA.gci`, a normal GameCube save that Dolphin and save editors understand;
   - `DobutsunomoriP_MURA.gci.acplus`, with everything ac-plus adds: ground patterns, storage,
-    pattern IDs, constellations, today's coffee.
+    pattern IDs, constellations, the Roost, basement wallpaper and carpets. Its last three copies
+    are kept as `.acplus.bak1` to `.bak3`.
 
   **Always copy or back up the two files together.**
 - **Bringing a Dolphin save:** export it from Dolphin's Memory Card Manager as a `.gci` and put it
@@ -225,8 +237,9 @@ default back.
 **General**
 - **Only the USA versions are supported:** GAFE01 revision 0 for the GameCube game, RUUE01 for
   City Folk. Other versions won't work.
-- **No Linux build yet:** on Linux the Windows build runs through Wine or Proton. While the game
-  runs, the desktop may still dim the screen or go to sleep.
+- **No Linux build yet:** on Linux the Windows build runs through Wine or Proton. To keep the
+  desktop from dimming or sleeping, the game starts `ac-plus-inhibit` (a small Linux program in the
+  game folder) while it runs; if that file is missing, the screen may still go to sleep.
 - **Steam's "Exit Game" closes the game without saving.** Quit from the pause menu instead. Autosave
   covers you if you forget.
 
@@ -245,7 +258,7 @@ default back.
   from the door you came in by.
 - **Celeste:** she has no bow, villagers don't mention constellations yet, and the telescope has
   no mouse controls.
-- **The Roost:** no other guests yet, and K.K. Slider doesn't perform there.
+- **The Roost:** K.K. Slider can't be talked to there, and he doesn't take song requests.
 
 ## Building on Windows without a container
 

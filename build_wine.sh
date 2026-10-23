@@ -47,6 +47,12 @@ make -j"$(nproc)"
 
 mkdir -p "$BIN_DIR/rom" "$BIN_DIR/texture_pack" "$BIN_DIR/save"
 
+# The Linux helper the game starts under Wine/Proton so the desktop doesn't sleep (pc/src/pc_inhibit.c)
+if command -v cc > /dev/null 2>&1; then
+    cc -O2 -static -s -o "$BIN_DIR/ac-plus-inhibit" "$SCRIPT_DIR/pc/tools/ac-plus-inhibit.c" ||
+        echo "Warning: couldn't build ac-plus-inhibit; on Linux the desktop may sleep while the game runs"
+fi
+
 echo ""
 echo "=== Build complete! ==="
 echo "Run: cd pc/build32/bin && wine AnimalCrossing.exe"

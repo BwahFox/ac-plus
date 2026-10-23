@@ -46,6 +46,7 @@ ACTOR_PROFILE Npc_Celeste_Profile = {
 
 /* Her lines, numbered as in City Folk's NPC_hu-ko.bmg */
 enum {
+    aCEL_MSG_GREET_NAP = 3,   /* "I was merely taking a moment to rest my eyes... I was NOT napping!" */
     aCEL_MSG_GREET_A = 4,     /* "Welcome to (town)'s observatory!" */
     aCEL_MSG_GREET_SLEEPY = 5,
     aCEL_MSG_GREET_B = 6,
@@ -244,6 +245,7 @@ static void aCEL_line_done(NPC_CELESTE_ACTOR* cel, int msg, int choice) {
         case aCEL_MSG_GREET_A:
         case aCEL_MSG_GREET_B:
         case aCEL_MSG_GREET_SLEEPY:
+        case aCEL_MSG_GREET_NAP:
             aCEL_say(cel, aCEL_MSG_MENU);
             break;
         case aCEL_MSG_MENU:
@@ -524,8 +526,9 @@ static void aCEL_set_talk_info(ACTOR* actorx) {
     pc_celeste_set_talking(TRUE);
     if (!aCEL_flag(aCEL_FLAG_MET)) {
         msg = aCEL_MSG_FIRST;
-    } else if (hour >= 1 && hour < 5 && RANDOM(3) == 0) {
-        msg = aCEL_MSG_GREET_SLEEPY;
+    } else if (hour >= 6 && hour < 18) {
+        /* an owl: drowsy in the daytime, herself at night */
+        msg = RANDOM(2) ? aCEL_MSG_GREET_SLEEPY : aCEL_MSG_GREET_NAP;
     } else {
         msg = RANDOM(3) ? aCEL_MSG_GREET_A : aCEL_MSG_GREET_B;
     }

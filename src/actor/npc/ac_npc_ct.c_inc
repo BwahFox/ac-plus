@@ -152,6 +152,13 @@ static void aNPC_set_start_pos(ACTOR* actorx) {
     int i;
     s16 angle;
 
+#ifdef TARGET_PC
+    /* the Roost's guests (ac_roost_guest.c) take their chairs: the café has no unit layout for villagers to be
+     * placed in, and the search below would run out of rows */
+    if (actorx->id == mAc_PROFILE_ROOST_GUEST || aNPC_ctrlActor == NULL) {
+        return;
+    }
+#endif
     i = 0;
     mem_copy((u8*)uz_tbl, (u8*)uz_def_tbl, sizeof(uz_tbl));
     uz = 0;

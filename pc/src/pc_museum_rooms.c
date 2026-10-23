@@ -17,6 +17,7 @@
 #include "m_player_lib.h"
 #include "m_player.h"
 #include "pc_cf_room.h"
+#include "ac_npc_kk_roost.h"
 #include "pc_music.h"
 
 #include <math.h>
@@ -221,10 +222,20 @@ void pc_museum_rooms_move(GAME_PLAY* play) {
 void pc_museum_rooms_draw(GAME_PLAY* play) {
     const pc_museum_room_c* room = pc_mr_room(l_scene);
 
-    pc_music_set_scene_track(l_scene == SCENE_MUSEUM_CAFE ? PC_MR_CAFE_MUSIC : NULL);
+    {
+        /* K.K.'s song, in place of the Roost's music (ac_npc_kk_roost.c) */
+        pc_music_set_scene_track(l_scene == SCENE_MUSEUM_CAFE && !aKKR_playing ? PC_MR_CAFE_MUSIC : NULL);
+    }
 
     if (room != NULL) {
-        pc_cf_room_play_draw(play, room->room, 1.0f, PC_MR_FLOOR_Y);
+        float light = 1.0f;
+
+        if (l_scene == SCENE_MUSEUM_CAFE && aKKR_show > 0.0f) {
+            /* K.K.'s show: the lights down, a pool of light on him (ac_npc_kk_roost.c) */
+            light = aKKR_room_light();
+            pc_cf_room_set_spot(aKKR_STAGE_X, aKKR_STAGE_Z, 75.0f, aKKR_show * aKKR_show * (3.0f - 2.0f * aKKR_show));
+        }
+        pc_cf_room_play_draw(play, room->room, light, PC_MR_FLOOR_Y);
         if (getenv("PC_CF_ROOM_LOG") != NULL && play->game_frame % 120 == 0) {
             PLAYER_ACTOR* player = GET_PLAYER_ACTOR(play);
 

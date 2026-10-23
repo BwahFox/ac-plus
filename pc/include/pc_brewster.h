@@ -28,9 +28,16 @@ struct skeleton_s* pc_brewster_skeleton(void);
 void pc_brewster_draw_begin(void);
 void pc_brewster_draw_end(struct game_play_s* play, struct actor_s* actorx, int eye);
 
-/* Today's cup, per player (saved as ROST in the ac-plus save) */
+/* Days a player has had a cup before he knows them, and before they're a regular */
+#define PC_BREWSTER_KNOWN_CUPS 3
+#define PC_BREWSTER_REGULAR_CUPS 10
+
+/* Today's cup (the day starts at 6 AM) and the days they've had one, per player (saved as ROST in the
+ * ac-plus save) */
 int pc_brewster_had_coffee_today(int player);
 void pc_brewster_set_coffee_today(int player);
+/* 0: a stranger, 1: he knows them, 2: a regular (PC_BREWSTER_*_CUPS) */
+int pc_brewster_familiarity(int player);
 void pc_brewster_reset(void);
 int pc_brewster_read_chunk(const char tag[4], void* f, unsigned int size);
 int pc_brewster_write_chunk(void* f);

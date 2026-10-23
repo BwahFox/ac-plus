@@ -121,6 +121,37 @@ Gfx rom_myhome_ug_model[] = {
 };
 
 #ifdef TARGET_PC
+/* ac-plus: the basement without its rock walls, for wallpaper (pc_basement.c, ac_my_indoor.c): the stair
+ * entrance and the floor of rom_myhome_ug_model, as there */
+Gfx rom_myhome_ug_nowall_model[] = {
+    gsSPTexture(0, 0, 0, G_TX_RENDERTILE, G_ON),
+    gsDPSetCombineLERP(TEXEL0, 0, SHADE, 0, 0, 0, 0, TEXEL0, PRIMITIVE, 0, COMBINED, 0, 0, 0, 0, COMBINED),
+    gsDPSetRenderMode(G_RM_FOG_SHADE_A, G_RM_AA_ZB_TEX_EDGE2),
+    gsDPLoadTLUT_Dolphin(15, 16, 1, rom_myhome_pal),
+    gsDPSetTextureImage_Dolphin(G_IM_FMT_CI, G_IM_SIZ_4b, 64, 64, rom_myhome_enter2_tex),
+    gsDPSetTile_Dolphin(G_DOLPHIN_TLUT_DEFAULT_MODE, 0, 15, GX_MIRROR, GX_MIRROR, 0, 0),
+    gsSPLoadGeometryMode(G_ZBUFFER | G_SHADE | G_CULL_BACK | G_FOG | G_SHADING_SMOOTH),
+    gsSPVertex(rom_myhome_ug_v, 5, 0),
+    gsSPNTrianglesInit_5b(3, 0, 1, 2, 1, 3, 2, 0, 4, 1),
+    gsDPSetRenderMode(G_RM_FOG_SHADE_A, G_RM_AA_ZB_OPA_SURF2),
+    gsDPLoadTLUT_Dolphin(15, 16, 1, rom_myhome_ug_pal),
+    gsDPSetTextureImage_Dolphin(G_IM_FMT_CI, G_IM_SIZ_4b, 64, 64, rom_myhome_ugf1_tex),
+    gsDPSetTile_Dolphin(G_DOLPHIN_TLUT_DEFAULT_MODE, 0, 15, GX_REPEAT, GX_REPEAT, 0, 0),
+    gsSPVertex(&rom_myhome_ug_v[5], 28, 0),
+    gsSPNTrianglesInit_5b(35, 0, 1, 2, 3, 4, 0, 0, 4, 1),
+    gsSPNTriangles_5b(4, 5, 1, 6, 7, 8, 9, 6, 8, 10, 6, 9),
+    gsSPNTriangles_5b(9, 8, 11, 9, 11, 12, 10, 9, 12, 13, 5, 12),
+    gsSPNTriangles_5b(13, 12, 2, 7, 14, 15, 15, 14, 16, 14, 17, 16),
+    gsSPNTriangles_5b(15, 16, 18, 19, 20, 18, 19, 17, 20, 17, 21, 20),
+    gsSPNTriangles_5b(21, 22, 20, 21, 23, 22, 17, 24, 21, 21, 24, 23),
+    gsSPNTriangles_5b(24, 3, 23, 20, 22, 18, 22, 2, 18, 2, 11, 18),
+    gsSPNTriangles_5b(2, 25, 11, 22, 3, 2, 22, 26, 3, 3, 0, 2),
+    gsSPNTriangles_5b(7, 15, 18, 11, 27, 7, 11, 7, 18, 25, 5, 10),
+    gsSPEndDisplayList(),
+};
+#endif
+
+#ifdef TARGET_PC
 extern void pc_load_asset(const char*, void*, unsigned int, unsigned int, int, int);
 void _pc_load_src_data_model_rom_myhome_ug_c(void) {
     pc_load_asset("assets/rom_myhome_ug/rom_myhome_pal.bin", rom_myhome_pal, 0x20, 0x59EDA0, 0, 1);
