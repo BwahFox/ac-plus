@@ -20,10 +20,10 @@ security in mind, so it has to be approached carefully.
 Yes, the Windows build runs through Wine or Proton (see the README's
 [Setting up](README.md#setting-up)). A native Linux build may come later.
 
-## Why do the City Folk extras need my City Folk disc?
+## Why does ac-plus need my City Folk disc?
 
-None of City Folk's files can be included here. The `extract-cf` step converts them from your own
-copy, on your computer.
+None of City Folk's files can be included here. ac-plus converts what it uses from your own copy,
+on your computer, the first time the game starts.
 
 ## Can I use my Dolphin save?
 

@@ -1,5 +1,4 @@
 /* pc_main.c - PC entry point: SDL2/GL init and boot sequence */
-#include "pc_cf_data.h"
 #include "pc_platform.h"
 #include "pc_gx_internal.h"
 #include "pc_texture_pack.h"
@@ -426,31 +425,11 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     {
-        /* ac-plus: the City Folk files, from the player's own City Folk disc (pc_cf_data.h) */
-        FILE* f = fopen("cf_sky/version.txt", "r");
-        int version = 0;
+        /* ac-plus: the City Folk files, made from the player's own City Folk disc on the first start
+         * (pc_cf_setup.c) */
+        extern int pc_cf_setup(void);
 
-        if (f != NULL) {
-            if (fscanf(f, "%d", &version) != 1) {
-                version = 0;
-            }
-            fclose(f);
-        }
-        if (version != PC_CF_DATA_VERSION) {
-            const char* msg =
-                version == 0
-                    ? "City Folk files not found.\n\n"
-                      "ac-plus also needs your own copy of Animal Crossing: City Folk (Wii, USA).\n"
-                      "Convert it once with:\n\n"
-                      "    ./ac-plus.sh extract-cf <your City Folk disc image>\n\n"
-                      "See \"Setting up\" in README.md."
-                    : "The City Folk files are from an older version of ac-plus.\n\n"
-                      "Convert your City Folk disc again with:\n\n"
-                      "    ./ac-plus.sh extract-cf <your City Folk disc image>\n\n"
-                      "See \"Setting up\" in README.md.";
-
-            fprintf(stderr, "[PC] %s\n", msg);
-            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "ac-plus - City Folk files needed", msg, g_pc_window);
+        if (!pc_cf_setup()) {
             pc_platform_shutdown();
             return 1;
         }

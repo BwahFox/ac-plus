@@ -13,9 +13,8 @@ This repository contains no game files. To play, you need your own copies of **b
 - **Animal Crossing** for GameCube, **USA version (GAFE01, revision 0)**, as a disc image (`.iso`,
   `.gcm` or `.ciso`).
 - **Animal Crossing: City Folk** for Wii, **USA version (RUUE01)**, as a disc image (`.wbfs` or
-  `.iso`) or a folder of its files. ac-plus uses a lot of City Folk: its sky, rooms, characters,
-  animations, lines, music and sounds. A script in this repository converts them on your computer,
-  once.
+  `.iso`). ac-plus uses a lot of City Folk: its sky, rooms, characters, animations, lines, music and
+  sounds. The game converts them from your disc on your computer, the first time it starts.
 
 To check that your dumps are the right ones, see [Checking your discs](#checking-your-discs).
 
@@ -56,42 +55,24 @@ about a minute. The game folder is `dist/ac-plus/`.
 On Windows, run these commands in a WSL terminal (with Docker Desktop or Podman Desktop
 installed), or see [Building on Windows without a container](#building-on-windows-without-a-container).
 
-### 2. Add your disc image
+### 2. Add your discs
 
-Put your GameCube disc image in the game folder's `rom/` folder. Any file name works:
+Put both disc images in the game folder's `rom/` folder. Any file names work:
 
 ```
 ac-plus/
 ├── AnimalCrossing.exe
 ├── rom/
-│   └── Animal Crossing (USA).iso
+│   ├── Animal Crossing (USA).iso
+│   └── Animal Crossing City Folk (USA).wbfs
 ├── save/
 └── shaders/
 ```
 
-### 3. Convert your City Folk disc
+- **GameCube:** `.iso`, `.gcm` or `.ciso`.
+- **City Folk:** `.wbfs` or `.iso`.
 
-Run this once, after building:
-
-```sh
-./ac-plus.sh extract-cf "/path/to/City Folk.wbfs"
-```
-
-- **What it does:** writes a `cf_sky/` folder into `dist/ac-plus/`. It takes a few seconds.
-- **The disc:** a `.wbfs` or `.iso`, or a folder that Dolphin extracted the disc's files to. (In
-  Dolphin, right-click the game, then Properties, Filesystem, right-click the disc, Extract Entire
-  Disc.)
-- **Order matters:** your GameCube disc must already be in `rom/` (step 2). Celeste's look is fitted
-  onto the GameCube game's Blathers model.
-- **Another game folder:** to write somewhere other than `dist/ac-plus/`, set `GAME_DIR`, for
-  example `GAME_DIR=~/Games/ac-plus ./ac-plus.sh extract-cf …`.
-- **If you downloaded a release:** clone this repository anyway to run the command. It only needs
-  Podman or Docker, with `GAME_DIR` pointing at your game folder.
-
-**Updating:** when a new version of ac-plus needs the City Folk files converted again, the game says
-so when it starts. Run the same command again.
-
-### 4. Start the game
+### 3. Start the game
 
 - **Windows:** double-click `AnimalCrossing.exe`.
 - **Linux:** run `wine AnimalCrossing.exe` from the game folder.
@@ -99,8 +80,16 @@ so when it starts. Run the same command again.
   its Properties, under Compatibility, force a Proton version. Back in Gaming Mode, it starts like
   any other game.
 
-The game reads the GameCube game straight from the disc image each time it starts. Nothing is
-unpacked.
+**The first start takes about a minute longer.** ac-plus converts what it uses from your City Folk
+disc into a `cf_sky/` folder, with a progress bar, then the game starts. It only happens once, and
+again if a new version of ac-plus needs it.
+
+After that, the City Folk disc can stay in `rom/` or be moved away. The GameCube disc has to stay:
+the game reads it each time it starts.
+
+**Converting by hand:** a build from source can also convert City Folk without starting the game,
+with `./ac-plus.sh extract-cf "/path/to/City Folk.wbfs"`. This also accepts a folder that Dolphin
+extracted the disc's files to. Set `GAME_DIR` to write into another game folder.
 
 ## Checking your discs
 
@@ -271,8 +260,8 @@ The original MSYS2 build still works:
 
 3. The game is in `pc/build32/bin/`. Copy the `shaders/` folder along if you move the exe.
 
-Converting the City Folk disc without the container needs Python 3 with `numpy`, and
-[Wiimms ISO Tools](https://wit.wiimm.de/) (`wit`) for `.wbfs` and `.iso` images. Run
+Builds made this way don't carry the City Folk converter that runs on the first start. Convert the
+disc yourself with Python 3 and `numpy`:
 `python pc/tools/extract_cf_sky.py <City Folk disc> <game folder>`.
 
 ## Credits

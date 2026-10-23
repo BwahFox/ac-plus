@@ -14,7 +14,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 ROOT="$PWD"
-IMAGE=ac-plus-build:1
+IMAGE=ac-plus-build:2
 DIST="$ROOT/dist/ac-plus"
 
 if command -v podman > /dev/null 2>&1; then
@@ -47,16 +47,23 @@ case "${1:-}" in
         cp pc/build-container/bin/AnimalCrossing.exe "$DIST/"
         cp pc/build-container/bin/shaders/* "$DIST/shaders/"
         cp pc/tools/ac-sync.sh "$DIST/"
+        # the City Folk converter the game runs on its first start: the tools and a Windows Python
+        rm -rf "$DIST/cf-tools"
+        mkdir -p "$DIST/cf-tools"
+        cp pc/tools/*.py src/data/npc/model/mdl/owl_1.c "$DIST/cf-tools/"
+        run -v "$DIST/cf-tools:/out:Z" "$IMAGE" cp -r /opt/winpython /out/python
         cp README.md LICENSE "$DIST/"
-        [ -e "$DIST/rom/PUT_YOUR_GAMECUBE_DISC_HERE.txt" ] ||
-            echo "Put your own Animal Crossing (USA, GAFE01) disc image here: .iso, .gcm or .ciso." \
-                > "$DIST/rom/PUT_YOUR_GAMECUBE_DISC_HERE.txt"
+        rm -f "$DIST/rom/PUT_YOUR_GAMECUBE_DISC_HERE.txt"
+        printf '%s\r\n' "Put your own disc images here:" \
+            "- Animal Crossing (GameCube, USA, GAFE01): .iso, .gcm or .ciso" \
+            "- Animal Crossing: City Folk (Wii, USA, RUUE01): .wbfs or .iso" \
+            "The first start converts what ac-plus uses from City Folk (about a minute)." > "$DIST/rom/PUT_YOUR_DISCS_HERE.txt"
         echo
         echo "=== Done: $DIST ==="
         echo "Next:"
-        echo "  1. put your GameCube disc image in $DIST/rom/"
-        echo "  2. $0 extract-cf <your City Folk disc image>"
-        echo "  3. run AnimalCrossing.exe (on Linux or a Steam Deck: through Wine or Proton)"
+        echo "  1. put your GameCube and City Folk disc images in $DIST/rom/"
+        echo "  2. run AnimalCrossing.exe (on Linux or a Steam Deck: through Wine or Proton);"
+        echo "     the first start converts what ac-plus uses from City Folk"
         echo "See README.md."
         ;;
     extract-cf)
@@ -84,10 +91,13 @@ case "${1:-}" in
 import os, sys, zipfile
 out = sys.argv[1]
 keep = ['AnimalCrossing.exe', 'ac-sync.sh', 'README.md', 'LICENSE', 'shaders/default.vert', 'shaders/default.frag',
-        'rom/PUT_YOUR_GAMECUBE_DISC_HERE.txt']
+        'rom/PUT_YOUR_DISCS_HERE.txt']
+for top, dirs, files in os.walk('dist/ac-plus/cf-tools'):  # the City Folk converter
+    dirs[:] = [d for d in dirs if d != '__pycache__']
+    keep += [os.path.relpath(os.path.join(top, f), 'dist/ac-plus') for f in files]
 with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
-    for f in keep:
-        z.write(os.path.join('dist/ac-plus', f), 'ac-plus/' + f)
+    for f in sorted(keep):
+        z.write(os.path.join('dist/ac-plus', f), 'ac-plus/' + f.replace(os.sep, '/'))
     for d in ('save', 'texture_pack', 'music'):
         z.writestr('ac-plus/%s/' % d, '')
 print('wrote', out)

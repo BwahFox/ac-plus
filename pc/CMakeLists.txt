@@ -315,6 +315,7 @@ set(PC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_cf_char.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_cf_anim.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_sfx.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_cf_setup.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_brewster.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_museum_rooms.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_settings.c

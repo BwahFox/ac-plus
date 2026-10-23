@@ -26,8 +26,11 @@ import struct
 from cf_rooms import section, read_array, s16, triangles, draw_list, palette_any
 from extract_cf_sky import brres_folders, palette, decode, u16, u32, s32
 
-OWL_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'src', 'data', 'npc', 'model',
-                       'mdl', 'owl_1.c')
+# Blathers' model layout: the source tree's, or a copy next to this script (release builds' cf-tools/)
+OWL_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'owl_1.c')
+if not os.path.isfile(OWL_SRC):
+    OWL_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'src', 'data', 'npc', 'model',
+                           'mdl', 'owl_1.c')
 OWL_REL = 'foresta.rel.szs'
 OWL_VTX = (0x4AD1C0, 0x1A90)   # owl_1_v, as owl_1.c loads it
 OWL_PAL = (0x4AF800, 0x20)     # owl_1_pal (pc_assets.c)

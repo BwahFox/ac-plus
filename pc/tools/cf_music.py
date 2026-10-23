@@ -488,7 +488,7 @@ def write_music(brsar_bytes, out_dir):
         w.setframerate(RATE)
         w.writeframes((out * 32767).astype('<i2').tobytes())
         w.close()
-        with open(path + '.loop', 'w') as f:
+        with open(path + '.loop', 'w', newline='\n') as f:
             f.write('%d\n' % ls)
         print('wrote %s (%.1fs, loops from %.1fs)' % (path, len(out) / RATE, ls / RATE))
 

@@ -8,6 +8,8 @@ the player's at the counter (pc/src/pc_cf_anim.c).
 
 Usage:
     extract_cf_sky.py <City Folk .wbfs/.iso, or its extracted files folder> <bin dir>
+    extract_cf_sky.py --auto <bin dir>      the City Folk disc in <bin dir>/rom/ (what the game runs
+                                            on its first start, pc/src/pc_cf_setup.c)
 
 Writes <bin dir>/cf_sky/{cloud,star,moon}.tga, cf_sky/rooms/*.cfroom,
 cf_sky/celeste.{msg,tex}, cf_sky/brewster.msg, cf_sky/chars/*.cfchar,
@@ -15,11 +17,10 @@ cf_sky/anims/{roost.cfanim,player.cfpanm}, cf_sky/music/roost.wav and cf_sky/sfx
 need numpy). The sky works without them, just without clouds, stars
 and moon; Celeste only comes to the museum when her lines are there. Her textures
 are fitted to Blathers' model, read from the GameCube disc in <bin dir> (rom/).
-Reading a City Folk disc image needs `wit` (Wiimms ISO Tools).
+Disc images are read by wii_disc.py. Lines "PROGRESS <0-100>" on stdout tell the game how far it is.
 """
 import os
 import struct
-import subprocess
 import sys
 import tempfile
 
@@ -284,10 +285,51 @@ REQUIRED = ['cloud.tga', 'star.tga', 'moon.tga', 'rooms/idr_ms_astro.cfroom', 'r
             'anims/player.cfpanm', 'music/roost.wav', 'sfx/bite.wav']
 
 
+# The files read off the City Folk disc
+DISC_FILES = ['Sky/', 'Script/ENG/npc_SP/NPC_hu-ko.bmg', 'Script/ENG/npc_SP/NPC_master.bmg', 'BgData/BgModel/',
+              'Npc/Special/Model/14.brres', 'Npc/Special/Model/23.brres', 'Rmobj/obj_cafe1.brres',
+              'Rmobj/obj_cafe2.brres', 'Rmobj/obj_cafe3.brres', 'Rmobj/obj_cafe4.brres', 'Rmobj/obj_cafe5.brres',
+              'Rmobj/obj_cafe6.brres', 'Anm/Anm.brcha', 'Sound/rv_forest.brsar']
+CF_GAME_ID = 'RUUE01'
+
+
+_last_progress = [-1]
+
+
+def progress(pct):
+    if pct != _last_progress[0]:
+        _last_progress[0] = pct
+        print('PROGRESS %d' % pct, flush=True)
+
+
+def find_cf_disc(bin_dir):
+    """The City Folk disc image (or extracted folder) in <bin dir>/rom/, or None."""
+    import wii_disc
+    rom = os.path.join(bin_dir, 'rom')
+    if not os.path.isdir(rom):
+        return None
+    for name in sorted(os.listdir(rom)):
+        path = os.path.join(rom, name)
+        if os.path.isdir(path) and os.path.isdir(os.path.join(find_files_root(path), 'Sky')):
+            return path
+        if name.lower().endswith(('.wbfs', '.iso')):
+            try:
+                if wii_disc.WiiDisc(path).game_id == CF_GAME_ID:
+                    return path
+            except (ValueError, OSError):
+                continue
+    return None
+
+
 def main():
     if len(sys.argv) != 3:
         sys.exit(__doc__)
     src, bin_dir = sys.argv[1], sys.argv[2]
+    if src == '--auto':
+        src = find_cf_disc(bin_dir)
+        if src is None:
+            sys.exit('Put your Animal Crossing: City Folk (USA) disc image in %s: a .wbfs or .iso file'
+                     % os.path.join(bin_dir, 'rom'))
     try:
         import numpy  # noqa: F401 (the music and sound effects need it)
     except ImportError:
@@ -301,21 +343,20 @@ def main():
         os.remove(version_file)  # a failed run must not look complete
 
     tmp = None
+    progress(0)
     if os.path.isfile(src):
+        import wii_disc
+        try:
+            disc = wii_disc.WiiDisc(src)
+        except ValueError as e:
+            sys.exit(str(e))
+        if disc.game_id != CF_GAME_ID:
+            sys.exit('%s is %s, not Animal Crossing: City Folk (USA, %s)' % (src, disc.game_id, CF_GAME_ID))
         tmp = tempfile.TemporaryDirectory()
-        disc = os.path.join(tmp.name, 'disc')  # wit wants a folder that doesn't exist yet
-        subprocess.run(['wit', 'extract', '-q', '--files', '+/files/Sky/', '--files',
-                        '+/files/Script/ENG/npc_SP/NPC_hu-ko.bmg', '--files',
-                        '+/files/Script/ENG/npc_SP/NPC_master.bmg', '--files', '+/files/BgData/BgModel/',
-                        '--files', '+/files/Npc/Special/Model/14.brres', '--files', '+/files/Npc/Special/Model/23.brres',
-                        '--files', '+/files/Rmobj/obj_cafe1.brres', '--files', '+/files/Rmobj/obj_cafe2.brres',
-                        '--files', '+/files/Rmobj/obj_cafe3.brres', '--files', '+/files/Rmobj/obj_cafe4.brres',
-                        '--files', '+/files/Rmobj/obj_cafe5.brres', '--files', '+/files/Anm/Anm.brcha',
-                        '--files', '+/files/Rmobj/obj_cafe6.brres', '--files', '+/files/Sound/rv_forest.brsar',
-                        src, disc], check=True)
-        root = find_files_root(disc)
+        root = disc.extract(DISC_FILES, tmp.name, lambda f: progress(int(f * 60)))
     else:
         root = find_files_root(src)
+    progress(60)
     sky = os.path.join(root, 'Sky') if os.path.isdir(os.path.join(root, 'Sky')) else root
 
     out = os.path.join(bin_dir, 'cf_sky')
@@ -325,6 +366,7 @@ def main():
         write_tga(os.path.join(out, name), w, h, px)
         print('wrote %s (%dx%d)' % (os.path.join(out, name), w, h))
     write_rooms(os.path.join(root, 'BgData', 'BgModel'), os.path.join(out, 'rooms'))
+    progress(70)
     bmg = os.path.join(root, 'Script', 'ENG', 'npc_SP', 'NPC_hu-ko.bmg')
     if os.path.isfile(bmg):
         write_lines(bmg, os.path.join(out, 'celeste.msg'))
@@ -333,10 +375,12 @@ def main():
     master = os.path.join(root, 'Script', 'ENG', 'npc_SP', 'NPC_master.bmg')
     if os.path.isfile(master):
         write_lines(master, os.path.join(out, 'brewster.msg'))
+    progress(80)
     import cf_char
     cf_char.write_chars(root, os.path.join(out, 'chars'))
     import cf_roost_anim
     cf_roost_anim.write_roost_anims(root, os.path.join(out, 'anims'))
+    progress(85)
     brsar = os.path.join(root, 'Sound', 'rv_forest.brsar')
     if os.path.isfile(brsar):
         import cf_music
@@ -347,8 +391,9 @@ def main():
     if missing:
         sys.exit('This doesn\'t look like Animal Crossing: City Folk (USA, RUUE01): nothing was made for %s'
                  % ', '.join(missing))
-    with open(version_file, 'w') as f:
+    with open(version_file, 'w', newline='\n') as f:
         f.write('%d\n' % CF_DATA_VERSION)
+    progress(100)
     print('City Folk files ready (version %d)' % CF_DATA_VERSION)
 
 

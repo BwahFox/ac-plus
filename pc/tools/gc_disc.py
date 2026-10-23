@@ -98,8 +98,14 @@ def find_disc(game_dir):
         d = os.path.join(game_dir, sub)
         if os.path.isdir(d):
             for name in sorted(os.listdir(d)):
-                if name.lower().endswith(('.iso', '.gcm', '.ciso')):
-                    return os.path.join(d, name)
+                path = os.path.join(d, name)
+                if name.lower().endswith('.ciso'):
+                    return path
+                if name.lower().endswith(('.iso', '.gcm')):
+                    with open(path, 'rb') as f:
+                        head = f.read(0x20)
+                    if head[:3] == b'GAF' and head[0x1C:0x20] == b'\xc2\x33\x9f\x3d':  # the GameCube game
+                        return path
     return None
 
 
