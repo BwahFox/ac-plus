@@ -3448,12 +3448,20 @@ static void mMkRm_EvaluateBasePoint(int* points, mActor_name_t** layer_ut_info, 
 
     if (FLOOR_IS_MY_ORIG(floor_num)) {
         base_points += mMkRm_birth_point_table[mRmTp_BIRTH_TYPE_MY_ORIGINAL];
+#ifdef TARGET_PC
+    } else if (floor_num >= CARPET_NUM) {
+        base_points += mMkRm_birth_point_table[mRmTp_BIRTH_TYPE_GRP_A]; /* the basement's stone floor, past the table */
+#endif
     } else {
         base_points += mMkRm_birth_point_table[mMkRm_floor_from[floor_num]];
     }
 
     if (WALL_IS_MY_ORIG(wall_num)) {
         base_points += mMkRm_birth_point_table[mRmTp_BIRTH_TYPE_MY_ORIGINAL];
+#ifdef TARGET_PC
+    } else if (wall_num >= WALL_NUM) {
+        base_points += mMkRm_birth_point_table[mRmTp_BIRTH_TYPE_GRP_A]; /* and its rock wall */
+#endif
     } else {
         base_points += mMkRm_birth_point_table[mMkRm_wall_from[wall_num]];
     }

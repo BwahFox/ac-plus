@@ -13,6 +13,9 @@
 #include "m_font.h"
 #include "m_common_data.h"
 #include "m_malloc.h"
+#ifdef TARGET_PC
+#include "pc_basement.h"
+#endif
 
 enum {
     mCL_DRAW_TYPE_FTR,
@@ -382,6 +385,11 @@ static void mCL_wall_init(mCL_Item_c* item, mActor_name_t item_no) {
     item->seg_ofs = (item_no - ITM_WALL_START) * (mNW_PALETTE_SIZE + 0x1000);
 
     mRmTp_CopyWallData(item->seg1, item_no - ITM_WALL_START);
+#ifdef TARGET_PC
+    if (PC_ITEM_IS_BASEMENT_LOOK(item_no)) {
+        item->price = PC_BASEMENT_LOOK_PRICE; /* orderable, though no shop sells it */
+    } else
+#endif
     if (mSP_SearchItemCategoryPriority(item_no, mSP_KIND_WALLPAPER, mSP_LISTTYPE_COMMON, NULL) ||
         mSP_SearchItemCategoryPriority(item_no, mSP_KIND_WALLPAPER, mSP_LISTTYPE_UNCOMMON, NULL) ||
         mSP_SearchItemCategoryPriority(item_no, mSP_KIND_WALLPAPER, mSP_LISTTYPE_RARE, NULL)) {
@@ -400,6 +408,11 @@ static void mCL_carpet_init(mCL_Item_c* item, mActor_name_t item_no) {
     item->seg_ofs = (item_no - ITM_CARPET_START) * (mNW_PALETTE_SIZE + 0x2000);
 
     mRmTp_CopyFloorData(item->seg1, item_no - ITM_CARPET_START);
+#ifdef TARGET_PC
+    if (PC_ITEM_IS_BASEMENT_LOOK(item_no)) {
+        item->price = PC_BASEMENT_LOOK_PRICE;
+    } else
+#endif
     if (mSP_SearchItemCategoryPriority(item_no, mSP_KIND_CARPET, mSP_LISTTYPE_COMMON, NULL) ||
         mSP_SearchItemCategoryPriority(item_no, mSP_KIND_CARPET, mSP_LISTTYPE_UNCOMMON, NULL) ||
         mSP_SearchItemCategoryPriority(item_no, mSP_KIND_CARPET, mSP_LISTTYPE_RARE, NULL)) {
@@ -1383,7 +1396,13 @@ static void mCL_catalog_ovl_init(Submenu* submenu) {
         item_list = menu->item_list;
 
         for (j = 0; j < item_info->list_size; j++, idx_list++) {
-            if (mCL_check_item_collect_bit(bit_data, *idx_list)) {
+#ifdef TARGET_PC
+            /* the basement's rock wall and stone floor are always there to order (pc_basement.h) */
+            int pc_always = (k == mCL_MENU_WALL || k == mCL_MENU_CARPET) && *idx_list == PC_BASEMENT_LOOK_IDX;
+#else
+            int pc_always = FALSE;
+#endif
+            if (pc_always || mCL_check_item_collect_bit(bit_data, *idx_list)) {
                 if (k == mCL_MENU_WALL) {
                     *item_list = ITM_WALL_START + *idx_list;
                 } else if (k == mCL_MENU_CARPET) {

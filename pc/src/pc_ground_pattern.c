@@ -32,8 +32,9 @@
 
 /* Frames a request may wait, after the menus close, for the player to be free. */
 #define REQUEST_TIMEOUT 180
-/* Lift above the terrain, against z-fighting where the drawn ground bulges. */
-#define GROUND_LIFT 2.0f
+/* Lift above the terrain, against z-fighting where the drawn ground bulges; under the 2 the shadows are drawn
+ * at (m_actor_shadow.c), or the pattern hides them. 0.3 still flickers. */
+#define GROUND_LIFT 1.0f
 /* Each tile is a GRID x GRID mesh following the ground height. */
 #define GRID 4
 /* Corner heights are sampled this far inside the tile, so a cliff next to it

@@ -5,7 +5,10 @@
  * so its walls and floor (rom_myhome3) carry them there. The save already has a wall/floor pair for the
  * basement (homes[].floors[2]); what it lacks is whether the player has put anything down yet, since 0 is a
  * real wallpaper and carpet. That's kept here, per house, as BSMT in the ac-plus save: until then the
- * basement looks as it always did. */
+ * basement looks as it always did.
+ *
+ * The rock wall and floor are items too (PC_ITM_BASEMENT_WALL/FLOOR), for the catalog and for any other room,
+ * where pc_basement_copy_look gives their textures as wallpaper and carpet. */
 #include "pc_basement.h"
 #include "m_common_data.h"
 
@@ -27,6 +30,26 @@ void pc_basement_set_custom(int house, int what) {
 void pc_basement_clear_custom(int house, int what) {
     if (house >= 0 && house < 4) {
         l_custom[house] &= (u8)~what;
+    }
+}
+
+extern u16 rom_myhome_ug_pal[];
+extern u8 rom_myhome_ugf1_tex[];
+extern u8 rom_myhome_ugw1_tex[];
+extern u8 rom_myhome_ugw2_tex[];
+
+void pc_basement_copy_look(u8* dst, int what) {
+    int i;
+
+    /* rom_myhome_ug's palette and 64x64 CI4 textures, the format of the rooms' own, already in host order */
+    memcpy(dst, rom_myhome_ug_pal, 0x20);
+    if (what == PC_BASEMENT_WALL) {
+        memcpy(dst + 0x20, rom_myhome_ugw1_tex, 0x800);
+        memcpy(dst + 0x20 + 0x800, rom_myhome_ugw2_tex, 0x800);
+    } else {
+        for (i = 0; i < 4; i++) {
+            memcpy(dst + 0x20 + i * 0x800, rom_myhome_ugf1_tex, 0x800); /* one stone tile for all four */
+        }
     }
 }
 

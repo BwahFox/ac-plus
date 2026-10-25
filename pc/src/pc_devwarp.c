@@ -2,7 +2,7 @@
  * them at PC_TELEPORT_POS=x,z[,degrees] in the scene they're in
  * (PC_WARP_SCENE: 1 = museum entrance, the default; 2 = observatory, 3 = café, 4-7 = house basement S/M/L/LL,
  * 8-11 = the house's main floor S/M/L/LL, 12 = the Nook shop,
- * PC_BASEMENT_TEST=wallpaper,carpet dressing them;
+ * PC_BASEMENT_TEST=wallpaper,carpet dressing them, PC_ROOM_TEST=wallpaper,carpet the main floors;
  * PC_WARP_POS=x,z: where to
  * arrive instead of the door) */
 #include "m_play.h"
@@ -47,7 +47,17 @@ void pc_dev_warp(void* playv, int which) {
     } else if (scene != NULL && atoi(scene) >= 8 && atoi(scene) <= 11) {
         static const int floors[] = { SCENE_MY_ROOM_S, SCENE_MY_ROOM_M, SCENE_MY_ROOM_L, SCENE_MY_ROOM_LL1 };
 
+        const char* look = getenv("PC_ROOM_TEST"); /* wallpaper,carpet: put on every house's main floor */
+
         door.next_scene_id = floors[atoi(scene) - 8];
+        if (look != NULL && strchr(look, ',') != NULL) {
+            int h;
+
+            for (h = 0; h < PLAYER_NUM; h++) {
+                Save_Get(homes[h]).floors[0].wall_floor.wallpaper_idx = (u8)atoi(look);
+                Save_Get(homes[h]).floors[0].wall_floor.flooring_idx = (u8)atoi(strchr(look, ',') + 1);
+            }
+        }
         Common_Set(house_owner_name, mHS_get_arrange_idx(0)); /* the first player's house, as its front door says */
         door.exit_orientation = mSc_DIRECT_NORTH;
         door.exit_position.x = 160, door.exit_position.z = 200;

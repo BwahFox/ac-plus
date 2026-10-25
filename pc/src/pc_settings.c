@@ -16,6 +16,7 @@ PCSettings g_pc_settings = {
     .world_curve = 75,
     .cf_weather = 1,
     .cf_tv = 1,
+    .tanning = 0,
     .disable_resetti = 0,
     .disable_shop_visitor_req = 0,
     .borderless_acres = 1,
@@ -75,6 +76,9 @@ static const char* DEFAULT_SETTINGS =
     "\n"
     "# City Folk TV: 1 = TVs show City Folk's programs through the day (from your City Folk disc), 0 = the original static\n"
     "cf_tv = 1\n"
+    "\n"
+    "# Tanning: 1 = summer sun tans your skin as on the GameCube, 0 = it keeps the tone you picked\n"
+    "tanning = 0\n"
     "\n"
     "[Gameplay]\n"
     "# Disable Mr. Resetti: 0 = normal, 1 = disable\n"
@@ -174,6 +178,8 @@ static void apply_setting(const char* key, const char* value) {
         if (val == 0 || val == 1) g_pc_settings.cf_weather = val;
     } else if (strcmp(key, "cf_tv") == 0) {
         if (val == 0 || val == 1) g_pc_settings.cf_tv = val;
+    } else if (strcmp(key, "tanning") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.tanning = val;
     } else if (strcmp(key, "disable_resetti") == 0) {
         if (val == 0 || val == 1) g_pc_settings.disable_resetti = val;
     } else if (strcmp(key, "disable_shop_visitor_req") == 0) {
@@ -292,6 +298,9 @@ void pc_settings_save(void) {
     fprintf(f, "\n");
     fprintf(f, "# City Folk TV: 1 = TVs show City Folk's programs through the day (from your City Folk disc), 0 = the original static\n");
     fprintf(f, "cf_tv = %d\n", g_pc_settings.cf_tv);
+    fprintf(f, "\n");
+    fprintf(f, "# Tanning: 1 = summer sun tans your skin as on the GameCube, 0 = it keeps the tone you picked\n");
+    fprintf(f, "tanning = %d\n", g_pc_settings.tanning);
     fprintf(f, "\n");
     fprintf(f, "[Gameplay]\n");
     fprintf(f, "# Disable Mr. Resetti: 0 = normal, 1 = disable\n");

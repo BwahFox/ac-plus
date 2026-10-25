@@ -1,4 +1,7 @@
 #include "ac_npc_guide2.h"
+#ifdef TARGET_PC
+#include "pc_skin.h"
+#endif
 
 #include "m_play.h"
 #include "m_common_data.h"

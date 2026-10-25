@@ -114,6 +114,23 @@ static TexCacheEntry* tex_cache_find(u32 data_ptr, int w, int h, u32 fmt, u32 tl
     return NULL;
 }
 
+/* A texture pack's HD texture is one GL texture for every cache entry whose image it replaces (the same
+ * wallpaper in a room's two banks, the catalog...), and the wrap/filter set for one entry is set for all of them.
+ * Note it on each, or an entry that still thinks it has REPEAT never sets it back after another set CLAMP. */
+static void tex_cache_share_params(const TexCacheEntry* e) {
+    if (!e->external) {
+        return;
+    }
+    for (int i = 0; i < tex_cache_count; i++) {
+        TexCacheEntry* o = &tex_cache[i];
+        if (o != e && o->gl_tex == e->gl_tex) {
+            o->wrap_s = e->wrap_s;
+            o->wrap_t = e->wrap_t;
+            o->min_filter = e->min_filter;
+        }
+    }
+}
+
 static TexCacheEntry* tex_cache_insert(u32 data_ptr, int w, int h, u32 fmt, u32 tlut_name,
                                        u32 tlut_ptr, u32 tlut_hash, u32 data_hash, GLuint gl_tex) {
     if (tex_cache_count >= TEX_CACHE_SIZE) {
@@ -700,6 +717,9 @@ static void pc_gx_load_tex_obj_impl(void* obj, u32 id) {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, gl_filter);
             cached->min_filter = filter_mode;
         }
+        if (params_changed) {
+            tex_cache_share_params(cached);
+        }
 
         o[TEXOBJ_GL_TEX] = tex;
         g_gx.gl_textures[id] = tex;
@@ -755,6 +775,7 @@ static void pc_gx_load_tex_obj_impl(void* obj, u32 id) {
             entry->wrap_t = wrap_t;
             entry->min_filter = filter_mode;
             entry->external = 1;
+            tex_cache_share_params(entry);
 
             o[TEXOBJ_GL_TEX] = hd_tex;
             g_gx.gl_textures[id] = hd_tex;

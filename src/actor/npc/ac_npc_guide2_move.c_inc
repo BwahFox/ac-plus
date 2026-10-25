@@ -472,8 +472,12 @@ static void aNG2_sex_select_wait2(NPC_GUIDE2_ACTOR* guide2, GAME_PLAY* play) {
                     }
 
                     idx = 0;
+#ifdef TARGET_PC
+                    pc_skin_ask_start(0x2AD9); /* skin tones first (pc_skin.c) */
+#else
                     mMsg_Set_continue_msg_num(msg_p, 0x2AD9);
                     mMsg_Set_ForceNext(msg_p);
+#endif
                     break;
                 case mChoice_CHOICE1: // female
                     switch (order) {
@@ -502,7 +506,11 @@ static void aNG2_sex_select_after(NPC_GUIDE2_ACTOR* guide2, GAME_PLAY* play) {
 
     if (order != 0 && mMsg_Check_MainNormalContinue(msg_p)) {
         aNG2_setupAction(guide2, play, aNG2_ACTION_STANDUP_START_WAIT);
+#ifdef TARGET_PC
+        pc_skin_ask_start(0x2AD9); /* skin tones first (pc_skin.c) */
+#else
         mMsg_Set_continue_msg_num(msg_p, 0x2AD9);
+#endif
         mDemo_Set_OrderValue(mDemo_ORDER_NPC0, 9, 0);
     }
 }
@@ -841,6 +849,9 @@ static void aNG2_actor_move(ACTOR* actorx, GAME* game) {
     Common_Get(clip).npc_clip->move_before_proc(actorx, game);
     aNG2_talk_demo_proc(actorx);
     aNG2_check_talk_msg_no(guide2);
+#ifdef TARGET_PC
+    if (!pc_skin_ask_busy()) /* he's asking about skin tones (pc_skin.c) */
+#endif
     (*guide2->proc)(guide2, play);
     Common_Get(clip).npc_clip->move_after_proc(actorx, game);
     aNG2_set_camera(guide2, play);

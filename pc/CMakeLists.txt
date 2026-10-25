@@ -323,6 +323,7 @@ set(PC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_cf_setup.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_brewster.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_basement.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_skin.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_museum_rooms.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_settings.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_profiler.c

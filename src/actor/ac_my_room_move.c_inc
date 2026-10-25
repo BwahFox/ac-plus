@@ -1147,6 +1147,17 @@ static int aMR_ManageMoveBottun(MY_ROOM_ACTOR* my_room, GAME* game, aMR_contact_
                                     return TRUE;
                                 }
                             }
+#ifdef TARGET_PC
+                        } else if ((ftr_idx == FTR_SUM_WHI_MIRROR || ftr_idx == FTR_SUM_RATAN_MIRROR ||
+                                    ftr_idx == FTR_SUM_HAL_MIRROR01 || ftr_idx == FTR_SUM_LICCAMIRROR ||
+                                    ftr_idx == FTR_YOS_TURKEY_MIRROR) &&
+                                   mSc_IS_SCENE_PLAYER_HOUSE_ROOM(Save_Get(scene_no)) &&
+                                   contact->contact_direction == aMR_CONTACT_DIR_FRONT && pc_skin_now_player() >= 0) {
+                            /* a mirror at home: change your skin tone (pc_skin.c) */
+                            my_room->state = 0;
+                            pc_skin_pick_open(pc_skin_now_player(), TRUE);
+                            return TRUE;
+#endif
                         } else if (ftr_actor->name == FTR_IKE_JNY_TRUTH01) { /* Mouth of Truth */
                             if (contact->contact_direction == aMR_CONTACT_DIR_FRONT &&
                                 aMR_FtrIdx2ChangeFtrSwitch(actorx, contact->ftrID)) {

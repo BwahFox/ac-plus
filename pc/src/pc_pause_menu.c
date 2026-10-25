@@ -5,6 +5,7 @@
 #include "pc_text_draw.h"
 #include "pc_pattern_qr.h"
 #include "pc_constellation_edit.h"
+#include "pc_skin.h"
 
 #include "m_font.h"
 #include "m_rcp.h"
@@ -31,6 +32,7 @@ typedef enum {
     PAGE_CONFIRM_QUIT = 2,
     PAGE_QR = 3,
     PAGE_CONST = 4, /* Celeste's telescope, opened by her (pc_constellation_edit.c) */
+    PAGE_SKIN = 5,  /* the skin tone picker, opened by Rover or a mirror (pc_skin.c) */
 } PauseMenuPage;
 
 #define MAIN_ITEM_MAX       6
@@ -74,6 +76,11 @@ static int main_items(MainItem* out) {
     return n;
 }
 
+void pc_pause_menu_open_skin(void) {
+    g_pc_paused = 1;
+    cur_page = PAGE_SKIN;
+}
+
 void pc_pause_menu_open_const(void) {
     g_pc_paused = 1;
     cur_page = PAGE_CONST;
@@ -81,6 +88,7 @@ void pc_pause_menu_open_const(void) {
 
 void pc_pause_menu_toggle(void) {
     if (!g_pc_paused && (g_pc_title_main_menu_visible || g_pc_nes_active)) return;
+    if (g_pc_paused && cur_page == PAGE_SKIN) return; /* closed by picking (or B), not the pause key */
 
     g_pc_paused = !g_pc_paused;
     if (g_pc_paused) {
@@ -163,6 +171,16 @@ static void handle_action(MenuAction act) {
                 if (!pc_settings_menu_cancel()) cur_page = PAGE_MAIN;
                 break;
             default: break;
+        }
+        return;
+    }
+
+    if (cur_page == PAGE_SKIN) {
+        pc_skin_pick_action((int)act);
+        if (!pc_skin_pick_active()) {
+            cur_page = PAGE_MAIN;
+            g_pc_paused = 0;
+            g_pc_pause_input_drain = 1;
         }
         return;
     }
@@ -266,6 +284,13 @@ static MenuAction translate_pad_axis(int axis, int value) {
     return ACT_NONE;
 }
 
+/* dev (pc_devtest.c PC_CTL "menu N"): an action as if pressed, N as MenuAction */
+void pc_pause_menu_dev_action(int act) {
+    if (g_pc_paused) {
+        handle_action((MenuAction)act);
+    }
+}
+
 int pc_pause_menu_handle_event(const SDL_Event* e) {
     if (!g_pc_paused) return 0;
 
@@ -327,6 +352,13 @@ void pc_pause_menu_draw(struct game_s* game) {
         if (!pc_settings_menu_active()) cur_page = PAGE_MAIN;
     } else if (cur_page == PAGE_CONST) {
         pc_const_edit_draw(game); /* draws the sky itself, no dimming */
+        if (!pc_const_edit_active()) { /* a mouse click closed it */
+            cur_page = PAGE_MAIN;
+            g_pc_paused = 0;
+            g_pc_pause_input_drain = 1;
+        }
+    } else if (cur_page == PAGE_SKIN) {
+        pc_skin_pick_draw(game); /* no dimming: the player shows the tone behind it */
     } else {
         pc_menu_dim_rect(game->graph, cur_page == PAGE_QR ? 210 : 180);
         if (cur_page == PAGE_MAIN)              draw_main_page(game);

@@ -1,8 +1,8 @@
 #include "m_private.h"
 #ifdef TARGET_PC
 #include "pc_basement.h"
-/* the basement's rock wall/floor items (pc_basement.h): not catalogued, and not what a request for "a carpet" or
- * "a wallpaper" finds */
+/* the basement's rock wall/floor items (pc_basement.h): no collect bit (the catalog always lists them), and not
+ * what a request for "a carpet" or "a wallpaper" finds */
 #define mPr_PC_SKIP(item) PC_ITEM_IS_BASEMENT_LOOK(item)
 #else
 #define mPr_PC_SKIP(item) FALSE

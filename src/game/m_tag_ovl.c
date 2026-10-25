@@ -1,7 +1,4 @@
 #include "m_tag_ovl.h"
-#ifdef TARGET_PC
-#include "pc_basement.h"
-#endif
 
 #include "m_common_data.h"
 #ifdef TARGET_PC
@@ -6894,13 +6891,6 @@ static int mTG_select_tag_decide_item_normal(Submenu* submenu, mActor_name_t ite
 
         ret_tag_type = tag_type[Common_Get(field_type)][category];
 
-#ifdef TARGET_PC
-        /* the basement's rock wall/floor items (pc_basement.h) only go down in a basement */
-        if (PC_ITEM_IS_BASEMENT_LOOK(item) &&
-            !(Common_Get(field_type) == mFI_FIELDTYPE2_PLAYER_ROOM && mSc_IS_SCENE_BASEMENT(Save_Get(scene_no)))) {
-            ret_tag_type = (Common_Get(field_type) == mFI_FIELDTYPE2_PLAYER_ROOM) ? mTG_TYPE_ROOM_DEFAULT : ret_tag_type;
-        }
-#endif
         /* Don't allow wallpaper & carpet options in the player basement */
 #ifndef TARGET_PC /* ac-plus: allowed (pc_basement.c) */
         if (Common_Get(field_type) == mFI_FIELDTYPE2_PLAYER_ROOM) {

@@ -5,6 +5,7 @@
 #include "m_common_data.h"
 #ifdef TARGET_PC
 #include "pc_pattern.h"
+#include "pc_skin.h"
 #endif
 #include "jsyswrap.h"
 #include "libultra/libultra.h"
@@ -1012,7 +1013,11 @@ static u32 mPlib_Get_UseFaceTexRom_p(void) {
 }
 
 static u32 mPlib_Get_UseFacePalletRom_p(void) {
+#ifdef TARGET_PC
+    int sunburn_rank = pc_skin_sunburn_rank(); /* none with tanning off */
+#else
     int sunburn_rank = Now_Private->sunburn.rank;
+#endif
     int decoy_flag = Common_Get(player_decoy_flag);
     u32 base;
     u32 ofs;
@@ -1308,6 +1313,10 @@ extern void mPlib_change_player_face_pallet(GAME* game) {
             _JW_GetResourceAram(player_face_pallet_rom_p, (u8*)player_face_pallet_p, mNW_PALETTE_SIZE);
 #ifdef TARGET_PC
             mPlib_ByteSwapPlayerPalette(player_face_pallet_p);
+            if (!Common_Get(player_decoy_flag)) {
+                pc_skin_keep_vanilla(player_face_pallet_p);
+                pc_skin_apply(player_face_pallet_p, pc_skin_tone(), pc_skin_sunburn_rank()); /* pc_skin.c */
+            }
 #endif
             DCStoreRangeNoSync(player_face_pallet_p, mNW_PALETTE_SIZE);
         }

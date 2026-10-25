@@ -21,6 +21,7 @@
 #ifdef TARGET_PC
 #include "pc_storage.h"
 #include "pc_dresser.h"
+#include "pc_skin.h"
 #endif
 
 enum {

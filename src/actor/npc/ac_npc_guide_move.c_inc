@@ -475,6 +475,10 @@ static void aNGD_sex_select_wait2(NPC_GUIDE_ACTOR* guide, GAME_PLAY* play) {
                         break;
                 }
 
+#ifdef TARGET_PC
+                /* skin tones before the town, where the talk was going on to */
+                pc_skin_ask_start(mMsg_Get_base_window_p()->continue_msg_no);
+#endif
                 guide->next_action = aNGD_ACTION_CNAME_MENU_OPEN_WAIT;
                 aNGD_setupAction(guide, play, aNGD_ACTION_SDON_AND_PB_WAIT);
                 break;
@@ -500,8 +504,12 @@ static void aNGD_sex_select_after(NPC_GUIDE_ACTOR* guide, GAME_PLAY* play) {
     u16 order = mDemo_Get_OrderValue(mDemo_ORDER_NPC0, 9);
 
     if (order != 0 && mMsg_Check_MainNormalContinue(msg_p)) {
+#ifdef TARGET_PC
+        pc_skin_ask_start(0x2AD8); /* skin tones first (pc_skin.c) */
+#else
         mMsg_Set_continue_msg_num(msg_p, 0x2AD8);
         mMsg_Set_ForceNext(msg_p);
+#endif
         guide->next_action = aNGD_ACTION_CNAME_MENU_OPEN_WAIT;
         aNGD_setupAction(guide, play, aNGD_ACTION_SDON_AND_PB_WAIT);
         mDemo_Set_OrderValue(mDemo_ORDER_NPC0, 9, 0);
@@ -926,6 +934,9 @@ static void aNGD_actor_move(ACTOR* actorx, GAME* game) {
     Common_Get(clip).npc_clip->move_before_proc(actorx, game);
     aNGD_talk_demo_proc(actorx);
     aNGD_check_talk_msg_no(guide);
+#ifdef TARGET_PC
+    if (!pc_skin_ask_busy()) /* he's asking about skin tones (pc_skin.c) */
+#endif
     (*guide->proc)(guide, play);
     Common_Get(clip).npc_clip->move_after_proc(actorx, game);
     aNGD_set_camera(guide, play);

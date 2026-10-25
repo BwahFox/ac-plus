@@ -8005,6 +8005,12 @@ static void Player_actor_Check_player_sunburn_rankdown(ACTOR* actorx) {
 static void Player_actor_Check_player_sunburn_rankup(ACTOR* actorx) {
     PLAYER_ACTOR* player = (PLAYER_ACTOR*)actorx;
 
+#ifdef TARGET_PC
+    if (!g_pc_settings.tanning) {
+        return; /* the skin keeps its chosen tone (pc_skin.c) */
+    }
+#endif
+
     if (player->player_sunburn_rankup == FALSE && mEv_IsNotTitleDemo()) {
         mActor_name_t field_id = mFI_GetFieldId();
 

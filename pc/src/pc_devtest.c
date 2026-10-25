@@ -451,7 +451,7 @@ static u32 devctl_buttons(const char* names) {
 }
 
 /* One PC_CTL line:
- *   press A+B 10 | tap A | stick X Y frames | cstick X Y frames | shot name | warp N [x z] |
+ *   press A+B 10 | tap A | stick X Y frames | cstick X Y frames | shot name | warp N [x z] | ground [slot] | skin N | skinpick | menu N |
  *   teleport x z [deg] | loan bells (the player's) | echo text | quit (save and quit, as the menu does) | exit */
 static void devctl_run(const char* line, int* quit_at, int* exit_at) {
     char cmd[16], a[64];
@@ -507,6 +507,25 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
     } else if (strcmp(cmd, "loan") == 0 && sscanf(line, "%*s %d", &n) == 1) {
         extern void pc_devtest_set_loan(int bells);
         pc_devtest_set_loan(n);
+    } else if (strcmp(cmd, "skin") == 0 && sscanf(line, "%*s %d", &n) == 1) {
+        extern void pc_skin_set_tone(int player, int tone);
+        extern int pc_skin_now_player(void);
+        extern void mPlib_change_player_face_pallet(void* game);
+        extern void* gamePT;
+        pc_skin_set_tone(pc_skin_now_player(), n);
+        if (gamePT != NULL) {
+            mPlib_change_player_face_pallet(gamePT);
+        }
+    } else if (strcmp(cmd, "menu") == 0 && sscanf(line, "%*s %d", &n) == 1) {
+        extern void pc_pause_menu_dev_action(int act);
+        pc_pause_menu_dev_action(n); /* 1 up, 2 down, 3 left, 4 right, 5 A, 6 B */
+    } else if (strcmp(cmd, "skinpick") == 0) {
+        extern void pc_skin_pick_open(int player, int can_cancel);
+        extern int pc_skin_now_player(void);
+        pc_skin_pick_open(pc_skin_now_player(), TRUE);
+    } else if (strcmp(cmd, "ground") == 0) {
+        extern void pc_ground_pattern_request(int image);
+        pc_ground_pattern_request(sscanf(line, "%*s %d", &n) == 1 ? n : 0);
     } else if (strcmp(cmd, "quit") == 0) {
         *quit_at = (int)s_frame;
     } else if (strcmp(cmd, "exit") == 0) {

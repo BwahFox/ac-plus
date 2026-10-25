@@ -3,6 +3,8 @@
 #include "pc_menu_util.h"
 #include "pc_platform.h"
 #include "pc_sky.h"
+#include "pc_mouse.h"
+#include "pc_settings.h"
 
 #include "m_common_data.h"
 #include "game.h"
@@ -437,6 +439,118 @@ void pc_const_edit_action(int act) {
     }
 }
 
+/* --- the mouse (with the Mouse setting on "Menus") ---
+ * The cursor follows the pointer to the nearest star; left click is A, right click B; the wheel, or the pointer
+ * held near the left or right edge, looks around. In the lists, hovering picks a row. */
+
+#define PC_EDIT_EDGE 0.06f      /* how near the edge, of the window's width, pans */
+#define PC_EDIT_EDGE_PAN 0.012f /* radians per frame there */
+
+extern SDL_Window* g_pc_window;
+
+/* The sky's azimuth and height under window point (wx, wy), as pc_sky.c's sky_draw_gaze looks */
+static void pc_edit_window_to_sky(int wx, int wy, int ww, int wh, f32* az, f32* up) {
+    f32 ch = cosf(l_edit.heading), sh = sinf(l_edit.heading);
+    f32 cp = cosf(PC_EDIT_PITCH), sp = sinf(PC_EDIT_PITCH);
+    f32 fwd[3] = { sh * cp, sp, -ch * cp };
+    f32 right[3] = { ch, 0.0f, sh };
+    f32 upv[3] = { right[1] * fwd[2] - right[2] * fwd[1], right[2] * fwd[0] - right[0] * fwd[2],
+                   right[0] * fwd[1] - right[1] * fwd[0] };
+    f32 t = tanf(PC_EDIT_FOV * 0.5f);
+    f32 nx = (2.0f * (f32)wx / (f32)ww - 1.0f) * t * (f32)ww / (f32)wh;
+    f32 ny = (1.0f - 2.0f * (f32)wy / (f32)wh) * t;
+    f32 d[3], len;
+    int k;
+
+    for (k = 0; k < 3; k++) {
+        d[k] = fwd[k] + right[k] * nx + upv[k] * ny;
+    }
+    len = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+    *az = atan2f(d[0], -d[2]);
+    *up = asinf(d[1] / len);
+}
+
+/* The list row under the pointer (rows `n` from y0, `step` apart, in the 320x240 screen), or -1 */
+static int pc_edit_mouse_row(f32 y0, f32 step, int n) {
+    s32 sx, sy;
+    int i;
+
+    pc_mouse_get_native_position(&sx, &sy);
+    for (i = 0; i < n; i++) {
+        if ((f32)sy >= y0 + i * step - 2.0f && (f32)sy < y0 + (i + 1) * step - 2.0f) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void pc_edit_mouse(void) {
+    u32 pressed = pc_mouse_button_pressed();
+    s32 wheel = pc_mouse_scroll_wheel();
+    s32 mx, my;
+    int ww = 0, wh = 0, row;
+
+    if (g_pc_settings.mouse_mode != 1 || g_pc_window == NULL) {
+        return;
+    }
+    SDL_GetWindowSize(g_pc_window, &ww, &wh);
+    if (ww <= 0 || wh <= 0) {
+        return;
+    }
+    pc_mouse_get_position(&mx, &my);
+
+    if (l_edit.mode == PC_CONST_EDIT_PICK || l_edit.finish_menu) {
+        int pick = l_edit.mode == PC_CONST_EDIT_PICK;
+
+        row = pick ? pc_edit_mouse_row(64.0f, 14.0f, l_edit.pick_num) : pc_edit_mouse_row(90.0f, 18.0f, FINISH_NUM);
+        if (row >= 0 && pc_mouse_moved()) {
+            *(pick ? &l_edit.pick_sel : &l_edit.finish_sel) = row;
+        }
+        if ((pressed & PC_MOUSE_BUTTON_LEFT) && row >= 0) {
+            *(pick ? &l_edit.pick_sel : &l_edit.finish_sel) = row;
+            pc_const_edit_action(ACT_CONFIRM);
+        } else if (pressed & PC_MOUSE_BUTTON_RIGHT) {
+            pc_const_edit_action(ACT_CANCEL);
+        }
+        return;
+    }
+
+    /* looking around: the wheel, or the pointer at the edge */
+    if (wheel != 0) {
+        l_edit.heading = pc_edit_wrap(l_edit.heading - (f32)wheel * PC_EDIT_PAN_STEP);
+    }
+    if (mx >= 0 && mx < ww && my >= 0 && my < wh) {
+        if (mx < ww * PC_EDIT_EDGE) {
+            l_edit.heading = pc_edit_wrap(l_edit.heading - PC_EDIT_EDGE_PAN);
+        } else if (mx > ww * (1.0f - PC_EDIT_EDGE)) {
+            l_edit.heading = pc_edit_wrap(l_edit.heading + PC_EDIT_EDGE_PAN);
+        }
+    }
+
+    if (l_edit.mode == PC_CONST_EDIT_VIEW) {
+        if (pressed & (PC_MOUSE_BUTTON_LEFT | PC_MOUSE_BUTTON_RIGHT)) {
+            pc_const_edit_action(ACT_CONFIRM);
+        }
+        return;
+    }
+
+    if (pc_mouse_moved() || wheel != 0 || (pressed & PC_MOUSE_BUTTON_LEFT)) {
+        f32 az, up;
+        pc_const_star_c s;
+
+        pc_edit_window_to_sky(mx, my, ww, wh, &az, &up);
+        if (pc_edit_nearest(az, up, 0.0f, 0.0f, &s)) {
+            l_edit.cursor = s;
+            l_edit.has_cursor = TRUE;
+        }
+    }
+    if (pressed & PC_MOUSE_BUTTON_LEFT) {
+        pc_const_edit_action(ACT_CONFIRM);
+    } else if (pressed & PC_MOUSE_BUTTON_RIGHT) {
+        pc_const_edit_action(ACT_CANCEL);
+    }
+}
+
 /* --- drawing --- */
 
 static void pc_edit_name(const pc_constellation_c* c, char* buf, int n) {
@@ -459,6 +573,10 @@ void pc_const_edit_draw(struct game_s* game) {
 
     if (!l_edit.active) {
         return;
+    }
+    pc_edit_mouse();
+    if (!l_edit.active) {
+        return; /* a click closed it */
     }
     if (l_edit.mode == PC_CONST_EDIT_PICK) {
         pc_menu_dim_rect(game->graph, 180);

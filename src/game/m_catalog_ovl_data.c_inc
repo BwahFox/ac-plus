@@ -675,6 +675,9 @@ static u16 mCL_wall_idx_list[] = {
     0x0040,
     0x0041,
     0x0042,
+#ifdef TARGET_PC
+    PC_BASEMENT_LOOK_IDX, /* the basement's rock wall (pc_basement.h) */
+#endif
 };
 // clang-format on
 
@@ -747,6 +750,9 @@ static u16 mCL_carpet_idx_list[] = {
     0x0040,
     0x0041,
     0x0042,
+#ifdef TARGET_PC
+    PC_BASEMENT_LOOK_IDX, /* and its stone floor */
+#endif
 };
 // clang-format on
 

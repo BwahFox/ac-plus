@@ -17,6 +17,7 @@ typedef struct {
     int world_curve;      /* City Folk style curved ground + sky outdoors, strength in percent (0=flat, default 75) */
     int cf_weather;       /* 1 = City Folk style weather: changes during the day, overcast, rainbows (default) */
     int cf_tv;            /* 1 = TVs show City Folk's programs through the day, when converted (default) */
+    int tanning;          /* 1 = the sun tans the player (as the GameCube), 0 = skin keeps its chosen tone (default) */
     char weather_clear_days[128]; /* "M/D,M/D,...": days the City Folk weather stays clear all day (pc_weather.c) */
     int disable_resetti;  /* 0=normal (Resetti appears on reset), 1=disable reset penalty */
     int disable_shop_visitor_req; /* 0=normal (Nookington's needs a foreign-town shopper), 1=skip requirement */

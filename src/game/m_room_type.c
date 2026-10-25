@@ -4,6 +4,7 @@
 #include "m_common_data.h"
 #ifdef TARGET_PC
 #include "pc_pattern.h"
+#include "pc_basement.h"
 #endif
 #include "ac_my_room.h"
 #include "m_melody.h"
@@ -1817,6 +1818,11 @@ extern int mRmTp_GetFloorIdx() {
 
         floor = mHm_FLOOR(idx, floor_no).wall_floor.flooring_idx;
 
+#ifdef TARGET_PC
+        if (floor == PC_BASEMENT_LOOK_IDX) {
+            return FLOOR_BASEMENT; /* the stone floor sounds as it does downstairs (not the post office's, its index) */
+        }
+#endif
         if (floor >= 0 && floor < FLOOR_ETC_END) {
             return floor;
         }
@@ -1828,6 +1834,11 @@ extern int mRmTp_GetFloorIdx() {
 
         return 0;
     } else if (Save_Get(scene_no) == SCENE_COTTAGE_MY) {
+#ifdef TARGET_PC
+        if (Save_Get(island).cottage.room.wall_floor.flooring_idx == PC_BASEMENT_LOOK_IDX) {
+            return FLOOR_BASEMENT;
+        }
+#endif
         return Save_Get(island).cottage.room.wall_floor.flooring_idx;
     } else {
         switch (Save_Get(scene_no)) {
@@ -2113,6 +2124,12 @@ static int mRmTp_GetPlayerRoomIdx() {
 }
 
 extern void mRmTp_CopyWallData(u8* dst, int wall_no) {
+#ifdef TARGET_PC
+    if (dst != NULL && wall_no == PC_BASEMENT_LOOK_IDX) {
+        pc_basement_copy_look(dst, PC_BASEMENT_WALL); /* the basement's rock wall, as wallpaper */
+        return;
+    }
+#endif
     if (dst != NULL) {
         if (!WALL_IS_MY_ORIG(wall_no) && !(wall_no >= 0 && wall_no < WALL_ETC_END)) {
             wall_no = 0;
@@ -2150,6 +2167,12 @@ extern void mRmTp_CopyWallData(u8* dst, int wall_no) {
 }
 
 extern void mRmTp_CopyFloorData(u8* dst, int floor_no) {
+#ifdef TARGET_PC
+    if (dst != NULL && floor_no == PC_BASEMENT_LOOK_IDX) {
+        pc_basement_copy_look(dst, PC_BASEMENT_FLOOR); /* the basement's stone floor, as a carpet */
+        return;
+    }
+#endif
     if (dst != NULL) {
         if (!FLOOR_IS_MY_ORIG(floor_no) && !(floor_no >= 0 && floor_no < FLOOR_PLAYER_ROOM_END)) {
             floor_no = 0;

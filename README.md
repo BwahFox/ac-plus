@@ -115,7 +115,8 @@ disc-preservation database.
 
 - **The sky:** a City Folk style sky, with clouds, stars and a moon, over a gently curved world.
 - **The museum's observatory**, upstairs from the lobby. Celeste is there, with her City Folk
-  look and lines, and her telescope for drawing your own constellations in the night sky.
+  look and lines, and her telescope for drawing your own constellations in the night sky (with
+  the mouse too: click stars to link them, the wheel or the screen's edge to look around).
 - **The Roost**, the café downstairs from the lobby. It has Brewster, his City Folk lines and
   music, and coffee once a day, made and drunk with City Folk's own animations. Brewster warms up
   to you as you keep coming back.
@@ -144,13 +145,20 @@ mouse, controllers), ac-plus adds:
 - The town's clock keeps up with your computer's: putting a PC or Steam Deck to sleep with the game
   open no longer leaves the town behind.
 
+**You**
+- **Skin tones**, as Animal Crossing Deluxe has them: eight to choose from. Rover asks a new
+  resident on the train, and checking a mirror at home changes it any time. Works with the HD
+  texture pack's face.
+- Tanning is now a setting (Settings → Gameplay → Tanning), off by default.
+
 **Patterns**
 - Design a Pattern from the pause menu (Esc, or Back on a controller), once you've designed five
   patterns at the Able Sisters' counter.
 - **Pattern Storage**, in the pause menu.
 - Patterns keep their identity across slots and storage, so swapping slots no longer changes
   shirts, doors, signs or umbrellas made from them.
-- **Ground patterns:** "Lay on Ground" in a pattern's menu puts it on the ground in town.
+- **Ground patterns:** "Lay on Ground" in a pattern's menu puts it on the ground in town. Shadows
+  fall on them as on the grass.
 - **Pattern QR codes in New Leaf's format.** Pause menu → Pattern QR Codes saves your patterns
   as images in `qr/export/`, and reads New Leaf design QR codes you put in `qr/import/`.
 - Mouse controls in the pattern designer, plus Ctrl+Z to undo (`mouse_mode`).
@@ -167,8 +175,9 @@ mouse, controllers), ac-plus adds:
   is in a doorway's way, it stays where it is for you to move.
 - City Folk style storage: each of your dressers, wardrobes and closets has its own large storage
   (up to 128 in a town). Storage from older versions turns up in the first one you open.
+- With the HD texture pack, wallpaper no longer stretches after you've browsed the catalog.
 - The basement takes wallpaper and carpets. Its rock wall and floor come back to you as items, so
-  you can put them back later.
+  you can put them back later, or use them in any other room. Both are in Tom Nook's catalog.
 
 **Items**
 - The four NES games that were only available through e-Reader cards (Ice Climber,
@@ -227,7 +236,7 @@ default back.
 - **Where they are:** your town is in `save/card_a/`, as two files:
   - `DobutsunomoriP_MURA.gci`, a normal GameCube save that Dolphin and save editors understand;
   - `DobutsunomoriP_MURA.gci.acplus`, with everything ac-plus adds: ground patterns, storage,
-    pattern IDs, constellations, the Roost, basement wallpaper and carpets, the extra rooms. Its last three copies
+    pattern IDs, constellations, the Roost, basement wallpaper and carpets, the extra rooms, skin tones. Its last three copies
     are kept as `.acplus.bak1` to `.bak3`.
 
   **Always copy or back up the two files together.**
@@ -257,7 +266,7 @@ default back.
 
 **Saving and patterns**
 - **Quick load** only works for the town's first resident.
-- **Ground patterns** don't receive shadows from trees and buildings.
+- **Skin tones:** on a train trip to another town, your character shows the default skin there.
 
 **Sky**
 - **The curved world** makes far-off acres look emptier: like the original game, it only shows
@@ -265,8 +274,7 @@ default back.
 - **Sky events:** the UFO and balloons haven't been checked against the City Folk sky yet.
 
 **Museum and Roost**
-- **Celeste:** she has no bow, villagers don't mention constellations yet, and the telescope has
-  no mouse controls.
+- **Celeste:** she has no bow, and villagers don't mention constellations yet.
 - **The Roost:** K.K. Slider can't be talked to there, and he doesn't take song requests.
 
 ## Building on Windows without a container
@@ -292,6 +300,8 @@ disc yourself with Python 3 and `numpy`:
 - **[flyngmt](https://github.com/flyngmt/ACGC-PC-Port):** ACGC-PC-Port, the PC port ac-plus is
   built on, and its contributors. AloXado320's mouse support in menus and the pattern designer
   came in through it.
+- **Cuyler36's Animal Crossing Deluxe:** the skin tones follow it, with its eight tones' colours
+  and its tanning on top of them.
 - **Libraries:** [qrcodegen](https://www.nayuki.io/page/qr-code-generator-library),
   [quirc](https://github.com/dlbeer/quirc), [dr_libs](https://github.com/mackron/dr_libs) and
   [stb](https://github.com/nothings/stb). Their licenses are in `pc/lib/`.

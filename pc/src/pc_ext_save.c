@@ -15,6 +15,7 @@
  * pc_dresser.c. GRND (ground as player/slot bytes) is only read, from older
  * files, and turned into IDs. */
 #include "pc_basement.h"
+#include "pc_skin.h"
 #include "pc_nlrooms.h"
 #include "pc_brewster.h"
 #include "pc_dresser.h"
@@ -71,6 +72,7 @@ static void ext_reset(u16 land_id) {
     pc_const_reset();
     pc_brewster_reset();
     pc_basement_reset();
+    pc_skin_reset();
     pc_nlr_reset();
     pc_dresser_reset();
     s_ext.land_id = land_id;
@@ -105,10 +107,20 @@ static u16 current_land_id(void) {
     return Save_Get(land_info).id;
 }
 
-/* New town since this data was loaded (town reset): start over. */
+/* New town since this data was loaded (town reset): start over. The skin tones stay: the new town's first player
+ * picked theirs on the train, before the town had its id. */
 static void ext_check_town(void) {
     if (s_ext.land_id != current_land_id()) {
+        int tone[PLAYER_NUM];
+        int p;
+
+        for (p = 0; p < PLAYER_NUM; p++) {
+            tone[p] = pc_skin_tone_of(p);
+        }
         ext_reset(current_land_id());
+        for (p = 0; p < PLAYER_NUM; p++) {
+            pc_skin_set_tone(p, tone[p]);
+        }
     }
 }
 
@@ -210,7 +222,7 @@ static void ext_read_file(const char* path) {
             break;
         }
         if (pc_pattern_read_chunk(tag, f, size) || pc_const_read_chunk(tag, f, size) ||
-            pc_brewster_read_chunk(tag, f, size) || pc_basement_read_chunk(tag, f, size) || pc_nlr_read_chunk(tag, f, size) ||
+            pc_brewster_read_chunk(tag, f, size) || pc_basement_read_chunk(tag, f, size) || pc_skin_read_chunk(tag, f, size) || pc_nlr_read_chunk(tag, f, size) ||
             pc_dresser_read_chunk(tag, f, size)) {
             continue;
         }
@@ -356,7 +368,7 @@ void pc_ext_save_write(const char* gci_path) {
     ok = fwrite(EXT_MAGIC, 1, 4, f) == 4 && fwrite(&version, 4, 1, f) == 1 && fwrite(&s_ext.land_id, 2, 1, f) == 1 &&
          fwrite(&pad, 2, 1, f) == 1 && write_chunk(f, "GRNI", s_ext.ground, sizeof(s_ext.ground)) &&
          pc_dresser_write_chunks(f) && pc_pattern_write_chunks(f) &&
-         pc_const_write_chunk(f) && pc_brewster_write_chunk(f) && pc_basement_write_chunk(f) && pc_nlr_write_chunk(f) &&
+         pc_const_write_chunk(f) && pc_brewster_write_chunk(f) && pc_basement_write_chunk(f) && pc_skin_write_chunk(f) && pc_nlr_write_chunk(f) &&
          write_checksum(f);
     if (fclose(f) != 0) {
         ok = FALSE;

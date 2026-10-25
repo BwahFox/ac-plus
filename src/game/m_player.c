@@ -3,6 +3,9 @@
 #include "libultra/libultra.h"
 #include "m_play.h"
 #include "m_common_data.h"
+#ifdef TARGET_PC
+#include "pc_settings.h"
+#endif
 #include "m_actor_shadow.h"
 #include "m_bgm.h"
 #include "sys_matrix.h"

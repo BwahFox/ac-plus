@@ -247,6 +247,12 @@ static void aMI_CopyWallTexture(ACTOR* actorx, s16 wall_idx, s16 bank_no) {
 }
 
 static void aNI_SetFloorSE(s16 floor_idx) {
+#ifdef TARGET_PC
+    if (floor_idx == PC_BASEMENT_LOOK_IDX) {
+        Common_Set(floor_idx, FLOOR_BASEMENT); /* the stone floor's steps, as downstairs */
+        return;
+    }
+#endif
     if (!(floor_idx >= 0 && floor_idx < FLOOR_PLAYER_ROOM_END) == FALSE) {
         Common_Set(floor_idx, floor_idx);
     } else {
@@ -328,11 +334,16 @@ static s16 aMR_GetSceneRoomKind(void) {
 }
 
 static void aMI_CheckFloorWallIndex(s16* wall_idx, s16* floor_idx) {
-    if (!(*floor_idx >= 0 && *floor_idx < FLOOR_ETC_START) && !FLOOR_IS_MY_ORIG(*floor_idx)) {
+#ifdef TARGET_PC
+#define aMI_PC_LOOK(idx) ((idx) == PC_BASEMENT_LOOK_IDX) /* the basement's rock wall/floor (pc_basement.h) */
+#else
+#define aMI_PC_LOOK(idx) FALSE
+#endif
+    if (!(*floor_idx >= 0 && *floor_idx < FLOOR_ETC_START) && !FLOOR_IS_MY_ORIG(*floor_idx) && !aMI_PC_LOOK(*floor_idx)) {
         *floor_idx = 0;
     }
 
-    if (!(*wall_idx >= 0 && *wall_idx < WALL_ETC_START) && !WALL_IS_MY_ORIG(*wall_idx)) {
+    if (!(*wall_idx >= 0 && *wall_idx < WALL_ETC_START) && !WALL_IS_MY_ORIG(*wall_idx) && !aMI_PC_LOOK(*wall_idx)) {
         *wall_idx = 0;
     }
 }
@@ -866,6 +877,13 @@ static void My_Indoor_Actor_move(ACTOR* actorx, GAME* game) {
 }
 
 #ifdef TARGET_PC
+static int aMI_pc_in_basement(void) {
+    MY_INDOOR_ACTOR* my_indoor =
+        Common_Get(clip).my_indoor_clip != NULL ? Common_Get(clip).my_indoor_clip->my_indoor_actor_p : NULL;
+
+    return my_indoor != NULL && aMI_pc_basement(my_indoor);
+}
+
 /* The basement's rock wall/floor item put down there: the rock back, and what covered it back to the player */
 static mActor_name_t aMI_pc_restore_basement(mActor_name_t item, int what) {
     MY_INDOOR_ACTOR* my_indoor =
@@ -893,7 +911,7 @@ static mActor_name_t aMI_ChangeCarpet(mActor_name_t item) {
     mActor_name_t old_floor;
 
 #ifdef TARGET_PC
-    if (item == PC_ITM_BASEMENT_FLOOR) {
+    if (item == PC_ITM_BASEMENT_FLOOR && aMI_pc_in_basement()) {
         return aMI_pc_restore_basement(item, PC_BASEMENT_FLOOR);
     }
 #endif
@@ -906,7 +924,11 @@ static mActor_name_t aMI_ChangeCarpet(mActor_name_t item) {
 #endif
 
     if (Common_Get(clip).my_indoor_clip != NULL &&
-        (item >= ITM_CARPET00 && item < (ITM_CARPET00 + FLOOR_PLAYER_ROOM_END))) {
+        ((item >= ITM_CARPET00 && item < (ITM_CARPET00 + FLOOR_PLAYER_ROOM_END))
+#ifdef TARGET_PC
+         || item == PC_ITM_BASEMENT_FLOOR /* the stone floor, outside the basement */
+#endif
+         )) {
         MY_INDOOR_ACTOR* my_indoor = Common_Get(clip).my_indoor_clip->my_indoor_actor_p;
 
         if (my_indoor != NULL && my_indoor->floor_reserve.reserve_flag == FALSE) {
@@ -964,7 +986,7 @@ static mActor_name_t aMI_ChangeWall(mActor_name_t item) {
     mActor_name_t old_wall;
 
 #ifdef TARGET_PC
-    if (item == PC_ITM_BASEMENT_WALL) {
+    if (item == PC_ITM_BASEMENT_WALL && aMI_pc_in_basement()) {
         return aMI_pc_restore_basement(item, PC_BASEMENT_WALL);
     }
 #endif
@@ -979,7 +1001,12 @@ static mActor_name_t aMI_ChangeWall(mActor_name_t item) {
     if (Common_Get(clip).my_indoor_clip != NULL) {
         MY_INDOOR_ACTOR* my_indoor = Common_Get(clip).my_indoor_clip->my_indoor_actor_p;
 
-        if (my_indoor != NULL && (item >= ITM_WALL00 && item < (ITM_WALL00 + WALL_ETC_END)) &&
+        if (my_indoor != NULL &&
+            ((item >= ITM_WALL00 && item < (ITM_WALL00 + WALL_ETC_END))
+#ifdef TARGET_PC
+             || item == PC_ITM_BASEMENT_WALL /* the rock wall, outside the basement */
+#endif
+             ) &&
             my_indoor->wall_reserve.reserve_flag == FALSE) {
             old_wall = ITM_WALL00 + my_indoor->wall_num;
 #ifdef TARGET_PC

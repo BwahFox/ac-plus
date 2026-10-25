@@ -8,6 +8,7 @@
 #include "pc_gx_internal.h"
 #include "pc_settings.h"
 #include "pc_profiler.h"
+#include "pc_skin.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1128,10 +1129,75 @@ int pc_texture_pack_active(void) {
     return g_texpack_active;
 }
 
+/* The player's face recoloured to their skin tone (pc_skin.c): the HD face is found by the palette it had before,
+ * then a copy of it gets the tone, kept by HD texture and tone. The face, its eyes and mouth frames and the limbs
+ * are each one; the texture cache holds on to them, so they're only freed all at once, with that cache. */
+#define SKIN_TEX_SLOTS 256
+static struct { GLuint src; xxh_u64 key; GLuint tex; } s_skin_tex[SKIN_TEX_SLOTS];
+static int s_skin_tex_count;
+
+static GLuint skin_recolor(GLuint src, const unsigned short* from, const void* to) {
+    xxh_u64 key = xxhash64(to, 32);
+    GLint tw = 0, th = 0;
+    unsigned char* rgba;
+    GLuint tex;
+    int i;
+
+    for (i = 0; i < s_skin_tex_count; i++) {
+        if (s_skin_tex[i].src == src && s_skin_tex[i].key == key) {
+            return s_skin_tex[i].tex;
+        }
+    }
+    if (s_skin_tex_count >= SKIN_TEX_SLOTS) {
+        /* full (many tone changes): drop the texture cache, which may draw with them, then them */
+        pc_gx_texture_cache_invalidate();
+        for (i = 0; i < s_skin_tex_count; i++) {
+            glDeleteTextures(1, &s_skin_tex[i].tex);
+        }
+        s_skin_tex_count = 0;
+    }
+    glBindTexture(GL_TEXTURE_2D, src);
+    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &tw);
+    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &th);
+    if (tw <= 0 || th <= 0 || tw > 4096 || th > 4096 || (rgba = (unsigned char*)malloc((size_t)tw * th * 4)) == NULL) {
+        return src;
+    }
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    pc_skin_recolor_rgba(rgba, tw * th, from, (const unsigned short*)to);
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tw, th, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    free(rgba);
+    s_skin_tex[s_skin_tex_count].src = src;
+    s_skin_tex[s_skin_tex_count].key = key;
+    s_skin_tex[s_skin_tex_count].tex = tex;
+    s_skin_tex_count++;
+    return tex;
+}
+
+static GLuint texture_pack_lookup(const void* data, int data_size, int w, int h, unsigned int fmt,
+                                  const void* tlut_data, int tlut_entries, int tlut_is_be, int* out_w, int* out_h);
+
 GLuint pc_texture_pack_lookup(const void* data, int data_size,
                               int w, int h, unsigned int fmt,
                               const void* tlut_data, int tlut_entries, int tlut_is_be,
                               int* out_w, int* out_h) {
+    const unsigned short* skin_from = pc_skin_vanilla_tlut(tlut_data);
+    GLuint tex;
+
+    if (skin_from == NULL) {
+        return texture_pack_lookup(data, data_size, w, h, fmt, tlut_data, tlut_entries, tlut_is_be, out_w, out_h);
+    }
+    tex = texture_pack_lookup(data, data_size, w, h, fmt, skin_from, tlut_entries, tlut_is_be, out_w, out_h);
+    return tex != 0 ? skin_recolor(tex, skin_from, tlut_data) : 0;
+}
+
+static GLuint texture_pack_lookup(const void* data, int data_size, int w, int h, unsigned int fmt,
+                                  const void* tlut_data, int tlut_entries, int tlut_is_be, int* out_w, int* out_h) {
     if (!g_texpack_active || !data || data_size <= 0) return 0;
 
     int hash_size = gc_texture_data_size(w, h, fmt);
