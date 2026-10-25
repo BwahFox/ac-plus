@@ -1643,6 +1643,12 @@ static void aNSC_set_talk_info_start_wait(ACTOR* actorx) {
         Now_Private->inventory.loan = next_loan;
         size->renew = FALSE;
     } else {
+#ifdef TARGET_PC
+        if (pc_nlr_nook_greeting(idx, aNSC_get_msg_no(aNSC_MSG_REHOUSE_STATUE))) {
+            /* the New Leaf style rooms, before the statue (pc_nlrooms.c): his line stands in for this one */
+            msg_no = aNSC_MSG_REHOUSE_STATUE;
+        } else
+#endif
         if (size->statue_ordered == TRUE && size->next_size == mHm_HOMESIZE_STATUE) {
             msg_no = aNSC_MSG_STATUE_BUILT;
             size->statue_ordered = FALSE;

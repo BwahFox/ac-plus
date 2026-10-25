@@ -1,4 +1,8 @@
 #include "ef_effect_control.h"
+#ifdef TARGET_PC
+#include <stdio.h>
+#include <stdlib.h>
+#endif
 
 #include "m_common_data.h"
 #include "m_player_lib.h"
@@ -58,6 +62,12 @@ static f32 eShooting_AdjustValue(int now, int start, int end, f32 start_val, f32
 
 static s16 eShootingSet_GetFrame_MakeNextShooting() {
     s16 adjust;
+#ifdef TARGET_PC
+    /* dev: PC_SHOOTING_EVERY=n makes the next shooting star in n frames */
+    if (getenv("PC_SHOOTING_EVERY") != NULL) {
+        return (s16)atoi(getenv("PC_SHOOTING_EVERY"));
+    }
+#endif
 
     if ((Common_Get(time).now_sec < 64800) || (Common_Get(time).now_sec >= 75600)) {
         adjust = 600;
@@ -93,6 +103,16 @@ static void eShootingSet_mv(eEC_Effect_c* effect, GAME* game) {
         if (effect->effect_specific[2] >= effect->effect_specific[1] * 10) {
             effect->effect_specific[2] = 0;
             effect->effect_specific[1] = eShootingSet_GetFrame_MakeNextShooting();
+#ifdef TARGET_PC
+            {
+                extern int g_pc_verbose;
+                if (g_pc_verbose) {
+                    printf("[SHOOTING] set mv: next in %d, looked at %d, pos=(%.1f, %.1f, %.1f)\n",
+                           effect->effect_specific[1], eEC_CLIP->check_lookat_block_proc(effect->position),
+                           effect->position.x, effect->position.y, effect->position.z);
+                }
+            }
+#endif
 
             if (eEC_CLIP->check_lookat_block_proc(effect->position)) {
                 rng = RANDOM(10.0f) & 1;

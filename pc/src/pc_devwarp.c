@@ -1,11 +1,14 @@
 /* pc_devwarp.c - dev: PC_WARP_AT=F walks the player into a scene's door at frame F, and PC_TELEPORT_AT=F puts
  * them at PC_TELEPORT_POS=x,z[,degrees] in the scene they're in
  * (PC_WARP_SCENE: 1 = museum entrance, the default; 2 = observatory, 3 = café, 4-7 = house basement S/M/L/LL,
+ * 8-11 = the house's main floor S/M/L/LL, 12 = the Nook shop,
  * PC_BASEMENT_TEST=wallpaper,carpet dressing them;
  * PC_WARP_POS=x,z: where to
  * arrive instead of the door) */
 #include "m_play.h"
 #include "m_scene.h"
+#include "m_house.h"
+#include "m_shop.h"
 #include "m_scene_table.h"
 #include "m_common_data.h"
 #include "m_player_lib.h"
@@ -41,6 +44,22 @@ void pc_dev_warp(void* playv, int which) {
         }
         door.exit_orientation = mSc_DIRECT_SOUTH;
         door.exit_position.x = 160, door.exit_position.z = 160;
+    } else if (scene != NULL && atoi(scene) >= 8 && atoi(scene) <= 11) {
+        static const int floors[] = { SCENE_MY_ROOM_S, SCENE_MY_ROOM_M, SCENE_MY_ROOM_L, SCENE_MY_ROOM_LL1 };
+
+        door.next_scene_id = floors[atoi(scene) - 8];
+        Common_Set(house_owner_name, mHS_get_arrange_idx(0)); /* the first player's house, as its front door says */
+        door.exit_orientation = mSc_DIRECT_NORTH;
+        door.exit_position.x = 160, door.exit_position.z = 200;
+    } else if (scene != NULL && atoi(scene) == 12) {
+        /* the town's Nook shop, whichever it is now, just inside its door */
+        static const int shops[] = { SCENE_SHOP0, SCENE_CONVENI, SCENE_SUPER, SCENE_DEPART };
+        static const s16 width[] = { 320, 440, 440, 480 };
+        int level = mSP_GetShopLevel() & 3;
+
+        door.next_scene_id = shops[level];
+        door.exit_orientation = mSc_DIRECT_NORTH;
+        door.exit_position.x = width[level] / 2, door.exit_position.z = width[level] - 80;
     } else if (scene != NULL && atoi(scene) == 3) {
         door.next_scene_id = SCENE_MUSEUM_CAFE;
         door.exit_orientation = mSc_DIRECT_WEST;
@@ -53,10 +72,9 @@ void pc_dev_warp(void* playv, int which) {
     goto_other_scene(play, &door, TRUE);
 }
 
-void pc_dev_teleport(void* playv) {
+void pc_dev_teleport(void* playv, const char* pos) {
     GAME_PLAY* play = (GAME_PLAY*)playv;
     PLAYER_ACTOR* player = GET_PLAYER_ACTOR(play);
-    const char* pos = getenv("PC_TELEPORT_POS");
     const char* c;
 
     if (player == NULL || pos == NULL || (c = strchr(pos, ',')) == NULL) {
@@ -67,5 +85,12 @@ void pc_dev_teleport(void* playv) {
     if ((c = strchr(c + 1, ',')) != NULL) {
         player->actor_class.world.angle.y = DEG2SHORT_ANGLE((f32)atof(c + 1));
         player->actor_class.shape_info.rotation.y = player->actor_class.world.angle.y;
+    }
+}
+
+/* PC_CTL loan: the player's house loan */
+void pc_devtest_set_loan(int bells) {
+    if (Now_Private != NULL) {
+        Now_Private->inventory.loan = (u32)bells;
     }
 }

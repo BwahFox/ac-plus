@@ -191,4 +191,12 @@ typedef struct home_cottage_s {
 }
 #endif
 
+/* A house floor's data. On PC this includes the New Leaf style extra rooms (pc_nlrooms.h). */
+#ifdef TARGET_PC
+#include "pc_nlrooms.h"
+#define mHm_FLOOR(house, floor_no) (*mHm_GetFloorP((house), (floor_no)))
+#else
+#define mHm_FLOOR(house, floor_no) Save_Get(homes[(house)]).floors[(floor_no)]
+#endif
+
 #endif

@@ -1,3 +1,9 @@
+#ifdef TARGET_PC
+#include "pc_tv.h"
+
+extern Vtx int_sum_fruittv01_v[];
+#endif
+
 static void aSumFruittv01_ct(FTR_ACTOR* ftr_actor, u8* data) {
     // nothing
 }
@@ -7,7 +13,10 @@ static void aSumFruittv01_mv(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* g
 
     if (ftr_actor->switch_bit) {
         if (aFTR_CAN_PLAY_SE(ftr_actor)) {
-            sAdo_OngenPos((u32)ftr_actor, 6, &ftr_actor->position);
+#ifdef TARGET_PC
+            if (!pc_tv_sound_on()) /* City Folk's program sound instead of the hum (pc_tv.c) */
+#endif
+                sAdo_OngenPos((u32)ftr_actor, 6, &ftr_actor->position);
         }
 
 #ifdef TARGET_PC
@@ -62,7 +71,16 @@ static void aSumFruittv01_dw(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* g
     }
 
     gSPDisplayList(NEXT_POLY_OPA_DISP, int_sum_fruittv01_on_model);
+#ifdef TARGET_PC
+    {
+        /* City Folk's programs (pc_tv.c) */
+        Gfx* cf_screen = ftr_actor->switch_bit ? pc_tv_screen(game, &int_sum_fruittv01_v[48], &ftr_actor->position) : NULL;
+
+        gSPDisplayList(NEXT_POLY_OPA_DISP, cf_screen != NULL ? cf_screen : int_sum_fruittv01_off_model);
+    }
+#else
     gSPDisplayList(NEXT_POLY_OPA_DISP, int_sum_fruittv01_off_model);
+#endif
 
     CLOSE_DISP(game->graph);
 }

@@ -5,6 +5,6 @@
  * cf_sky/. A complete extraction ends by writing cf_sky/version.txt; the game starts only when it holds
  * this number. Raise it together with CF_DATA_VERSION in extract_cf_sky.py whenever what the extraction
  * writes changes, so players are asked to run it again. */
-#define PC_CF_DATA_VERSION 1
+#define PC_CF_DATA_VERSION 3
 
 #endif /* PC_CF_DATA_H */

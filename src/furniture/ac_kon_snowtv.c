@@ -1,3 +1,9 @@
+#ifdef TARGET_PC
+#include "pc_tv.h"
+
+extern Vtx int_kon_snowtv_v[];
+#endif
+
 // Aus version changed the naming to use their 'standard'
 // It also updates the mv func to remove the animation frame logic.
 // The dw function was updated to use the game frame instead of an internal counter.
@@ -132,7 +138,10 @@ static void aKonsnowtv_mv(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game
 
     if (ftr_actor->switch_bit != FALSE) {
         if (aFTR_CAN_PLAY_SE(ftr_actor)) {
-            sAdo_OngenPos((u32)ftr_actor, 0x2B, &ftr_actor->position);
+#ifdef TARGET_PC
+            if (!pc_tv_sound_on()) /* City Folk's program sound instead of the hum (pc_tv.c) */
+#endif
+                sAdo_OngenPos((u32)ftr_actor, 0x2B, &ftr_actor->position);
         }
 
 #ifdef TARGET_PC
@@ -168,7 +177,16 @@ static void aKonsnowtv_dw(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game
         gSPSegment(NEXT_POLY_OPA_DISP, G_MWO_SEGMENT_8, int_kon_snowtv07a_TA_tex_txt);
     }
 
+#ifdef TARGET_PC
+    {
+        /* City Folk's programs (pc_tv.c) */
+        Gfx* cf_screen = ftr_actor->switch_bit ? pc_tv_screen(game, int_kon_snowtv_v, &ftr_actor->position) : NULL;
+
+        gSPDisplayList(NEXT_POLY_OPA_DISP, cf_screen != NULL ? cf_screen : int_kon_snowtv_face_model);
+    }
+#else
     gSPDisplayList(NEXT_POLY_OPA_DISP, int_kon_snowtv_face_model);
+#endif
     gSPDisplayList(NEXT_POLY_OPA_DISP, int_kon_snowtv_body_model);
 
     CLOSE_DISP(game->graph);

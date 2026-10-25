@@ -3,6 +3,9 @@
 #include "m_rcp.h"
 #include "sys_matrix.h"
 #include "m_debug.h"
+#ifdef TARGET_PC
+#include "pc_sky.h"
+#endif
 
 static void eHanabiYanagi_init(xyz_t pos, int prio, s16 angle, GAME* game, u16 item_name, s16 arg0, s16 arg1);
 static void eHanabiYanagi_ct(eEC_Effect_c* effect, GAME* game, void* ct_arg);
@@ -82,7 +85,21 @@ eEC_morph_data_c eHanabiYanagi_morph_data_in[] = {
 };
 
 extern Gfx ef_hanabi_y_00_modelT[];
+#ifdef TARGET_PC
+static void eHanabiYanagi_draw(eEC_Effect_c* effect, GAME* game, int sky);
+
 static void eHanabiYanagi_dw(eEC_Effect_c* effect, GAME* game) {
+    eHanabiYanagi_draw(effect, game, FALSE);
+    if (pc_sky_fireworks()) { /* and up in the sky, when it's in view (pc_sky_game.c) */
+        eHanabiYanagi_draw(effect, game, TRUE);
+        pc_sky_firework_done(game);
+    }
+}
+
+static void eHanabiYanagi_draw(eEC_Effect_c* effect, GAME* game, int sky) {
+#else
+static void eHanabiYanagi_dw(eEC_Effect_c* effect, GAME* game) {
+#endif
     u8 res1[9];
     u8 res2[9];
     f32 t = (f32)EFFECT_LIFETIME - effect->lifetime;
@@ -94,9 +111,13 @@ static void eHanabiYanagi_dw(eEC_Effect_c* effect, GAME* game) {
     v2 = effect->scale.x + eEL_CalcAdjust_F(t, 0.0f, (f32)(EFFECT_LIFETIME - 1), 0.f, 0.01);
     OPEN_DISP(game->graph);
     _texture_z_light_fog_prim_xlu(game->graph);
+#ifdef TARGET_PC
+    pc_sky_firework_place(game, &effect->position, &effect->offset, sky);
+#else
     Matrix_translate(effect->position.x + effect->offset.x, effect->position.y + effect->offset.y,
                      effect->position.z + effect->offset.z, MTX_LOAD);
     Matrix_RotateX(DEG2SHORT_ANGLE2(270), MTX_MULT);
+#endif
     Matrix_RotateZ(-effect->effect_specific[1], MTX_MULT);
     Matrix_scale(v, 1.f, 1.f, MTX_MULT);
     Matrix_RotateZ(effect->effect_specific[1], MTX_MULT);

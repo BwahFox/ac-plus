@@ -27,8 +27,11 @@
  * PC_CLOCK_LAG_AT=F:S set the town's clock S seconds behind at frame F, as sleeping would (pc_os.c)
  * PC_VTX_DUMP_AT=F   log the bounds of the basement's and the house rooms' wall/floor models
  * PC_HOUSE_DUMP_AT=F log each house's size, basement and the basement's wallpaper/carpet state
+ * PC_DRESSER_DUMP_AT=F log the dressers' storages, which furniture holds which and the pockets' IDs
+ *                    (PC_DRESSER_DUMP2_AT a second one)
  * PC_EVENT_DUMP_AT=F log the special event, Redd's hours today and his tent (m_event.c)
  * PC_TELEPORT_AT=F   put the player at PC_TELEPORT_POS=x,z[,degrees] at frame F (pc_devwarp.c)
+ *                    (PC_TELEPORT2_AT / PC_TELEPORT2_POS a second time)
  * PC_SFX_AT=F:name   play cf_sky/sfx/<name>.wav at frame F (pc_sfx.c)
  * PC_TYPE=F:text;...  type text at frame F (as a keyboard would into a text field)
  * PC_PAT_PAINT_AT=F  paint pattern slot 0 with stripes (an edit)
@@ -40,6 +43,9 @@
  * PC_DESIGN_EDIT_AT=F open the pattern editor on slot 0 (nothing is saved unless it is confirmed)
  * PC_CTRLZ_AT=F      hold Ctrl+Z for frame F (pattern designer undo)
  * PC_NO_PAD=1       don't open gamepads (pc_main.c), so a test copy can't read the player's controller
+ * PC_CTL=file       live control: lines appended to the file while the game runs are done as they come (see
+ *                   devctl_run below): press/tap buttons, hold the sticks, screenshots, warps, quit. Each logs
+ *                   "[ctl] frame N: ..." so a script can follow along
  * Frames count controller reads (game logic frames), so captures land at the
  * same moment with or without --no-framelimit.
  */
@@ -51,6 +57,12 @@
 #include <string.h>
 
 static u32 s_frame;
+
+/* PC_CTL: what the live control is holding, and until which frame */
+static u32 s_ctl_buttons, s_ctl_buttons_until;
+static s8 s_ctl_stick[2], s_ctl_cstick[2];
+static u32 s_ctl_stick_until, s_ctl_cstick_until;
+static char s_ctl_shot[72];
 
 static int devtest_env_int(const char* name) {
     const char* env = getenv(name);
@@ -153,6 +165,10 @@ u32 pc_devtest_buttons(void) {
         extern void pc_const_edit_open(int mode, const void* from);
         pc_const_edit_open(devtest_env_int("PC_CONST_EDIT_MODE"), NULL);
     }
+    if (s_frame == (u32)devtest_env_int("PC_DRESSER_DUMP_AT") || s_frame == (u32)devtest_env_int("PC_DRESSER_DUMP2_AT")) {
+        extern void pc_dresser_dev_dump(void);
+        pc_dresser_dev_dump();
+    }
     if (s_frame == (u32)devtest_env_int("PC_MSG_DUMP_AT")) {
         /* PC_MSG_DUMP_IDS=a,b,c logs those messages' bytes (with PC_MSG_DUMP=1) */
         extern void pc_msg_dev_dump(int index);
@@ -214,9 +230,14 @@ u32 pc_devtest_buttons(void) {
         pc_mEv_dev_dump();
     }
     if (s_frame == (u32)devtest_env_int("PC_TELEPORT_AT")) {
-        extern void pc_dev_teleport(void* play);
+        extern void pc_dev_teleport(void* play, const char* pos);
         extern void* gamePT;
-        pc_dev_teleport(gamePT);
+        pc_dev_teleport(gamePT, getenv("PC_TELEPORT_POS"));
+    }
+    if (s_frame == (u32)devtest_env_int("PC_TELEPORT2_AT")) {
+        extern void pc_dev_teleport(void* play, const char* pos);
+        extern void* gamePT;
+        pc_dev_teleport(gamePT, getenv("PC_TELEPORT2_POS"));
     }
     if (s_frame == (u32)devtest_env_int("PC_LOBBY_DUMP_AT")) {
         /* Vtx: s16 ob[3], u16 flag, s16 tc[2], u8 cn[4] */
@@ -277,6 +298,9 @@ u32 pc_devtest_buttons(void) {
             }
         }
     }
+    if (s_frame < s_ctl_buttons_until) {
+        held |= s_ctl_buttons;
+    }
     while (p != NULL && *p != '\0') {
         if (sscanf(p, "%d-%d:%x", &f1, &f2, &mask) == 3 && s_frame >= (u32)f1 && s_frame <= (u32)f2) {
             held |= mask;
@@ -295,10 +319,18 @@ u32 pc_devtest_buttons(void) {
 static void devtest_stick_env(const char* name, s8* x, s8* y);
 
 void pc_devtest_stick(s8* x, s8* y) {
+    if (s_frame < s_ctl_stick_until) {
+        *x = s_ctl_stick[0], *y = s_ctl_stick[1];
+        return;
+    }
     devtest_stick_env("PC_STICK", x, y);
 }
 
 void pc_devtest_cstick(s8* x, s8* y) {
+    if (s_frame < s_ctl_cstick_until) {
+        *x = s_ctl_cstick[0], *y = s_ctl_cstick[1];
+        return;
+    }
     devtest_stick_env("PC_CSTICK", x, y);
 }
 
@@ -364,6 +396,157 @@ int pc_devtest_mouse(int* wx, int* wy, u32* buttons) {
 }
 
 /* Called just before the back buffer is presented. */
+/* The picture on screen now, to path (PPM) */
+static void devtest_write_shot(const char* path) {
+    int w = g_pc_window_w;
+    int h = g_pc_window_h;
+    unsigned char* rgb = malloc((size_t)w * h * 3);
+    FILE* f;
+    int y;
+
+    if (rgb == NULL) {
+        return;
+    }
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    glReadBuffer(GL_BACK);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, rgb);
+    f = fopen(path, "wb");
+    if (f != NULL) {
+        fprintf(f, "P6\n%d %d\n255\n", w, h);
+        for (y = h - 1; y >= 0; y--) { /* GL rows are bottom-up */
+            fwrite(rgb + (size_t)y * w * 3, 1, (size_t)w * 3, f);
+        }
+        fclose(f);
+        printf("[devtest] wrote %s\n", path);
+        fflush(stdout);
+    }
+    free(rgb);
+}
+
+/* Button names for PC_CTL (PAD_BUTTON_*) */
+static u32 devctl_buttons(const char* names) {
+    static const struct {
+        const char* name;
+        u32 mask;
+    } table[] = {
+        { "A", 0x0100 },     { "B", 0x0200 },    { "X", 0x0400 },    { "Y", 0x0800 },     { "START", 0x1000 },
+        { "Z", 0x0010 },     { "R", 0x0020 },    { "L", 0x0040 },    { "LEFT", 0x0001 },  { "RIGHT", 0x0002 },
+        { "DOWN", 0x0004 },  { "UP", 0x0008 },
+    };
+    char buf[64];
+    char* tok;
+    u32 mask = 0;
+    unsigned int i;
+
+    snprintf(buf, sizeof(buf), "%s", names);
+    for (tok = strtok(buf, "+"); tok != NULL; tok = strtok(NULL, "+")) {
+        for (i = 0; i < sizeof(table) / sizeof(table[0]); i++) {
+            if (strcmp(tok, table[i].name) == 0) {
+                mask |= table[i].mask;
+            }
+        }
+    }
+    return mask;
+}
+
+/* One PC_CTL line:
+ *   press A+B 10 | tap A | stick X Y frames | cstick X Y frames | shot name | warp N [x z] |
+ *   teleport x z [deg] | loan bells (the player's) | echo text | quit (save and quit, as the menu does) | exit */
+static void devctl_run(const char* line, int* quit_at, int* exit_at) {
+    char cmd[16], a[64];
+    int x = 0, y = 0, n = 0;
+
+    if (sscanf(line, "%15s", cmd) != 1) {
+        return;
+    }
+    printf("[ctl] frame %u: %s\n", (unsigned)s_frame, line);
+    if (strcmp(cmd, "press") == 0 && sscanf(line, "%*s %63s %d", a, &n) == 2) {
+        s_ctl_buttons = devctl_buttons(a);
+        s_ctl_buttons_until = s_frame + (u32)n;
+    } else if (strcmp(cmd, "tap") == 0 && sscanf(line, "%*s %63s", a) == 1) {
+        s_ctl_buttons = devctl_buttons(a);
+        s_ctl_buttons_until = s_frame + 4;
+    } else if (strcmp(cmd, "stick") == 0 && sscanf(line, "%*s %d %d %d", &x, &y, &n) == 3) {
+        s_ctl_stick[0] = (s8)x, s_ctl_stick[1] = (s8)y;
+        s_ctl_stick_until = s_frame + (u32)n;
+    } else if (strcmp(cmd, "cstick") == 0 && sscanf(line, "%*s %d %d %d", &x, &y, &n) == 3) {
+        s_ctl_cstick[0] = (s8)x, s_ctl_cstick[1] = (s8)y;
+        s_ctl_cstick_until = s_frame + (u32)n;
+    } else if (strcmp(cmd, "shot") == 0 && sscanf(line, "%*s %55s", a) == 1) {
+        snprintf(s_ctl_shot, sizeof(s_ctl_shot), "%s.ppm", a);
+    } else if (strcmp(cmd, "warp") == 0 && sscanf(line, "%*s %d", &n) == 1) {
+        extern void pc_dev_warp(void* play, int which);
+        extern void* gamePT;
+        static char scene_env[32], pos_env[48];
+
+        snprintf(scene_env, sizeof(scene_env), "PC_WARP_SCENE=%d", n);
+        putenv(scene_env);
+        if (sscanf(line, "%*s %*d %d %d", &x, &y) == 2) {
+            snprintf(pos_env, sizeof(pos_env), "PC_WARP_POS=%d,%d", x, y);
+        } else {
+            snprintf(pos_env, sizeof(pos_env), "PC_WARP_POS=");
+        }
+        putenv(pos_env);
+        pc_dev_warp(gamePT, n);
+    } else if (strcmp(cmd, "teleport") == 0) {
+        extern void pc_dev_teleport(void* play, const char* pos);
+        extern void* gamePT;
+        const char* p = line + strlen("teleport");
+        char pos[48];
+        int deg;
+
+        if (sscanf(p, "%d %d %d", &x, &y, &deg) == 3) {
+            snprintf(pos, sizeof(pos), "%d,%d,%d", x, y, deg);
+        } else if (sscanf(p, "%d %d", &x, &y) == 2) {
+            snprintf(pos, sizeof(pos), "%d,%d", x, y);
+        } else {
+            return;
+        }
+        pc_dev_teleport(gamePT, pos);
+    } else if (strcmp(cmd, "loan") == 0 && sscanf(line, "%*s %d", &n) == 1) {
+        extern void pc_devtest_set_loan(int bells);
+        pc_devtest_set_loan(n);
+    } else if (strcmp(cmd, "quit") == 0) {
+        *quit_at = (int)s_frame;
+    } else if (strcmp(cmd, "exit") == 0) {
+        *exit_at = (int)s_frame;
+    }
+    fflush(stdout);
+}
+
+/* PC_CTL: the lines added to the control file since the last look */
+static void devctl_poll(int* quit_at, int* exit_at) {
+    static const char* path;
+    static long offset;
+    static int tried;
+    char line[160];
+    FILE* f;
+
+    if (!tried) {
+        tried = 1;
+        path = getenv("PC_CTL");
+    }
+    if (path == NULL || (f = fopen(path, "rb")) == NULL) {
+        return;
+    }
+    if (fseek(f, offset, SEEK_SET) == 0) {
+        while (fgets(line, sizeof(line), f) != NULL) {
+            size_t len = strlen(line);
+
+            if (len == 0 || line[len - 1] != '\n') {
+                break; /* not finished being written: next frame */
+            }
+            offset += (long)len;
+            while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
+                line[--len] = '\0';
+            }
+            devctl_run(line, quit_at, exit_at);
+        }
+    }
+    fclose(f);
+}
+
 void pc_devtest_frame_end(void) {
     static int exit_at = -1;
     static int quit_at = -1;
@@ -378,31 +561,16 @@ void pc_devtest_frame_end(void) {
     }
 
     if (shot != 0 && s_frame >= shot) {
-        int w = g_pc_window_w;
-        int h = g_pc_window_h;
-        unsigned char* rgb = malloc((size_t)w * h * 3);
         char path[64];
-        FILE* f;
-        int y;
 
-        if (rgb != NULL) {
-            glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-            glReadBuffer(GL_BACK);
-            glPixelStorei(GL_PACK_ALIGNMENT, 1);
-            glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, rgb);
-            snprintf(path, sizeof(path), "devshot_%lu.ppm", (unsigned long)shot);
-            f = fopen(path, "wb");
-            if (f != NULL) {
-                fprintf(f, "P6\n%d %d\n255\n", w, h);
-                for (y = h - 1; y >= 0; y--) { /* GL rows are bottom-up */
-                    fwrite(rgb + (size_t)y * w * 3, 1, (size_t)w * 3, f);
-                }
-                fclose(f);
-                printf("[devtest] wrote %s\n", path);
-            }
-            free(rgb);
-        }
+        snprintf(path, sizeof(path), "devshot_%lu.ppm", (unsigned long)shot);
+        devtest_write_shot(path);
         shot++;
+    }
+    devctl_poll(&quit_at, &exit_at);
+    if (s_ctl_shot[0] != '\0') {
+        devtest_write_shot(s_ctl_shot);
+        s_ctl_shot[0] = '\0';
     }
 
     {

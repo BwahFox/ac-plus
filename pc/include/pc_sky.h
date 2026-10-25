@@ -27,6 +27,17 @@ void pc_sky_play_draw_end(struct game_play_s* play);
 /* Bends a world position the way the vertex shader will draw it this frame (copies it when the
  * world isn't curved), so culling sees what is actually on screen. in and out may be the same. */
 void pc_sky_curve_world(const float in[3], float out[3]);
+/* Fireworks (ef_hanabi_*.c) and shooting stars: whether they are drawn a second time up in the sky this frame, and the matrix
+ * for each pass (sky FALSE: the GameCube's, flat where it burst; TRUE: in the sky, facing the camera) */
+int pc_sky_fireworks(void);
+void pc_sky_firework_place(struct game_s* game, const struct xyz_s* pos, const struct xyz_s* offset, int sky);
+/* The sky pass's matrix for something at pos, as fireworks get it (also shooting stars, ef_shooting*.c): facing
+ * the camera, scaled */
+void pc_sky_place(struct game_s* game, const struct xyz_s* pos, float scale);
+/* Fog off for what's drawn next (pc_sky_place does it; for a draw that sets its render mode after it) */
+void pc_sky_no_fog(struct game_s* game);
+/* After the sky pass: fog back on */
+void pc_sky_firework_done(struct game_s* game);
 
 /* Game side -> render side, once per outdoor frame.
  * center: the camera's look-at point; the ground stays flat there.

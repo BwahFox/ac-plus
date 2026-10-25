@@ -1,10 +1,10 @@
 #ifndef PC_STORAGE_H
 #define PC_STORAGE_H
 
-/* ac-plus item storage, City Folk style: a resident opening any dresser,
- * wardrobe or closet in their own house gets 6 pages of 15 slots shared by all
- * of them, shown in the gyroid's two-grid screen (pockets below, storage above).
- * The items live in the companion save (pc_ext_save.c). */
+/* ac-plus item storage, City Folk style: a resident opening a dresser,
+ * wardrobe or closet in their own house gets its 6 pages of 15 slots, shown in
+ * the gyroid's two-grid screen (pockets below, storage above). Each piece has
+ * its own storage (pc_dresser.c), kept in the companion save. */
 
 #include "types.h"
 #include "m_home_h.h"
@@ -19,6 +19,9 @@ extern "C" {
 /* The owner opened storage furniture: TRUE if storage is open for business
  * (then open the inventory with mSM_IV_OPEN_HANIWA_ENTRUST). */
 int pc_storage_begin(void);
+/* Which furniture is being opened: its storage ID, given one when it has none (before
+ * pc_storage_take_furniture_items / pc_storage_begin) */
+void pc_storage_select(u8* id);
 /* Move what the GameCube kept inside a piece of furniture into storage. */
 void pc_storage_take_furniture_items(mActor_name_t* items, int count);
 /* Is the gyroid screen showing storage instead of a gyroid? */

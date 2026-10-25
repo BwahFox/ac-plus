@@ -124,6 +124,9 @@ disc-preservation database.
 - **Villagers at the Roost:** one or two of your villagers drop in each day for an hour or two of
   coffee. You can chat with them and do their favors there, as anywhere else.
 - **Fishing:** City Folk's plop when a fish takes the float.
+- **TV programs:** switched-on TVs show City Folk's programs on its weekly schedule: the news,
+  the weather report with a forecast of the coming hours, a hero show, soccer, a movie on weekend
+  nights, and static after the late show, each with City Folk's own sound (`cf_tv` setting).
 
 ## What's new
 
@@ -134,6 +137,9 @@ mouse, controllers), ac-plus adds:
 - City Folk style curved world and sky outdoors (`world_curve` setting; 0 turns it off).
 - City Folk weather: the weather can change during the day, with overcast spells and rainbows
   after rain (`cf_weather` setting).
+- Clear days on request: list dates in `weather_clear_days` (for example `7/4,12/31`) and the
+  weather stays clear on them.
+- Fireworks and meteor showers light up the City Folk sky, not only their reflection in the water.
 - Borderless acres: walking between acres doesn't stop the camera (`borderless_acres`).
 - The town's clock keeps up with your computer's: putting a PC or Steam Deck to sleep with the game
   open no longer leaves the town behind.
@@ -154,7 +160,13 @@ mouse, controllers), ac-plus adds:
 - The observatory and the Roost (see [What comes from City Folk](#what-comes-from-city-folk)).
 
 **Home**
-- City Folk style storage: your own dressers, wardrobes and closets open a large shared storage.
+- **New Leaf style extra rooms:** once your house is fully paid off (big main room, upstairs and
+  basement), Tom Nook offers more: a room off the left, the right and the back of the main room,
+  each 6×6 at first and then grown to 8×8. Each one is built overnight, adds a wing to the house
+  outside, and is paid off like any other loan. The statue comes after the last one. If something
+  is in a doorway's way, it stays where it is for you to move.
+- City Folk style storage: each of your dressers, wardrobes and closets has its own large storage
+  (up to 128 in a town). Storage from older versions turns up in the first one you open.
 - The basement takes wallpaper and carpets. Its rock wall and floor come back to you as items, so
   you can put them back later.
 
@@ -215,7 +227,7 @@ default back.
 - **Where they are:** your town is in `save/card_a/`, as two files:
   - `DobutsunomoriP_MURA.gci`, a normal GameCube save that Dolphin and save editors understand;
   - `DobutsunomoriP_MURA.gci.acplus`, with everything ac-plus adds: ground patterns, storage,
-    pattern IDs, constellations, the Roost, basement wallpaper and carpets. Its last three copies
+    pattern IDs, constellations, the Roost, basement wallpaper and carpets, the extra rooms. Its last three copies
     are kept as `.acplus.bak1` to `.bak3`.
 
   **Always copy or back up the two files together.**
@@ -250,12 +262,9 @@ default back.
 **Sky**
 - **The curved world** makes far-off acres look emptier: like the original game, it only shows
   trees in the acres around you.
-- **Sky events:** fireworks, meteor showers, the UFO and balloons haven't all been checked against
-  the City Folk sky yet.
+- **Sky events:** the UFO and balloons haven't been checked against the City Folk sky yet.
 
 **Museum and Roost**
-- **Arriving facing the wrong way:** in the observatory or the café you don't always face away
-  from the door you came in by.
 - **Celeste:** she has no bow, villagers don't mention constellations yet, and the telescope has
   no mouse controls.
 - **The Roost:** K.K. Slider can't be talked to there, and he doesn't take song requests.

@@ -416,6 +416,9 @@ extern void play_init(GAME* game) {
 
     game_resize_hyral(game, -Game_play_HYRAL_SIZE); // reserve bytes from gamealloc
     Common_Set(rhythym_updated, 0);
+#ifdef TARGET_PC
+    pc_nlr_play_init(); /* into the extra room the last door led to, if any */
+#endif
 
     mFI_ChangeClimate_ForEventNotice();
     mTM_time_init();

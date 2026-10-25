@@ -441,6 +441,8 @@ static void Scene_Proc_Door_Data_Ptr(GAME_PLAY* play, Scene_Word_u* scene_data) 
 
     /* ac-plus: the museum hall's stairs to the City Folk rooms */
     data_p = pc_museum_rooms_door_data(Save_Get(scene_no), data_p, &num);
+    /* and the house's doors to and from its New Leaf style rooms (pc_nlrooms.c) */
+    data_p = pc_nlr_door_data(Save_Get(scene_no), data_p, &num);
     play->door_info.num_doors = num;
     play->door_info.door_data_p = data_p;
 #else
@@ -547,6 +549,9 @@ extern int goto_other_scene(GAME_PLAY* play, Door_data_c* door_data, int update_
             restore_fgdata_all(play);
             play->game.pad_initialized = FALSE;
             res = 1; // success
+#ifdef TARGET_PC
+            pc_nlr_scene_left(door_data); /* into, out of or past the extra rooms (pc_nlrooms.c) */
+#endif
         } else {
             res = 2; // already changing scenes
         }

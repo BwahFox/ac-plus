@@ -343,6 +343,11 @@ static void aMI_MakeStepData(MY_INDOOR_ACTOR* my_indoor, int house_idx) {
         if (Save_Get(homes[house_idx]).flags.has_basement) {
             my_indoor->room_step[0] = TRUE;
         }
+#ifdef TARGET_PC
+        if (pc_nlr_current(NULL) >= 0) {
+            my_indoor->room_step[0] = FALSE; /* an extra room has no step down (pc_nlrooms.c) */
+        }
+#endif
     }
 
     if (Save_Get(scene_no) == SCENE_MY_ROOM_LL1) {
@@ -379,9 +384,9 @@ static void aMI_InitActorMember(ACTOR* actorx, GAME* game) {
         my_indoor->floor_is_original_design = FALSE;
     } else {
         my_indoor->floor_num =
-            Save_Get(homes[player_room_idx]).floors[my_indoor->house_floor_no].wall_floor.flooring_idx;
+            mHm_FLOOR(player_room_idx, my_indoor->house_floor_no).wall_floor.flooring_idx;
         my_indoor->wall_num =
-            Save_Get(homes[player_room_idx]).floors[my_indoor->house_floor_no].wall_floor.wallpaper_idx;
+            mHm_FLOOR(player_room_idx, my_indoor->house_floor_no).wall_floor.wallpaper_idx;
         my_indoor->floor_is_original_design = mRmTp_GetNowSceneOriginalFloorStatus();
         my_indoor->wall_is_original_design = mRmTp_GetNowSceneOriginalWallStatus();
     }
@@ -680,7 +685,11 @@ static void aMI_DrawMyWall(ACTOR* actorx, GAME* game) {
         gSPSegment(NEXT_POLY_OPA_DISP, G_MWO_SEGMENT_A, data_p);
 
         // Draw model
+#ifdef TARGET_PC
+        gSPDisplayList(NEXT_POLY_OPA_DISP, pc_nlr_wall_model(disp_info->wall_model)); /* the extra rooms' doors */
+#else
         gSPDisplayList(NEXT_POLY_OPA_DISP, disp_info->wall_model);
+#endif
 
         CLOSE_DISP(graph);
     }
@@ -722,7 +731,11 @@ static void aMI_DrawMyOriginalWall(ACTOR* actorx, GAME* game) {
         gSPSegment(NEXT_POLY_OPA_DISP, G_MWO_SEGMENT_A, data_p);
 
         // Draw model
+#ifdef TARGET_PC
+        gSPDisplayList(NEXT_POLY_OPA_DISP, pc_nlr_wall_model(disp->wall_model)); /* the extra rooms' doors */
+#else
         gSPDisplayList(NEXT_POLY_OPA_DISP, disp->wall_model);
+#endif
 
         CLOSE_DISP(graph);
     }
@@ -799,7 +812,7 @@ static void aMI_Change2ReservedWall(ACTOR* actorx, GAME* game) {
             if (Save_Get(scene_no) == SCENE_COTTAGE_MY) {
                 Save_Get(island).cottage.room.wall_floor.wallpaper_idx = my_indoor->wall_num;
             } else {
-                Save_Get(homes[player_room_idx]).floors[my_indoor->house_floor_no].wall_floor.wallpaper_idx =
+                mHm_FLOOR(player_room_idx, my_indoor->house_floor_no).wall_floor.wallpaper_idx =
                     my_indoor->wall_num;
                 mRmTp_SetNowSceneOriginalWallStatus((u8)my_indoor->wall_is_original_design);
             }
@@ -835,7 +848,7 @@ static void aMI_Change2ReservedFloor(ACTOR* actorx, GAME* game) {
             if (Save_Get(scene_no) == SCENE_COTTAGE_MY) {
                 Save_Get(island).cottage.room.wall_floor.flooring_idx = my_indoor->floor_num;
             } else {
-                Save_Get(homes[player_room_idx]).floors[my_indoor->house_floor_no].wall_floor.flooring_idx =
+                mHm_FLOOR(player_room_idx, my_indoor->house_floor_no).wall_floor.flooring_idx =
                     my_indoor->floor_num;
                 mRmTp_SetNowSceneOriginalFloorStatus(my_indoor->floor_is_original_design);
             }

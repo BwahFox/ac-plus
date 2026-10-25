@@ -2305,6 +2305,13 @@ static void Player_actor_putin_furniture(GAME* game, int slot, mActor_name_t ite
     if (Common_Get(clip).my_room_clip != NULL) {
         Common_Get(clip).my_room_clip->ftr2itemBag_proc(game);
     }
+#ifdef TARGET_PC
+    {
+        extern void pc_dresser_pickup_into(int slot);
+
+        pc_dresser_pickup_into(slot); /* a dresser's storage ID rides along in the pocket */
+    }
+#endif
 }
 
 static int Player_actor_Check_AnimationFrame_PerfectEquel(ACTOR* actorx, f32 frame) {

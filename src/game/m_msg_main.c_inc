@@ -327,9 +327,11 @@ static int mMsg_LoadMsgData(mMsg_Data_c* msg_data, int index, int cut) {
     {
         /* City Folk characters' lines while they talk (pc_cf_lines.c) */
         extern int pc_cf_lines_msg(int index, u8* buf, int buf_size, int* len);
+        extern int pc_nlr_msg(int index, u8* buf, int buf_size, int* len); /* Nook on the extra rooms */
         int len;
 
-        if (msg_data != NULL && pc_cf_lines_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len)) {
+        if (msg_data != NULL && (pc_cf_lines_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len) ||
+                                 pc_nlr_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len))) {
             msg_data->msg_no = index;
             msg_data->data_loaded = TRUE;
             msg_data->msg_len = mMsg_Count_MsgData(msg_data->text_buf.data);

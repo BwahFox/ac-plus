@@ -259,6 +259,9 @@ struct furniture_actor_s {
     int _84C;
     u16* pal_p; /* used for furniture actors with dynamic palettes such as the structure model items */
     int _854;
+#ifdef TARGET_PC
+    u8 pc_dresser_id; /* storage furniture's own storage (pc_dresser.c), 0 = none yet */
+#endif
 };
 
 #ifdef __cplusplus

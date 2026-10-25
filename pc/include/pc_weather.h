@@ -27,6 +27,10 @@ void pc_weather_now(s16* weather, s16* intensity);
 f32 pc_weather_cloud(void);
 f32 pc_weather_rainbow(void);
 
+/* The TV weather report (pc_tv.c): 'f' fine, 'c' cloudy, 'r' rain or 's' snow for the minutes of today from
+ * from_min to to_min, from the schedule; what's falling now when the schedule isn't shown */
+char pc_weather_forecast(int from_min, int to_min);
+
 #ifdef __cplusplus
 }
 #endif

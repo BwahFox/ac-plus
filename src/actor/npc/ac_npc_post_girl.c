@@ -9,6 +9,9 @@
 #include "m_house.h"
 #include "m_home_h.h"
 #include "m_player.h"
+#ifdef TARGET_PC
+#include "pc_nlrooms.h"
+#endif
 
 void aPG_Set_continue_msg_num(NPC_POSTGIRL_ACTOR *postgirl, int msg);
 void aPG_setupAction(NPC_POSTGIRL_ACTOR *postgirl, GAME_PLAY *play, int action);
@@ -62,6 +65,11 @@ void aPG_actor_ct(ACTOR *actorx, GAME *game) {
             if (Now_Private->inventory.loan == 0 && size_info->size >= 3 && size_info->renew == FALSE) {
                 postgirl->has_bank_account = TRUE;
             }
+#ifdef TARGET_PC
+            if (pc_nlr_unbilled(mHS_get_arrange_idx(Common_Get(player_no)))) {
+                postgirl->has_bank_account = FALSE;
+            }
+#endif
         }
     }
 }

@@ -69,6 +69,7 @@ static int pc_save_ready = 0;
 /* --- Travel state --- */
 static Save l_keepSave;                        /* Other town's save data (for Card B visit) */
 static int l_keepSave_set = FALSE;
+static char l_keepSave_path[300];               /* the file l_keepSave was read from */
 static mCD_keep_mail_c l_keepMail;             /* Other town's mail ARAM block */
 static mCD_keep_original_c l_keepOriginal;     /* Other town's original designs ARAM block */
 static mCD_keep_diary_c l_keepDiary;           /* Other town's diary ARAM block */
@@ -614,7 +615,8 @@ static int pc_save_read_gci(const char* path) {
     pc_ext_save_load(PC_GCI_PATH);
     {
         /* dev: PC_GRANT_BASEMENT=1 gives every house a basement (and at least the M room, whose stairs reach it),
-         * to try the basement on a save without one */
+         * to try the basement on a save without one; =2 also the big main room and upstairs, as for the extra
+         * rooms (pc_nlrooms.c); =3 as well the statue built and the house paid off, so Nook offers them */
         /* dev: PC_GIVE_ITEM=hex,n puts n of that item in the first player's empty pocket slots */
         const char* give = getenv("PC_GIVE_ITEM");
         const char* grant = getenv("PC_GRANT_BASEMENT");
@@ -698,9 +700,32 @@ static int pc_save_read_gci(const char* path) {
             fflush(stdout);
         }
         for (h = 0; grant != NULL && atoi(grant) && h < PLAYER_NUM; h++) {
+            extern void mHm_PC_DevRehouse(int no, int size);
+
+            if (mPr_NullCheckPersonalID(&Save_Get(homes[h]).ownerID)) {
+                continue;
+            }
             Save_Get(homes[h]).flags.has_basement = TRUE;
             if (Save_Get(homes[h]).size_info.size < 1) {
                 Save_Get(homes[h]).size_info.size = Save_Get(homes[h]).size_info.next_size = 1;
+            }
+            if (atoi(grant) >= 2) {
+                mHm_PC_DevRehouse(h, mHm_HOMESIZE_UPPER);
+            }
+            if (atoi(grant) >= 3) {
+                int p;
+
+                Save_Get(homes[h]).size_info.next_size = mHm_HOMESIZE_STATUE;
+                Save_Get(homes[h]).size_info.statue_ordered = FALSE;
+                Save_Get(homes[h]).size_info.basement_ordered = FALSE; /* nothing still to build or bill */
+                Save_Get(homes[h]).size_info.renew = FALSE;
+                for (p = 0; p < PLAYER_NUM; p++) {
+                    Private_c* priv = Save_GetPointer(private_data[p]);
+
+                    if (mPr_CheckCmpPersonalID(&priv->player_ID, &Save_Get(homes[h]).ownerID)) {
+                        priv->inventory.loan = 0;
+                    }
+                }
             }
         }
     }
@@ -782,6 +807,7 @@ static int pc_save_read_gci_to_keep(const char* path) {
 
     free(file_data);
     l_keepSave_set = TRUE;
+    snprintf(l_keepSave_path, sizeof(l_keepSave_path), "%s", path);
     OSReport("[PC] Card B: loaded town '%.*s' (id=0x%04X) from '%s'\n",
              8, l_keepSave.save.land_info.name,
              l_keepSave.save.land_info.id, path);
@@ -1372,6 +1398,9 @@ void mCD_toNextLand(void) {
 
     /* Load the other town's save data */
     memcpy(Common_GetPointer(save), save, sizeof(Save));
+    /* and its ac-plus companion save (none for a town visited, so its ground has none of home's patterns and its
+     * houses none of home's rooms; home's again on the way back, before anything's saved there) */
+    pc_ext_save_load(l_keepSave_path);
 
     Common_Set(copy_protect, Save_Get(copy_protect));
     Save_Set(scene_no, scene_no);

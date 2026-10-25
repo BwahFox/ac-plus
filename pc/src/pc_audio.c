@@ -13,6 +13,7 @@
 #include "jaudio_NES/audiothread.h"
 #include "pc_sfx.h"
 #include "pc_music.h"
+#include "pc_tv.h"
 
 #define PC_AUDIO_SAMPLE_RATE 32000
 
@@ -124,6 +125,7 @@ void AIInitDMA(u32 addr, u32 size) {
     /* Before the ring-space clamp, so music keeps time with the game's audio. */
     pc_music_mix(src, n_samples);
     pc_sfx_mix(src, n_samples);
+    pc_tv_mix(src, n_samples);
 
     u32 wp = (u32)SDL_AtomicGet(&ring_write_pos);
     u32 rp = (u32)SDL_AtomicGet(&ring_read_pos);

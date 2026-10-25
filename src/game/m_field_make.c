@@ -190,7 +190,7 @@ static void mFM_SetFgUtPtoHomeInfo(mFM_block_info_c* block_info, u8 bx_max, u8 b
 
     for (bz = 0; bz < bz_max; bz++) {
         for (bx = 0; bx < bx_max; bx++) {
-            block_info->fg_info.items_p = Save_Get(homes[house_no]).floors[floor].layer_main.items[0];
+            block_info->fg_info.items_p = mHm_FLOOR(house_no, floor).layer_main.items[0];
             block_info++;
         }
     }
@@ -843,7 +843,7 @@ static mFM_fdinfo_c* mFM_MakeField(u16 scene, u16 bg_max, u8 bg_num) {
                 floor_no = 0;
             }
 
-            layer = &Save_Get(homes[house_owner_id]).floors[floor_no].layer_main;
+            layer = &mHm_FLOOR(house_owner_id, floor_no).layer_main;
         }
 
         for (i = 1; i < mHm_LAYER_NUM; i++) {

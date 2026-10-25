@@ -1,4 +1,9 @@
 #include "ac_my_house.h"
+#ifdef TARGET_PC
+#include "pc_nlrooms.h"
+#include <stdio.h>
+#include <stdlib.h>
+#endif
 
 #include "m_name_table.h"
 #include "bg_item_h.h"
@@ -201,7 +206,18 @@ static void aMHS_actor_ct(ACTOR* actorx, GAME* game) {
     aMHS_setup_animation(my_house, 0.0f);
     cKF_SkeletonInfo_R_play(&my_house->keyframe);
     aMHS_set_bgOffset(actorx, 1);
+#ifdef TARGET_PC
+    if (size == mHm_HOMESIZE_UPPER) {
+        pc_nlr_wing_collision(house_idx, &actorx->world.position); /* the extra rooms' wings (pc_nlr_outside.c) */
+    }
+#endif
     aMHS_door_closed_flag[my_house->arg0] = TRUE;
+#ifdef TARGET_PC
+    if (getenv("PC_NLR_LOG") != NULL) { /* dev: where the houses are, for the extra rooms' outside */
+        printf("[NLRooms] house %d at %.0f,%.0f size %d facing %d\n", house_idx, actorx->home.position.x,
+               actorx->home.position.z, size, side_idx);
+    }
+#endif
 }
 
 static void aMHS_actor_dt(ACTOR* actorx, GAME* game) {

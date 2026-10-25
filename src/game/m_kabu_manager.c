@@ -185,6 +185,13 @@ static void Kabu_decide_price_without_sunday() {
  * @brief Picks a new Stalk Market trend, generates new sell prices, & sets the update time.
  **/
 static void Kabu_decide_price_schedule_without_sunday() {
+#ifdef TARGET_PC
+  /* ac-plus: a trend the game doesn't have (a modded town's save: AC Deluxe leaves 0xFFFF here) starts over, as
+   * both the trend's odds and its prices are picked by it */
+  if (Save_Get(kabu_price_schedule.trade_market) > 2) {
+    Save_Set(kabu_price_schedule.trade_market, 0);
+  }
+#endif
   Kabu_decide_trade_market();
   Kabu_decide_price_without_sunday();
   Kabu_set_schedule_day();

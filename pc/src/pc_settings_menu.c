@@ -28,6 +28,7 @@ enum {
     ITEM_NES_ASPECT,
     ITEM_WORLD_CURVE,
     ITEM_CF_WEATHER,
+    ITEM_CF_TV,
     ITEM_MASTER_VOLUME,
     ITEM_STICK_DEADZONE,
     ITEM_CSTICK_DEADZONE,
@@ -65,6 +66,7 @@ static const Item tab_gameplay_items[] = {
     { "NES aspect",       ITEM_NES_ASPECT,       0 },
     { "Curved world",     ITEM_WORLD_CURVE,      0 },
     { "Weather",          ITEM_CF_WEATHER,       0 },
+    { "TV",               ITEM_CF_TV,            0 },
 };
 
 static const Item tab_saving_items[] = {
@@ -280,6 +282,7 @@ static void recompute_dirty(void) {
         (s_pending.nes_aspect       != g_pc_settings.nes_aspect) ||
         (s_pending.world_curve      != g_pc_settings.world_curve) ||
         (s_pending.cf_weather       != g_pc_settings.cf_weather) ||
+        (s_pending.cf_tv            != g_pc_settings.cf_tv) ||
         (s_pending.master_volume    != g_pc_settings.master_volume) ||
         (s_pending.stick_deadzone   != g_pc_settings.stick_deadzone) ||
         (s_pending.cstick_deadzone  != g_pc_settings.cstick_deadzone) ||
@@ -385,6 +388,9 @@ static void item_cycle(int id, int dir) {
         case ITEM_CF_WEATHER:
             s_pending.cf_weather = !s_pending.cf_weather;
             break;
+        case ITEM_CF_TV:
+            s_pending.cf_tv = !s_pending.cf_tv;
+            break;
         case ITEM_QUICK_LOAD:
             s_pending.quick_load = !s_pending.quick_load;
             break;
@@ -475,6 +481,9 @@ static void item_format(int id, char* buf, size_t n) {
         case ITEM_CF_WEATHER:
             snprintf(buf, n, "%s", s_pending.cf_weather ? "< City Folk >" : "< Original >");
             break;
+        case ITEM_CF_TV:
+            snprintf(buf, n, "%s", s_pending.cf_tv ? "< City Folk >" : "< Original >");
+            break;
         case ITEM_QUICK_LOAD:
             snprintf(buf, n, "%s", s_pending.quick_load ? "< On >" : "< Off >");
             break;
@@ -526,6 +535,7 @@ static int item_changed(int id) {
         case ITEM_NES_ASPECT:    return s_pending.nes_aspect    != g_pc_settings.nes_aspect;
         case ITEM_WORLD_CURVE:   return s_pending.world_curve   != g_pc_settings.world_curve;
         case ITEM_CF_WEATHER:    return s_pending.cf_weather    != g_pc_settings.cf_weather;
+        case ITEM_CF_TV:         return s_pending.cf_tv         != g_pc_settings.cf_tv;
         case ITEM_MASTER_VOLUME: return s_pending.master_volume != g_pc_settings.master_volume;
         case ITEM_STICK_DEADZONE:  return s_pending.stick_deadzone  != g_pc_settings.stick_deadzone;
         case ITEM_CSTICK_DEADZONE: return s_pending.cstick_deadzone != g_pc_settings.cstick_deadzone;

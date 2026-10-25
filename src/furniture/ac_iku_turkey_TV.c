@@ -1,3 +1,9 @@
+#ifdef TARGET_PC
+#include "pc_tv.h"
+
+extern Vtx int_iku_turkey_TV_v[];
+#endif
+
 static void fITT_ct(FTR_ACTOR* ftr_actor, u8* data) {
     // nothing
 }
@@ -10,7 +16,10 @@ static void fITT_mv(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game, u8* 
 
     if (ftr_actor->switch_bit) {
         if (aFTR_CAN_PLAY_SE(ftr_actor)) {
-            sAdo_OngenPos((u32)ftr_actor, 0x5E, &ftr_actor->position);
+#ifdef TARGET_PC
+            if (!pc_tv_sound_on()) /* City Folk's program sound instead of the hum (pc_tv.c) */
+#endif
+                sAdo_OngenPos((u32)ftr_actor, 0x5E, &ftr_actor->position);
         }
     }
 
@@ -57,7 +66,16 @@ static void fITT_dw(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game, u8* 
         gSPSegment(NEXT_POLY_OPA_DISP, G_MWO_SEGMENT_8, int_iku_turkey_TV_f_tex_txt);
     }
 
+#ifdef TARGET_PC
+    {
+        /* City Folk's programs (pc_tv.c) */
+        Gfx* cf_screen = ftr_actor->switch_bit ? pc_tv_screen(game, int_iku_turkey_TV_v, &ftr_actor->position) : NULL;
+
+        gSPDisplayList(NEXT_POLY_OPA_DISP, cf_screen != NULL ? cf_screen : int_iku_turkey_TV_model_b_model);
+    }
+#else
     gSPDisplayList(NEXT_POLY_OPA_DISP, int_iku_turkey_TV_model_b_model);
+#endif
     gSPDisplayList(NEXT_POLY_OPA_DISP, int_iku_turkey_TV_model_a_model);
 
     CLOSE_DISP(game->graph);

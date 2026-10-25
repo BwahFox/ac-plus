@@ -1841,6 +1841,9 @@ static void aMR_Furniture2ItemBag(GAME* game) {
 
         if (exists) {
             int shape = ftr_actor->shape_type;
+#ifdef TARGET_PC
+            pc_dresser_set_pickup(ftr_actor->pc_dresser_id); /* its storage goes along, into the pocket */
+#endif
             int ut_x;
             int ut_z;
 
@@ -2769,6 +2772,10 @@ static void aMR_SetReserveFurniture(MY_ROOM_ACTOR* my_room, GAME* game) {
                                                 my_room->rsv_ftr[i].ut_x, my_room->rsv_ftr[i].ut_z, item,
                                                 my_room->rsv_ftr[i].free_no, aFTR_STATE_BIRTH_WAIT,
                                                 my_room->rsv_ftr[i].layer, TRUE);
+#ifdef TARGET_PC
+                                /* put down from a pocket that held its storage ID */
+                                ftr_actor[my_room->rsv_ftr[i].free_no].pc_dresser_id = (u8)pc_dresser_take_pending();
+#endif
                                 aMR_PlussWeight(actorx, &ftr_actor[my_room->rsv_ftr[i].free_no]);
                                 mMkRm_ReportChangePlayerRoom();
                             } else {
@@ -2831,6 +2838,7 @@ static void aMR_SetFtrDemoMsg(MY_ROOM_ACTOR* my_room) {
             if (my_room->msg_timer > 0 && aMR_CheckRoomOwner(player_no, my_room) &&
                 Save_Get(scene_no) != SCENE_NPC_HOUSE && Save_Get(scene_no) != SCENE_COTTAGE_NPC) {
                 /* ac-plus item storage instead of the 2-3 items inside: those move into it. */
+                pc_storage_select(&ftr_actor->pc_dresser_id); /* its own storage */
                 pc_storage_take_furniture_items(ftr_actor->items, aFTR_KEEP_ITEM_COUNT);
                 aMR_TidyItemInFurniture(ftr_actor);
                 l_aMR_pc_storage = TRUE;

@@ -15,6 +15,7 @@ PCSettings g_pc_settings = {
     .preload_textures = 0,
     .world_curve = 75,
     .cf_weather = 1,
+    .cf_tv = 1,
     .disable_resetti = 0,
     .disable_shop_visitor_req = 0,
     .borderless_acres = 1,
@@ -68,6 +69,12 @@ static const char* DEFAULT_SETTINGS =
     "# City Folk weather: 1 = the weather can change during the day, with overcast skies and rainbows after rain.\n"
     "# 0 = the original one weather per day\n"
     "cf_weather = 1\n"
+    "\n"
+    "# Days the City Folk weather stays clear all day, as month/day: 10/25,12/31\n"
+    "weather_clear_days = \n"
+    "\n"
+    "# City Folk TV: 1 = TVs show City Folk's programs through the day (from your City Folk disc), 0 = the original static\n"
+    "cf_tv = 1\n"
     "\n"
     "[Gameplay]\n"
     "# Disable Mr. Resetti: 0 = normal, 1 = disable\n"
@@ -165,6 +172,8 @@ static void apply_setting(const char* key, const char* value) {
         if (val >= 0 && val <= 300) g_pc_settings.world_curve = val;
     } else if (strcmp(key, "cf_weather") == 0) {
         if (val == 0 || val == 1) g_pc_settings.cf_weather = val;
+    } else if (strcmp(key, "cf_tv") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.cf_tv = val;
     } else if (strcmp(key, "disable_resetti") == 0) {
         if (val == 0 || val == 1) g_pc_settings.disable_resetti = val;
     } else if (strcmp(key, "disable_shop_visitor_req") == 0) {
@@ -175,6 +184,8 @@ static void apply_setting(const char* key, const char* value) {
         if (val == 0 || val == 1) g_pc_settings.nes_aspect = val;
     } else if (strcmp(key, "master_volume") == 0) {
         if (val >= 0 && val <= 100) g_pc_settings.master_volume = val;
+    } else if (strcmp(key, "weather_clear_days") == 0) {
+        snprintf(g_pc_settings.weather_clear_days, sizeof(g_pc_settings.weather_clear_days), "%s", value);
     } else if (strcmp(key, "music_pack") == 0) {
         snprintf(g_pc_settings.music_pack, sizeof(g_pc_settings.music_pack), "%s", value);
     } else if (strcmp(key, "music_volume") == 0) {
@@ -275,6 +286,12 @@ void pc_settings_save(void) {
     fprintf(f, "# City Folk weather: 1 = the weather can change during the day, with overcast skies and rainbows after rain.\n");
     fprintf(f, "# 0 = the original one weather per day\n");
     fprintf(f, "cf_weather = %d\n", g_pc_settings.cf_weather);
+    fprintf(f, "\n");
+    fprintf(f, "# Days the City Folk weather stays clear all day, as month/day: 10/25,12/31\n");
+    fprintf(f, "weather_clear_days = %s\n", g_pc_settings.weather_clear_days);
+    fprintf(f, "\n");
+    fprintf(f, "# City Folk TV: 1 = TVs show City Folk's programs through the day (from your City Folk disc), 0 = the original static\n");
+    fprintf(f, "cf_tv = %d\n", g_pc_settings.cf_tv);
     fprintf(f, "\n");
     fprintf(f, "[Gameplay]\n");
     fprintf(f, "# Disable Mr. Resetti: 0 = normal, 1 = disable\n");

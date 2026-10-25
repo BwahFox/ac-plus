@@ -299,6 +299,7 @@ set(PC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/quirc/identify.c
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/quirc/version_db.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_storage.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_dresser.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_save_bswap.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_model_viewer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_texture_pack.c
@@ -306,6 +307,9 @@ set(PC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_sky.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_sky_game.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_weather.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_nlrooms.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_nlr_outside.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_tv.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_constellation.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_constellation_edit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_devwarp.c

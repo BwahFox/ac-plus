@@ -158,6 +158,11 @@ static int Player_actor_check_bg_for_next_goto(ACTOR* actor, mActor_name_t door)
     mCoBG_Collision_u* col;
 
     if (mFI_GET_TYPE(mFI_GetFieldId()) == mFI_FIELD_PLAYER0_ROOM) {
+#ifdef TARGET_PC
+        if (pc_nlr_is_door(door)) {
+            return TRUE; /* the extra rooms' doors open from flat floor */
+        }
+#endif
         if (door >= DOOR_START && door < EXIT_DOOR) {
             col = mFI_GetUnitCol(actor->world.position);
             if (col->data.center != col->data.top_left || col->data.center != col->data.bot_left ||
@@ -227,6 +232,12 @@ static void Player_actor_check_forward(ACTOR* actor, GAME* game) {
     } else {
         player->item_in_front = EMPTY_NO;
     }
+#ifdef TARGET_PC
+    if (mFI_GET_TYPE(mFI_GetFieldId()) == mFI_FIELD_PLAYER0_ROOM) {
+        /* the walls with doors to the extra rooms, and their own (pc_nlrooms.c) */
+        player->item_in_front = (mActor_name_t)pc_nlr_door_in_front(&pos, player->item_in_front);
+    }
+#endif
 
     Player_actor_check_nextgoto(actor, game);
 

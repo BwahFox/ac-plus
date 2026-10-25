@@ -234,6 +234,9 @@ extern void mHm_ClearHomeInfo(int home_no) {
     int j;
 
     no = home_no & 3;
+#ifdef TARGET_PC
+    pc_nlr_clear_house(no); /* a new owner starts without the old owner's extra rooms */
+#endif
     home = Save_GetPointer(homes[no]);
     bzero(home, sizeof(mHm_hs_c));
     mPr_ClearPersonalID(&home->ownerID);
@@ -407,6 +410,29 @@ static void mHm_SetWallDoor(mActor_name_t* items, int roomtype) {
     mHm_ChangeWallDoorFG(items, roomtype, TRUE);
 }
 
+#ifdef TARGET_PC
+static int mHm_PC_NlRoomType(int size) {
+    return size == 8 ? mHm_ROOMTYPE_LARGE : mHm_ROOMTYPE_MEDIUM;
+}
+
+/* pc_nlrooms.c: a new, empty extra room with the walls and door of a room `size` units across (6 or 8),
+ * dressed like the main room */
+extern void mHm_PC_InitNlRoom(mHm_flr_c* room, int size, const mHm_flr_c* main_floor) {
+    bzero(room, sizeof(mHm_flr_c));
+    mHm_SetWallDoor((u16*)room->layer_main.items, mHm_PC_NlRoomType(size));
+    mHm_SetWallDoor((u16*)room->layer_secondary.items, mHm_PC_NlRoomType(size));
+    room->wall_floor = main_floor->wall_floor;
+}
+
+/* pc_nlrooms.c: an extra room grown from one size to another, as mHm_RehouseWallDoor does the main room */
+extern void mHm_PC_GrowNlRoom(mHm_flr_c* room, int from, int to) {
+    mHm_EraseWallDoor((u16*)room->layer_main.items, mHm_PC_NlRoomType(from));
+    mHm_EraseWallDoor((u16*)room->layer_secondary.items, mHm_PC_NlRoomType(from));
+    mHm_SetWallDoor((u16*)room->layer_main.items, mHm_PC_NlRoomType(to));
+    mHm_SetWallDoor((u16*)room->layer_secondary.items, mHm_PC_NlRoomType(to));
+}
+#endif
+
 /**
  * @brief Updates the wall & door data for the main room.
  *
@@ -437,6 +463,19 @@ static void mHm_RehouseWallDoor(mHm_hs_c* home, int home_size) {
     mHm_SetWallDoor((u16*)home->floors[mHm_ROOM_MAIN].layer_main.items, new_size);
     mHm_SetWallDoor((u16*)home->floors[mHm_ROOM_MAIN].layer_secondary.items, new_size);
 }
+
+#ifdef TARGET_PC
+/* dev (pc_m_card.c PC_GRANT_BASEMENT=2): house `no` upgraded to `size`, a step at a time as Nook would */
+extern void mHm_PC_DevRehouse(int no, int size) {
+    mHm_hs_c* home = Save_GetPointer(homes[no & 3]);
+    int s;
+
+    for (s = home->size_info.size + 1; s <= size && s < mHm_HOMESIZE_STATUE; s++) {
+        mHm_RehouseWallDoor(home, s);
+        home->size_info.size = home->size_info.next_size = s;
+    }
+}
+#endif
 
 #define CHECK_ORDER_DATE(home, rtc_time)                                \
     ((home)->size_info.upgrade_order_date.day != (rtc_time)->day ||     \

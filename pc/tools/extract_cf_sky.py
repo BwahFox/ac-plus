@@ -13,8 +13,9 @@ Usage:
 
 Writes <bin dir>/cf_sky/{cloud,star,moon}.tga, cf_sky/rooms/*.cfroom,
 cf_sky/celeste.{msg,tex}, cf_sky/brewster.msg, cf_sky/chars/*.cfchar,
-cf_sky/anims/{roost.cfanim,player.cfpanm}, cf_sky/music/roost.wav and cf_sky/sfx/bite.wav (both
-need numpy). The sky works without them, just without clouds, stars
+cf_sky/anims/{roost.cfanim,player.cfpanm}, cf_sky/tv.cftv (the TV programs, cf_tv.py),
+cf_sky/tv/*.wav (their sound, cf_tv_sound.py), cf_sky/music/roost.wav and cf_sky/sfx/bite.wav (the
+sounds need numpy). The sky works without them, just without clouds, stars
 and moon; Celeste only comes to the museum when her lines are there. Her textures
 are fitted to Blathers' model, read from the GameCube disc in <bin dir> (rom/).
 Disc images are read by wii_disc.py. Lines "PROGRESS <0-100>" on stdout tell the game how far it is.
@@ -275,21 +276,21 @@ def find_files_root(path):
 
 # The game checks cf_sky/version.txt against this (PC_CF_DATA_VERSION in pc/include/pc_cf_data.h) and asks
 # for a fresh extraction when they differ: raise both whenever what's written here changes.
-CF_DATA_VERSION = 1
+CF_DATA_VERSION = 3  # 2: tv.cftv, 3: tv/*.wav
 
 # What a complete extraction leaves in cf_sky/
 REQUIRED = ['cloud.tga', 'star.tga', 'moon.tga', 'rooms/idr_ms_astro.cfroom', 'rooms/idr_cafe.cfroom',
             'rooms/idr_entrance.cfroom', 'celeste.msg', 'celeste.tex', 'brewster.msg', 'chars/brewster.cfchar',
             'chars/cup_coffee.cfchar', 'chars/cup_milk.cfchar', 'chars/cup_empty.cfchar', 'chars/saucer.cfchar',
             'chars/pot.cfchar', 'chars/polish_cup.cfchar', 'chars/duster.cfchar', 'anims/roost.cfanim',
-            'anims/player.cfpanm', 'music/roost.wav', 'sfx/bite.wav']
+            'anims/player.cfpanm', 'music/roost.wav', 'sfx/bite.wav', 'tv.cftv', 'tv/news.wav']
 
 
 # The files read off the City Folk disc
 DISC_FILES = ['Sky/', 'Script/ENG/npc_SP/NPC_hu-ko.bmg', 'Script/ENG/npc_SP/NPC_master.bmg', 'BgData/BgModel/',
               'Npc/Special/Model/14.brres', 'Npc/Special/Model/23.brres', 'Rmobj/obj_cafe1.brres',
               'Rmobj/obj_cafe2.brres', 'Rmobj/obj_cafe3.brres', 'Rmobj/obj_cafe4.brres', 'Rmobj/obj_cafe5.brres',
-              'Rmobj/obj_cafe6.brres', 'Anm/Anm.brcha', 'Sound/rv_forest.brsar']
+              'Rmobj/obj_cafe6.brres', 'Anm/Anm.brcha', 'Sound/rv_forest.brsar', 'Ftr/', 'rels/d_ftr_managerNP.rel']
 CF_GAME_ID = 'RUUE01'
 
 
@@ -380,6 +381,11 @@ def main():
     cf_char.write_chars(root, os.path.join(out, 'chars'))
     import cf_roost_anim
     cf_roost_anim.write_roost_anims(root, os.path.join(out, 'anims'))
+    import cf_tv
+    cf_tv.write_tv(root, os.path.join(out, 'tv.cftv'))
+    progress(82)
+    import cf_tv_sound
+    cf_tv_sound.write_tv_sound(root, os.path.join(out, 'tv'))
     progress(85)
     brsar = os.path.join(root, 'Sound', 'rv_forest.brsar')
     if os.path.isfile(brsar):

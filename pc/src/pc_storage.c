@@ -2,7 +2,7 @@
  *
  * Opening a dresser, wardrobe or closet in your own house shows the gyroid's
  * screen in "storage mode": the gyroid's 4 slots become a 5 x 3 page of
- * storage, L/R turn through its 6 pages, and items move between it and the
+ * that piece of furniture's own storage (pc_dresser.c), L/R turn through its 6 pages, and items move between it and the
  * pockets the way they do with a gyroid, minus the prices. A picks an item
  * straight up.
  *
@@ -14,6 +14,7 @@
  * storage the first time its owner opens it. */
 #include "pc_storage.h"
 #include "pc_ext_save.h"
+#include "pc_dresser.h"
 
 #include "m_common_data.h"
 #include "m_play.h"
@@ -39,14 +40,21 @@ static int l_page = 0;
 static PCExtStoredItem* l_store = NULL;
 static Haniwa_Item_c l_page_items[PAGE_SIZE];
 static int l_requested = FALSE;
+static u8* l_id = NULL;   /* the opened furniture's storage ID (FTR_ACTOR.pc_dresser_id) */
+static u8 l_dev_id = 0;   /* the dev harness's, with no furniture */
 
-static PCExtStoredItem* resident_storage(void) {
-    int player_no = Common_Get(player_no);
+void pc_storage_select(u8* id) {
+    l_id = id;
+}
 
-    if (player_no < 0 || player_no >= PLAYER_NUM || Now_Private == NULL) {
-        return NULL;
+/* The selected furniture's storage, given one first if it has none yet */
+static PCExtStoredItem* selected_storage(void) {
+    u8* id = l_id != NULL ? l_id : &l_dev_id;
+
+    if (*id == 0 || pc_dresser_items(*id) == NULL) {
+        *id = (u8)pc_dresser_new_id();
     }
-    return pc_ext_storage(player_no, &Now_Private->player_ID);
+    return pc_dresser_items(*id);
 }
 
 static void load_page(void) {
@@ -72,7 +80,7 @@ void pc_storage_sync(void) {
 }
 
 int pc_storage_begin(void) {
-    l_store = resident_storage();
+    l_store = selected_storage();
     if (l_store == NULL) {
         return FALSE;
     }
@@ -83,7 +91,7 @@ int pc_storage_begin(void) {
 }
 
 void pc_storage_take_furniture_items(mActor_name_t* items, int count) {
-    PCExtStoredItem* store = resident_storage();
+    PCExtStoredItem* store = selected_storage();
     int i;
     int slot = 0;
 
@@ -117,6 +125,7 @@ void pc_storage_end(void) {
     pc_storage_sync();
     l_active = FALSE;
     l_store = NULL;
+    l_id = NULL;
 }
 
 Haniwa_Item_c* pc_storage_slot(int home, int idx) {

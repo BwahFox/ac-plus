@@ -8,11 +8,14 @@
 #include "m_kankyo.h"
 #include "m_submenu.h"
 #include "graph.h"
+#include "sys_matrix.h"
+#include "m_lib.h"
 #include "pc_sky.h"
 #include "pc_settings.h"
 #include "pc_weather.h"
 #include "pc_constellation.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
@@ -227,4 +230,96 @@ void pc_sky_play_draw_end(GAME_PLAY* play) {
     OPEN_DISP(graph);
     gDPNoOpTag(NEXT_POLY_OPA_DISP, PC_NOOP_WORLD_END);
     CLOSE_DISP(graph);
+}
+
+/* Fireworks (ef_hanabi_*.c) and shooting stars (ef_shooting*.c). The GameCube lays them flat on the ground and
+ * the pond, reflections for a camera that never sees the sky. With the sky in view each is drawn again up in
+ * it, facing the camera. Like the stars they hang in a fixed direction, far off, so walking about doesn't slide
+ * them around: north, a little above the curved horizon, spread side to side and up by where each burst
+ * against the pond (the show's centre). Looking down, the horizon is off the top of the screen and so are
+ * they. */
+#define PC_SKY_FIREWORK_DIST   1000.0f  /* how far out from the camera they're drawn */
+#define PC_SKY_FIREWORK_RISE   0.07f    /* radians above the horizon, for one bursting over the pond */
+#define PC_SKY_FIREWORK_TURN   0.0016f  /* radians around per unit of the reflection east or west of the pond */
+#define PC_SKY_FIREWORK_CLIMB  0.0004f  /* radians up per unit of it north of the pond */
+#define PC_SKY_FIREWORK_SCALE  2.6f
+
+int pc_sky_fireworks(void) {
+    return l_pc_sky_this_frame && l_pc_sky_k > 0.0f;
+}
+
+/* How far above level the camera at eye sees the curved ground's edge, ground_y being the ground's height */
+static f32 pc_sky_horizon_angle(const xyz_t* eye, f32 ground_y) {
+    f32 to_center = (l_pc_sky_center[0] - eye->x) * l_pc_sky_fwd[0] + (l_pc_sky_center[2] - eye->z) * l_pc_sky_fwd[1];
+    f32 best = -1.6f;
+    f32 d;
+
+    for (d = 40.0f; d < 4000.0f; d += 40.0f) {
+        f32 u = d - to_center;
+        f32 a = atan2f(ground_y - l_pc_sky_k * u * u - eye->y, d);
+
+        if (a > best) {
+            best = a;
+        }
+    }
+    return best;
+}
+
+/* The pond's middle, where the GameCube centres both shows; FALSE in a town without one */
+static int pc_sky_pond(f32* x, f32* z) {
+    int bx, bz;
+
+    if (!mFI_BlockKind2BkNum(&bx, &bz, mRF_BLOCKKIND_POOL) || !mFI_BkNum2WposXZ(x, z, bx, bz)) {
+        return FALSE;
+    }
+    *x += mFI_BK_WORLDSIZE_X_F * 0.5f;
+    *z += mFI_BK_WORLDSIZE_Z_F * 0.5f;
+    return TRUE;
+}
+
+void pc_sky_no_fog(GAME* game);
+
+void pc_sky_place(GAME* game, const xyz_t* pos, f32 scale) {
+    GAME_PLAY* play = (GAME_PLAY*)game;
+    const xyz_t* eye = &play->view.eye;
+    f32 pond_x, pond_z, turn, up, x, y, z, u;
+
+    if (!pc_sky_pond(&pond_x, &pond_z)) {
+        pond_x = eye->x;
+        pond_z = eye->z;
+    }
+    turn = (pos->x - pond_x) * PC_SKY_FIREWORK_TURN;
+    up = pc_sky_horizon_angle(eye, pos->y) + PC_SKY_FIREWORK_RISE + (pond_z - pos->z) * PC_SKY_FIREWORK_CLIMB;
+    /* that way, north (-z) turned east by turn and raised by up */
+    x = eye->x + sinf(turn) * cosf(up) * PC_SKY_FIREWORK_DIST;
+    y = eye->y + sinf(up) * PC_SKY_FIREWORK_DIST;
+    z = eye->z - cosf(turn) * cosf(up) * PC_SKY_FIREWORK_DIST;
+    /* the vertex shader will lower it by k u^2, so it goes up as much */
+    u = (x - l_pc_sky_center[0]) * l_pc_sky_fwd[0] + (z - l_pc_sky_center[2]) * l_pc_sky_fwd[1];
+    Matrix_translate(x, y + l_pc_sky_k * u * u, z, MTX_LOAD);
+    Matrix_mult(&play->billboard_matrix, MTX_MULT);
+    Matrix_scale(scale, scale, scale, MTX_MULT);
+    pc_sky_no_fog(game);
+}
+
+/* the night's fog would all but hide it that far out */
+void pc_sky_no_fog(GAME* game) {
+    OPEN_DISP(game->graph);
+    gSPClearGeometryMode(NEXT_POLY_XLU_DISP, G_FOG);
+    CLOSE_DISP(game->graph);
+}
+
+void pc_sky_firework_place(GAME* game, const xyz_t* pos, const xyz_t* offset, int sky) {
+    if (!sky) { /* the GameCube's: flat on the ground */
+        Matrix_translate(pos->x + offset->x, pos->y + offset->y, pos->z + offset->z, MTX_LOAD);
+        Matrix_RotateX(DEG2SHORT_ANGLE2(270), MTX_MULT);
+        return;
+    }
+    pc_sky_place(game, pos, PC_SKY_FIREWORK_SCALE);
+}
+
+void pc_sky_firework_done(GAME* game) {
+    OPEN_DISP(game->graph);
+    gSPSetGeometryMode(NEXT_POLY_XLU_DISP, G_FOG);
+    CLOSE_DISP(game->graph);
 }

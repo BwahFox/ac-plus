@@ -56,6 +56,26 @@ static void pc_weather_roll(u32 seed, int n, int changing, pc_weather_spell_c* s
     spell->rainbow = 0;
 }
 
+/* settings.ini weather_clear_days: is month/day one of them? */
+static int pc_weather_clear_day(int month, int day) {
+    const char* p = g_pc_settings.weather_clear_days;
+
+    while (*p != '\0') {
+        int m, d;
+
+        if (sscanf(p, " %d/%d", &m, &d) == 2 && m == month && d == day) {
+            return TRUE;
+        }
+        while (*p != '\0' && *p != ',') {
+            p++;
+        }
+        if (*p == ',') {
+            p++;
+        }
+    }
+    return FALSE;
+}
+
 static void pc_weather_build_day(const lbRTC_time_c* rtc) {
     u32 key = ((u32)rtc->year << 16 | (u32)rtc->month << 8 | rtc->day) ^ ((u32)Save_Get(land_info).id << 7);
     u32 seed = pc_weather_hash(key, 0x5EA50);
@@ -75,6 +95,13 @@ static void pc_weather_build_day(const lbRTC_time_c* rtc) {
     l_day.count = 1;
     l_day.spell[0].start = 0;
     pc_weather_roll(seed, 0, changing, &l_day.spell[0]);
+    if (changing && pc_weather_clear_day(rtc->month, rtc->day)) { /* asked for (a season's only weather still wins) */
+        l_day.spell[0].weather = mEnv_WEATHER_CLEAR;
+        l_day.spell[0].intensity = 0;
+        l_day.spell[0].cloudy = FALSE;
+        l_day.spell[0].rainbow = FALSE;
+        changing = FALSE;
+    }
     for (hour = 1; changing && hour < 24; hour++) {
         pc_weather_spell_c* prev = &l_day.spell[l_day.count - 1];
         pc_weather_spell_c next;
@@ -222,4 +249,29 @@ f32 pc_weather_rainbow(void) {
         a *= pc_weather_clamp01((spell[1].start - minute) / 10.0f);
     }
     return a;
+}
+
+char pc_weather_forecast(int from_min, int to_min) {
+    f32 minute;
+    int i, wet = 0, dry = 0, cloudy = 0, snow = 0, m;
+
+    if (pc_weather_shown(&minute) < 0) {
+        /* events, the island or the original weather: what's falling now */
+        return Common_Get(weather) == mEnv_WEATHER_RAIN ? 'r' : Common_Get(weather) == mEnv_WEATHER_SNOW ? 's' : 'f';
+    }
+    for (m = from_min; m < to_min && m < 24 * 60; m += 10) {
+        for (i = 0; i + 1 < l_day.count && m >= l_day.spell[i + 1].start; i++) {
+        }
+        if (pc_weather_wet(l_day.spell[i].weather)) {
+            wet++;
+            snow += l_day.spell[i].weather == mEnv_WEATHER_SNOW;
+        } else {
+            dry++;
+            cloudy += l_day.spell[i].cloudy;
+        }
+    }
+    if (wet > 0 && wet * 3 >= dry) { /* a third of the time wet is a wet forecast */
+        return snow * 2 >= wet ? 's' : 'r';
+    }
+    return cloudy * 2 > dry ? 'c' : 'f';
 }

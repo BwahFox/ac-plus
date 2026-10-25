@@ -14,6 +14,7 @@
 #include "m_rcp.h"
 #ifdef TARGET_PC
 #include "pc_storage.h"
+#include "pc_dresser.h"
 #else
 #define pc_storage_slot(home, idx) (&Save_Get(homes[home]).haniwa.items[idx])
 #endif
@@ -293,6 +294,9 @@ static void mHD_drop_item(Submenu* submenu, mTG_tag_c* tag, mActor_name_t* item,
                 if (hand_ovl->info.hold_tbl == mTG_TABLE_ITEM) {
                     if (Now_Private->inventory.pockets[hand_ovl->info.hold_idx] == EMPTY_NO) {
                         mPr_SetPossessionItem(Now_Private, hand_ovl->info.hold_idx, now_item, mPr_ITEM_COND_NORMAL);
+#ifdef TARGET_PC
+                        pc_dresser_hand_put(hand_ovl->info.hold_idx);
+#endif
                         set_item = TRUE;
                     }
                 } else if (hand_ovl->info.hold_tbl == mTG_TABLE_MAIL) {
@@ -307,6 +311,9 @@ static void mHD_drop_item(Submenu* submenu, mTG_tag_c* tag, mActor_name_t* item,
 
                     if (idx >= 0) {
                         mPr_SetPossessionItem(Now_Private, idx, now_item, mPr_ITEM_COND_NORMAL);
+#ifdef TARGET_PC
+                        pc_dresser_hand_put(idx);
+#endif
                     } else {
                         /* No free inventory spots so put it back in the hand */
                         hand_ovl->info.item = now_item;
@@ -487,6 +494,9 @@ static void mHD_drop_item2(Submenu* submenu, mTG_tag_c* tag, mActor_name_t* item
     }
 
     Now_Private->inventory.item_conditions = mPr_SET_ITEM_COND(Now_Private->inventory.item_conditions, idx, cond);
+#ifdef TARGET_PC
+    pc_dresser_hand_swap(idx); /* a dresser's storage ID moves with it, like its condition */
+#endif
     mHD_prepare_drop_ticket(hand_ovl, item, idx);
     mHD_prepare_drop_wisp(hand_ovl, item, idx);
     mHD_prepare_drop_paper(hand_ovl, item, idx);

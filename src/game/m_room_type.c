@@ -1815,7 +1815,7 @@ extern int mRmTp_GetFloorIdx() {
             return 0;
         }
 
-        floor = Save_Get(homes[idx]).floors[floor_no].wall_floor.flooring_idx;
+        floor = mHm_FLOOR(idx, floor_no).wall_floor.flooring_idx;
 
         if (floor >= 0 && floor < FLOOR_ETC_END) {
             return floor;
@@ -1909,7 +1909,7 @@ extern int mRmTp_GetWallIdx() {
             return -1;
         }
 
-        return Save_Get(homes[idx]).floors[floor_no].wall_floor.wallpaper_idx;
+        return mHm_FLOOR(idx, floor_no).wall_floor.wallpaper_idx;
     } else if (Save_Get(scene_no) == SCENE_COTTAGE_MY) {
         return Save_Get(island).cottage.room.wall_floor.wallpaper_idx;
     } else if (Save_Get(scene_no) == SCENE_NPC_HOUSE || Save_Get(scene_no) == SCENE_COTTAGE_NPC) {
@@ -2057,6 +2057,11 @@ extern void mRmTp_MakeFamicom_Fdebug() {
 extern mActor_name_t mRmTp_GetPlayerRoomCollisionIdx(mActor_name_t field_id, mActor_name_t bg_idx) {
     if (mFI_GET_TYPE(field_id) == mFI_FIELD_PLAYER0_ROOM) {
         int has_basement = Save_Get(homes[(field_id - mFI_FIELD_PLAYER0_ROOM) & 3]).flags.has_basement;
+#ifdef TARGET_PC
+        if (pc_nlr_current(NULL) >= 0) {
+            has_basement = FALSE; /* an extra room has no step down */
+        }
+#endif
 
         switch (Save_Get(scene_no)) {
             case SCENE_MY_ROOM_M:
@@ -2222,7 +2227,7 @@ extern int mRmTp_CheckWallIsMyOriginalInThisScene() {
             return TRUE;
         }
     } else if (floor_no != -1) {
-        int idx = Save_Get(homes[room_idx]).floors[floor_no].wall_floor.wallpaper_idx;
+        int idx = mHm_FLOOR(room_idx, floor_no).wall_floor.wallpaper_idx;
 
         if (WALL_IS_MY_ORIG(idx)) {
             return TRUE;
@@ -2243,7 +2248,7 @@ extern int mRmTp_CheckFloorIsMyOriginalInThisScene() {
             return TRUE;
         }
     } else if (floor_no != -1) {
-        int idx = Save_Get(homes[room_idx]).floors[floor_no].wall_floor.flooring_idx;
+        int idx = mHm_FLOOR(room_idx, floor_no).wall_floor.flooring_idx;
 
         if (FLOOR_IS_MY_ORIG(idx)) {
             return TRUE;
@@ -2455,7 +2460,7 @@ static mHm_fllot_bit_c* mRmTp_GetNowSceneFloorBitInfoP() {
         int floor_no = mFI_GetPlayerHouseFloorNo(Save_Get(scene_no));
 
         if (floor_no != -1) {
-            return &Save_Get(homes[idx]).floors[floor_no].floor_bit_info;
+            return &mHm_FLOOR(idx, floor_no).floor_bit_info;
         }
     }
 

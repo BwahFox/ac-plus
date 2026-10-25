@@ -111,6 +111,19 @@ static int aMHS_actor_draw_after(GAME* game, cKF_SkeletonInfo_R_c* keyframe, int
     Mtx* mtx;
     Gfx* gfx;
 
+#ifdef TARGET_PC
+    if (joint_idx == 9 && my_house->arg0 == mHm_HOMESIZE_UPPER) {
+        /* the extra rooms' wings, in the walls' space (pc_nlr_outside.c) */
+        /* its windows lit as the house's (joint 8's colour, above) */
+        int angle = my_house->actor_class.world.angle.x;
+        f32 lit = angle == (DEG2SHORT_ANGLE(90.0f) - 1) ? 1.0f : (f32)angle * (1.0f / 16383.0f);
+        u8 light[3];
+
+        light[0] = (u8)(lit * 255.0f), light[1] = (u8)(lit * 255.0f), light[2] = (u8)(lit * 150.0f);
+        pc_nlr_draw_wings(game, my_house->action, my_house->season == mTM_SEASON_WINTER,
+                          (*Common_Get(clip).structure_clip->get_pal_segment_proc)(my_house->arg1), light);
+    }
+#endif
     // Draw window frame shadow last
     if (joint_idx == 12) {
         mtx = _Matrix_to_Mtx_new(graph);

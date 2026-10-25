@@ -4,6 +4,9 @@
 #include "m_debug.h"
 #include "m_rcp.h"
 #include "sys_matrix.h"
+#ifdef TARGET_PC
+#include "pc_sky.h"
+#endif
 
 #define EFFECT_LIFETIME 320
 
@@ -56,7 +59,22 @@ static Gfx* eShooting_GetTwoTileGfx(int x, int y, GAME* game) {
     return two_tex_scroll_dolphin(game->graph, 0, x, y, 8, 256, 1, 0, 0, 8, 32);
 }
 
+#ifdef TARGET_PC
+#define PC_SHOOTING_SKY_SCALE 1.6f
+static void eShooting_draw(eEC_Effect_c* effect, GAME* game, int sky);
+
 static void eShooting_dw(eEC_Effect_c* effect, GAME* game) {
+    eShooting_draw(effect, game, FALSE);
+    if (pc_sky_fireworks()) { /* and up in the sky, when it's in view (pc_sky_game.c) */
+        eShooting_draw(effect, game, TRUE);
+        pc_sky_firework_done(game);
+    }
+}
+
+static void eShooting_draw(eEC_Effect_c* effect, GAME* game, int sky) {
+#else
+static void eShooting_dw(eEC_Effect_c* effect, GAME* game) {
+#endif
     GRAPH* graph;
     f32 scale_z = effect->effect_specific[0] * 0.01f;
     f32 t = (f32)EFFECT_LIFETIME - effect->lifetime;
@@ -68,6 +86,13 @@ static void eShooting_dw(eEC_Effect_c* effect, GAME* game) {
 
     _texture_z_light_fog_prim_xlu(graph);
 
+#ifdef TARGET_PC
+    if (sky) {
+        /* stood up facing the camera: its heading becomes its slant across the sky */
+        pc_sky_place(game, &effect->position, PC_SHOOTING_SKY_SCALE);
+        Matrix_RotateX(DEG2SHORT_ANGLE2(90), MTX_MULT);
+    } else
+#endif
     Matrix_translate(effect->position.x, effect->position.y, effect->position.z, MTX_LOAD);
     Matrix_RotateY(-effect->effect_specific[1], MTX_MULT);
     Matrix_scale(1.035f, 1.0f, 1.0f, MTX_MULT);

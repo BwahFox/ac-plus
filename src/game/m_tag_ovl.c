@@ -23,6 +23,7 @@
 #include "m_haniwa_ovl.h"
 #ifdef TARGET_PC
 #include "pc_storage.h"
+#include "pc_dresser.h"
 #else
 #define pc_storage_slot(home, idx) (&Save_Get(homes[home]).haniwa.items[idx])
 #endif
@@ -3050,6 +3051,9 @@ static void mTG_catch_item_from_table(Submenu* submenu, Mail_c* mail, mActor_nam
             hand_ovl->info.item_cond = item_cond;
 
             if (table == mTG_TABLE_ITEM) {
+#ifdef TARGET_PC
+                pc_dresser_hand_catch(table_idx); /* a dresser's storage ID goes with it */
+#endif
                 mPr_SetPossessionItem(Now_Private, table_idx, EMPTY_NO, mPr_ITEM_COND_NORMAL);
             } else {
                 *item = EMPTY_NO;
@@ -4104,7 +4108,22 @@ static void mTG_room_put_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
             if (!mFI_CheckInIsland() ||
                 !(mSP_SearchItemCategoryPriority(put_item, mSP_KIND_FURNITURE, mSP_LISTTYPE_HOMEPAGE, NULL) ||
                   mSP_SearchItemCategoryPriority(put_item, mSP_KIND_FURNITURE, mSP_LISTTYPE_SPECIALPRESENT, NULL))) {
+#ifdef TARGET_PC
+                {
+                    /* a dresser's storage ID goes back on it (ac_my_room_move.c_inc) */
+                    mActor_name_t pocket_item = Now_Private->inventory.pockets[idx];
+                    int dresser_id = pc_dresser_take_pocket(idx, pocket_item);
+
+                    pc_dresser_set_pending(dresser_id);
+                    ftrID = mTG_drop_furniture(play, put_item);
+                    if (ftrID < 0) {
+                        pc_dresser_set_pending(0);
+                        pc_dresser_tag_pocket(idx, pocket_item, dresser_id);
+                    }
+                }
+#else
                 ftrID = mTG_drop_furniture(play, put_item);
+#endif
                 if (ftrID >= 0) {
                     mPr_SetPossessionItem(Now_Private, idx, EMPTY_NO, mPr_ITEM_COND_NORMAL);
                     mTG_return_tag_init(submenu, mTG_TYPE_NONE, mTG_RETURN_CLOSE);

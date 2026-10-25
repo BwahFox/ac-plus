@@ -4,6 +4,9 @@
 #include "sys_matrix.h"
 #include "m_rcp.h"
 #include "m_debug.h"
+#ifdef TARGET_PC
+#include "pc_sky.h"
+#endif
 
 static void eShootingKira_init(xyz_t pos, int prio, s16 angle, GAME* game, u16 item_name, s16 arg0, s16 arg1);
 static void eShootingKira_ct(eEC_Effect_c* effect, GAME* game, void* ct_arg);
@@ -71,7 +74,22 @@ static void eShootingKira_mv(eEC_Effect_c* effect, GAME* game) {
 extern Gfx ef_takurami01_normal_render_mode[];
 extern Gfx ef_takurami01_kira_modelT[];
 
+#ifdef TARGET_PC
+#define PC_SHOOTING_KIRA_SKY_SCALE 1.6f
+static void eShootingKira_draw(eEC_Effect_c* effect, GAME* game, int sky);
+
 static void eShootingKira_dw(eEC_Effect_c* effect, GAME* game) {
+    eShootingKira_draw(effect, game, FALSE);
+    if (pc_sky_fireworks()) { /* with its shooting star up in the sky (pc_sky_game.c) */
+        eShootingKira_draw(effect, game, TRUE);
+        pc_sky_firework_done(game);
+    }
+}
+
+static void eShootingKira_draw(eEC_Effect_c* effect, GAME* game, int sky) {
+#else
+static void eShootingKira_dw(eEC_Effect_c* effect, GAME* game) {
+#endif
     GAME_PLAY* play = (GAME_PLAY*)game;
     f32 max = (f32)(42 + GETREG(MYKREG, 32));
     f32 t = max - effect->lifetime;
@@ -86,11 +104,23 @@ static void eShootingKira_dw(eEC_Effect_c* effect, GAME* game) {
     }
 
     angle_z = (s16)eEL_CalcAdjust_F(t, 0.0f, max, 0.0f, 0x20000);
-    Matrix_translate(effect->position.x, effect->position.y, effect->position.z, MTX_LOAD);
-    Matrix_mult(&play->billboard_matrix, MTX_MULT);
+#ifdef TARGET_PC
+    if (sky) {
+        pc_sky_place(game, &effect->position, PC_SHOOTING_KIRA_SKY_SCALE);
+    } else
+#endif
+    {
+        Matrix_translate(effect->position.x, effect->position.y, effect->position.z, MTX_LOAD);
+        Matrix_mult(&play->billboard_matrix, MTX_MULT);
+    }
     Matrix_RotateZ(angle_z, MTX_MULT);
     Matrix_scale(effect->scale.x, effect->scale.y, effect->scale.z, MTX_MULT);
     _texture_z_light_fog_prim_xlu(game->graph);
+#ifdef TARGET_PC
+    if (sky) {
+        pc_sky_no_fog(game);
+    }
+#endif
 
     OPEN_DISP(game->graph);
 

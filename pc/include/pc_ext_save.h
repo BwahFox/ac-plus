@@ -5,7 +5,7 @@
  * the town's .gci as <gci>.acplus and written/read/cloud-synced with it. The
  * .gci itself stays exactly GameCube format.
  *
- * Holds per-unit ground patterns for the town, each player's item storage and
+ * Holds per-unit ground patterns for the town, the dressers' storages (pc_dresser.c) and
  * the pattern IDs and library (pc_pattern.c).
  * It belongs to one town (land id): data from another town is never used. */
 
@@ -49,9 +49,6 @@ void pc_ext_ground_each_id(void (*fn)(u32 id));
 /* Does any unit of this acre hold a pattern? (quick skip when drawing) */
 int pc_ext_ground_block_used(int bx, int bz);
 
-/* The item storage of a resident player (0-3), cleared first if it belonged to
- * someone else who had that player slot. */
-PCExtStoredItem* pc_ext_storage(int player_no, const PersonalID_c* owner);
 
 #ifdef __cplusplus
 }

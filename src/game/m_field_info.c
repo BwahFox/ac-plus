@@ -169,6 +169,15 @@ extern f32 mFI_GetBlockWidth() {
             if (size > 3) {
                 size = 3;
             }
+#ifdef TARGET_PC
+            {
+                int room_size; /* an extra room: as big as it is, not the house */
+
+                if (pc_nlr_current(&room_size) >= 0) {
+                    size = room_size == 8 ? mHm_HOMESIZE_LARGE : mHm_HOMESIZE_MEDIUM;
+                }
+            }
+#endif
 
             return player_room_wd[size];
         }
@@ -244,6 +253,15 @@ extern f32 mFI_GetBlockHeight() {
             if (size > 3) {
                 size = 3;
             }
+#ifdef TARGET_PC
+            {
+                int room_size; /* an extra room: as big as it is, not the house */
+
+                if (pc_nlr_current(&room_size) >= 0) {
+                    size = room_size == 8 ? mHm_HOMESIZE_LARGE : mHm_HOMESIZE_MEDIUM;
+                }
+            }
+#endif
 
             return player_room_ht[size];
         }
@@ -499,6 +517,13 @@ extern mFM_field_pal_c* mFI_GetFieldPal() {
 
 extern int mFI_GetPlayerHouseFloorNo(int scene) {
     int floor = -1;
+
+#ifdef TARGET_PC
+    floor = pc_nlr_floor_for_scene(scene); /* the extra rooms are floors 3-5 */
+    if (floor >= 0) {
+        return floor;
+    }
+#endif
 
     switch (scene) {
         case SCENE_MY_ROOM_S:

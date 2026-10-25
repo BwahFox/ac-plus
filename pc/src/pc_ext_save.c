@@ -9,12 +9,15 @@
  * rotated on every save like the .gci's) is loaded instead; with none, the damaged file is
  * still loaded rather than lost. Files from before version 2 have no CSUM and load as they are.
  *
- * Chunks: GRNI ground pattern IDs, STOR item storage, CONS constellations, ROST the Roost, BSMT basement
- * wallpaper/carpet (pc_basement.c), and the pattern chunks of
- * pc_pattern.c. GRND (ground as player/slot bytes) is only read, from older
+ * Chunks: GRNI ground pattern IDs, CONS constellations, ROST the Roost, BSMT basement wallpaper/carpet
+ * (pc_basement.c), the New Leaf style extra rooms (NLRM, pc_nlrooms.c), the dressers' storages (DRSR/DRBD/DRTG, pc_dresser.c) and the pattern chunks of
+ * pc_pattern.c. STOR (one shared storage per resident) is only read, from older files, and handed to
+ * pc_dresser.c. GRND (ground as player/slot bytes) is only read, from older
  * files, and turned into IDs. */
 #include "pc_basement.h"
+#include "pc_nlrooms.h"
 #include "pc_brewster.h"
+#include "pc_dresser.h"
 #include "pc_ext_save.h"
 #include "pc_pattern.h"
 #include "pc_constellation.h"
@@ -68,6 +71,8 @@ static void ext_reset(u16 land_id) {
     pc_const_reset();
     pc_brewster_reset();
     pc_basement_reset();
+    pc_nlr_reset();
+    pc_dresser_reset();
     s_ext.land_id = land_id;
     for (p = 0; p < PC_EXT_PLAYERS; p++) {
         for (i = 0; i < PC_EXT_STORAGE_COUNT; i++) {
@@ -205,7 +210,8 @@ static void ext_read_file(const char* path) {
             break;
         }
         if (pc_pattern_read_chunk(tag, f, size) || pc_const_read_chunk(tag, f, size) ||
-            pc_brewster_read_chunk(tag, f, size) || pc_basement_read_chunk(tag, f, size)) {
+            pc_brewster_read_chunk(tag, f, size) || pc_basement_read_chunk(tag, f, size) || pc_nlr_read_chunk(tag, f, size) ||
+            pc_dresser_read_chunk(tag, f, size)) {
             continue;
         }
         if (memcmp(tag, "GRNI", 4) == 0) {
@@ -293,6 +299,13 @@ void pc_ext_save_load(const char* gci_path) {
 
     ext_read_file(from);
     pc_pattern_loaded();
+    {
+        int p;
+
+        for (p = 0; p < PC_EXT_PLAYERS; p++) {
+            pc_dresser_loaded(s_ext.storage[p].items, 1);
+        }
+    }
     if (s_legacy_ground_read) {
         migrate_legacy_ground();
     }
@@ -342,8 +355,9 @@ void pc_ext_save_write(const char* gci_path) {
     }
     ok = fwrite(EXT_MAGIC, 1, 4, f) == 4 && fwrite(&version, 4, 1, f) == 1 && fwrite(&s_ext.land_id, 2, 1, f) == 1 &&
          fwrite(&pad, 2, 1, f) == 1 && write_chunk(f, "GRNI", s_ext.ground, sizeof(s_ext.ground)) &&
-         write_chunk(f, "STOR", s_ext.storage, sizeof(s_ext.storage)) && pc_pattern_write_chunks(f) &&
-         pc_const_write_chunk(f) && pc_brewster_write_chunk(f) && pc_basement_write_chunk(f) && write_checksum(f);
+         pc_dresser_write_chunks(f) && pc_pattern_write_chunks(f) &&
+         pc_const_write_chunk(f) && pc_brewster_write_chunk(f) && pc_basement_write_chunk(f) && pc_nlr_write_chunk(f) &&
+         write_checksum(f);
     if (fclose(f) != 0) {
         ok = FALSE;
     }
@@ -403,24 +417,4 @@ int pc_ext_ground_block_used(int bx, int bz) {
         return FALSE;
     }
     return s_ground_used[bz][bx];
-}
-
-PCExtStoredItem* pc_ext_storage(int player_no, const PersonalID_c* owner) {
-    ExtStorage* st;
-    int i;
-
-    if (player_no < 0 || player_no >= PC_EXT_PLAYERS || owner == NULL) {
-        return NULL;
-    }
-    ext_check_town();
-    st = &s_ext.storage[player_no];
-    if (memcmp(&st->owner, owner, sizeof(PersonalID_c)) != 0) {
-        /* A different (or new) resident in this player slot. */
-        memcpy(&st->owner, owner, sizeof(PersonalID_c));
-        for (i = 0; i < PC_EXT_STORAGE_COUNT; i++) {
-            st->items[i].item = EMPTY_NO;
-            st->items[i].cond = 0;
-        }
-    }
-    return st->items;
 }

@@ -576,6 +576,9 @@ extern void mSDI_StartInitAfter(GAME* game, int renew_mode, int malloc_flag) {
     mNPS_set_all_schedule_area();
     mNpcW_InitNpcWalk(Common_GetPointer(npc_walk));
     mHm_CheckRehouseOrder();
+#ifdef TARGET_PC
+    pc_nlr_check_orders(); /* and the extra rooms Nook was asked for (pc_nlrooms.c) */
+#endif
     decide_fish_location(Common_GetPointer(fish_location));
     mTRC_init(game);
     Common_Set(goki_shocked_flag, FALSE);

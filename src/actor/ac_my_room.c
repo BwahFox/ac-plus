@@ -20,6 +20,7 @@
 #include "m_rcp.h"
 #ifdef TARGET_PC
 #include "pc_storage.h"
+#include "pc_dresser.h"
 #endif
 
 enum {
@@ -339,7 +340,7 @@ static u64* aMR_GetBitSwitchTable(int layer, MY_ROOM_ACTOR* my_room) {
             int floor_no = mFI_GetPlayerHouseFloorNo(((MY_ROOM_ACTOR*)aMR_CLIP->my_room_actor_p)->scene);
 
             if (floor_no != -1) {
-                return &(&Save_Get(homes[idx]).floors[floor_no].layer_main)[layer].ftr_switch;
+                return &(&mHm_FLOOR(idx, floor_no).layer_main)[layer].ftr_switch;
             }
         }
     }
@@ -359,7 +360,7 @@ static u32* aMR_GetHaniwaStepSaveData(s16 layer, MY_ROOM_ACTOR* my_room) {
         int floor_no = mFI_GetPlayerHouseFloorNo(my_room->scene);
 
         if (floor_no != -1) {
-            return (&Save_Get(homes[idx]).floors[floor_no].layer_main)[layer].haniwa_step;
+            return (&mHm_FLOOR(idx, floor_no).layer_main)[layer].haniwa_step;
         }
     }
 
@@ -1518,6 +1519,10 @@ static void aMR_CallSitDownOngenPosSE(const xyz_t* pos);
 static void aMR_SoundMelody(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, int idx);
 static int aMR_CheckDannaKill(xyz_t* pos);
 
+#ifdef TARGET_PC
+static void aMR_pc_dresser_load_ids(void);
+#endif
+
 static void aMR_SetClip(ACTOR* actorx) {
     MY_ROOM_ACTOR* my_room = (MY_ROOM_ACTOR*)actorx;
 
@@ -1624,7 +1629,7 @@ static TempoBeat_c* aMR_NowSceneWaltzTempo(MY_ROOM_ACTOR* my_room) {
         int floor_no = mFI_GetPlayerHouseFloorNo(my_room->scene);
 
         if (floor_no != -1) {
-            return &Save_Get(homes[idx]).floors[floor_no].tempo_beat;
+            return &mHm_FLOOR(idx, floor_no).tempo_beat;
         }
     }
 
@@ -1812,6 +1817,9 @@ static void My_Room_Actor_ct(ACTOR* actorx, GAME* game) {
     my_room->parent_ftr.ftrID = -1;
     Common_Set(make_npc2_actor, TRUE);
     aMR_MakeItemDataInFurniture();
+#ifdef TARGET_PC
+    aMR_pc_dresser_load_ids();
+#endif
     aMR_DeleteMusicWhichMusicBoxDontHave();
     aMR_InitDummyKeyAnime(play, actorx);
     my_room->allow_rotation_flag = TRUE;
@@ -1865,6 +1873,98 @@ static void aMR_FreeHeapArea(ACTOR* actorx) {
     }
 }
 
+#ifdef TARGET_PC
+/* The room's place among the dressers' storages (pc_dresser.c): a resident's house floor or the cottage */
+static int aMR_pc_dresser_room(int* house, int* floor) {
+    MY_ROOM_ACTOR* my_room;
+    mActor_name_t field_id = mFI_GetFieldId();
+
+    if (aMR_CLIP == NULL || aMR_CLIP->my_room_actor_p == NULL || l_aMR_work.ftr_actor_list == NULL ||
+        l_aMR_work.used_list == NULL) {
+        return FALSE;
+    }
+    my_room = (MY_ROOM_ACTOR*)aMR_CLIP->my_room_actor_p;
+    if (my_room->scene == SCENE_COTTAGE_MY) {
+        *house = PC_DRESSER_HOUSES - 1;
+    } else if (mFI_GET_TYPE(field_id) == mFI_FIELD_PLAYER0_ROOM) {
+        *house = (field_id - mFI_FIELD_PLAYER0_ROOM) & 3;
+    } else {
+        return FALSE;
+    }
+    *floor = mFI_GetPlayerHouseFloorNo(my_room->scene);
+    return *floor >= 0;
+}
+
+static int aMR_pc_dresser_unit(FTR_ACTOR* ftr_actor) {
+    int ut_x;
+    int ut_z;
+
+    if (!aMR_Wpos2PlaceNumber(&ut_x, &ut_z, ftr_actor->position, ftr_actor->shape_type)) {
+        return -1;
+    }
+    return ut_x + ut_z * UT_X_NUM;
+}
+
+/* The room just made its furniture: each piece of storage furniture gets its storage ID back */
+static void aMR_pc_dresser_load_ids(void) {
+    int house, floor, i;
+
+    if (!aMR_pc_dresser_room(&house, &floor)) {
+        return;
+    }
+    for (i = 0; i < l_aMR_work.list_size; i++) {
+        FTR_ACTOR* ftr_actor = &l_aMR_work.ftr_actor_list[i];
+
+        if (l_aMR_work.used_list[i] && aFTR_IS_STORAGE(aMR_GetFurnitureProfile(ftr_actor->name))) {
+            int ut = aMR_pc_dresser_unit(ftr_actor);
+
+            ftr_actor->pc_dresser_id = ut >= 0 ? pc_dresser_bound(house, floor, ftr_actor->layer, ut) : 0;
+        }
+    }
+}
+
+/* Dev (pc_dresser_dev_dump): the room's storage furniture */
+void aMR_pc_dresser_list(void) {
+    int house, floor, i;
+
+    if (!aMR_pc_dresser_room(&house, &floor)) {
+        return;
+    }
+    for (i = 0; i < l_aMR_work.list_size; i++) {
+        FTR_ACTOR* ftr_actor = &l_aMR_work.ftr_actor_list[i];
+
+        if (l_aMR_work.used_list[i] && aFTR_IS_STORAGE(aMR_GetFurnitureProfile(ftr_actor->name))) {
+            int ut = aMR_pc_dresser_unit(ftr_actor);
+
+            printf("[Dresser] in the room (house %d floor %d): furniture %03X at %.0f,%.0f (unit %d,%d layer %d), "
+                   "storage %d\n", house, floor, ftr_actor->name, ftr_actor->position.x, ftr_actor->position.z,
+                   ut % UT_X_NUM, ut / UT_X_NUM, ftr_actor->layer, ftr_actor->pc_dresser_id);
+        }
+    }
+}
+
+/* Where the room's storage furniture stands now, for the save (pc_dresser.c calls this before writing) */
+void aMR_pc_dresser_flush(void) {
+    int house, floor, i;
+
+    if (!aMR_pc_dresser_room(&house, &floor)) {
+        return;
+    }
+    pc_dresser_room_clear(house, floor);
+    for (i = 0; i < l_aMR_work.list_size; i++) {
+        FTR_ACTOR* ftr_actor = &l_aMR_work.ftr_actor_list[i];
+
+        if (l_aMR_work.used_list[i] && ftr_actor->pc_dresser_id != 0) {
+            int ut = aMR_pc_dresser_unit(ftr_actor);
+
+            if (ut >= 0) {
+                pc_dresser_room_bind(house, floor, ftr_actor->layer, ut, ftr_actor->pc_dresser_id);
+            }
+        }
+    }
+}
+#endif
+
 static void aMR_KeepItem2Fg(FTR_ACTOR* ftr_actor) {
     int idx = 0;
     int i;
@@ -1894,6 +1994,9 @@ static void aMR_AllFurnitureDestruct(ACTOR* actorx, GAME* game) {
     int i;
 
     sAdo_RhythmAllStop();
+#ifdef TARGET_PC
+    aMR_pc_dresser_flush(); /* the last word on where the storage furniture stands */
+#endif
     if (ftr_actor != NULL && used != NULL) {
         for (i = 0; i < l_aMR_work.list_size; i++) {
             if (*used) {
