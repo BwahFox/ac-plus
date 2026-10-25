@@ -150,6 +150,8 @@ mouse, controllers), ac-plus adds:
   resident on the train, and checking a mirror at home changes it any time. Works with the HD
   texture pack's face.
 - Tanning is now a setting (Settings → Gameplay → Tanning), off by default.
+- Sit on a chair by walking into its side, not only its front. Getting up, you step off whichever
+  side is free.
 
 **Patterns**
 - Design a Pattern from the pause menu (Esc, or Back on a controller), once you've designed five
@@ -166,6 +168,8 @@ mouse, controllers), ac-plus adds:
 **Museum**
 - Blathers identifies and assesses fossils as soon as you talk to him.
 - The observatory and the Roost (see [What comes from City Folk](#what-comes-from-city-folk)).
+- Fish and insects you've donated get the map's museum marker in your collection pages.
+- At the Roost, A by the stool always sits you down, without starting a chat with Brewster first.
 
 **Home**
 - **New Leaf style extra rooms:** once your house is fully paid off (big main room, upstairs and
@@ -179,7 +183,10 @@ mouse, controllers), ac-plus adds:
 - The basement takes wallpaper and carpets. Its rock wall and floor come back to you as items, so
   you can put them back later, or use them in any other room. Both are in Tom Nook's catalog.
 
-**Items**
+**Items and Bells**
+- **90,000 Bells bags**, as Animal Crossing Deluxe has them. Make one from your wallet's menu once
+  you have 90,000 Bells. The bank, shops, the loan and the gyroids take them, and a full wallet
+  overflows into them. Bury one in a glowing spot for a money tree that drops three of them.
 - The four NES games that were only available through e-Reader cards (Ice Climber,
   Mario Bros., Super Mario Bros. and The Legend of Zelda) turn up like the others. They're in the
   same prize pools, and Tom Nook's codes work for them.
@@ -236,7 +243,7 @@ default back.
 - **Where they are:** your town is in `save/card_a/`, as two files:
   - `DobutsunomoriP_MURA.gci`, a normal GameCube save that Dolphin and save editors understand;
   - `DobutsunomoriP_MURA.gci.acplus`, with everything ac-plus adds: ground patterns, storage,
-    pattern IDs, constellations, the Roost, basement wallpaper and carpets, the extra rooms, skin tones. Its last three copies
+    pattern IDs, constellations, the Roost, basement wallpaper and carpets, the extra rooms, skin tones, 90,000 Bells money trees. Its last three copies
     are kept as `.acplus.bak1` to `.bak3`.
 
   **Always copy or back up the two files together.**
@@ -301,7 +308,7 @@ disc yourself with Python 3 and `numpy`:
   built on, and its contributors. AloXado320's mouse support in menus and the pattern designer
   came in through it.
 - **Cuyler36's Animal Crossing Deluxe:** the skin tones follow it, with its eight tones' colours
-  and its tanning on top of them.
+  and its tanning on top of them. The 90,000 Bells bag comes from it too.
 - **Libraries:** [qrcodegen](https://www.nayuki.io/page/qr-code-generator-library),
   [quirc](https://github.com/dlbeer/quirc), [dr_libs](https://github.com/mackron/dr_libs) and
   [stb](https://github.com/nothings/stb). Their licenses are in `pc/lib/`.

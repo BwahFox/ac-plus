@@ -232,7 +232,11 @@ static void Shop_Goods_Actor_drop_move(SHOP_GOODS_ACTOR* shop_goods) {
                     single_draw_p->item == ITM_FOOD_ORANGE) {
                     sAdo_OngenTrgStart(0x127, &single_draw_p->current_pos);
                 } else if (single_draw_p->item == ITM_MONEY_1000 || single_draw_p->item == ITM_MONEY_10000 ||
-                           single_draw_p->item == ITM_MONEY_30000 || single_draw_p->item == ITM_MONEY_100) {
+                           single_draw_p->item == ITM_MONEY_30000 || single_draw_p->item == ITM_MONEY_100
+#ifdef TARGET_PC
+                           || single_draw_p->item == ITM_MONEY_90000
+#endif
+                           ) {
                     sAdo_OngenTrgStart(0x444, &single_draw_p->current_pos);
                 } else {
                     sAdo_OngenTrgStart(0x128, &single_draw_p->current_pos);

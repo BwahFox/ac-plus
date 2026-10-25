@@ -154,7 +154,11 @@ typedef struct offset_table_s {
 
 // #define FTR_NUM 1266
 #define PAPER_NUM 256
+#ifdef TARGET_PC
+#define MONEY_NUM 5 /* + the 90,000 Bells bag */
+#else
 #define MONEY_NUM 4
+#endif
 #define TOOL_NUM 92
 #define FISH_NUM 40
 #define CLOTH_NUM 255
@@ -2011,7 +2015,22 @@ enum {
 #define ITM_MONEY_10000 (ITM_MONEY_1000 + 1) // 0x2101
 #define ITM_MONEY_30000 (ITM_MONEY_10000 + 1) // 0x2102
 #define ITM_MONEY_100 (ITM_MONEY_30000 + 1) // 0x2103
+#ifdef TARGET_PC
+#define ITM_MONEY_90000 (ITM_MONEY_100 + 1) // 0x2104, as Animal Crossing Deluxe has it
+#define ITM_MONEY_END ITM_MONEY_90000
+#else
 #define ITM_MONEY_END ITM_MONEY_100 // 0x2103
+#endif
+
+/* The bag a full wallet spills into (Nook's buying, villagers' pay, gyroids): with 99,999 Bells there's always
+ * enough for the biggest one */
+#ifdef TARGET_PC
+#define ITM_MONEY_OVERFLOW ITM_MONEY_90000
+#define MONEY_OVERFLOW_BELLS 90000
+#else
+#define ITM_MONEY_OVERFLOW ITM_MONEY_30000
+#define MONEY_OVERFLOW_BELLS 30000
+#endif
 
 #define ITM_TOOL_START 0x2200
 #define ITM_NET ITM_TOOL_START

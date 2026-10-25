@@ -1,5 +1,6 @@
 #ifdef TARGET_PC
 #include "pc_sky.h"
+#include "pc_money_tree.h"
 #endif
 static void bit_cmn_single_drawS(GAME* game, bg_item_common_info_c* common_info, mActor_name_t fg_item, xyz_t* pos,
                                  s_xyz* angle, xyz_t* scale, u8 alpha, bIT_DRAW_BF_PROC draw_bf,
@@ -594,6 +595,20 @@ static int bIT_common_bury_after(mActor_name_t fg_bury_item, mActor_name_t fg_ho
     int i;
 
     *buried_item_p = fg_bury_item;
+#ifdef TARGET_PC
+    pc_money_tree_forget(*bury_pos); /* whatever was planted here before */
+    if (fg_bury_item == ITM_MONEY_90000 && fg_hole_item == HOLE_SHINE) {
+        if (bIT_common_moneytree_check() != FALSE) {
+            /* a 30,000 Bells tree that pc_money_tree.c remembers */
+            *buried_item_p = TREE_30000BELLS_SAPLING;
+            pc_money_tree_plant(*bury_pos);
+        } else {
+            *buried_item_p = TREE_SAPLING;
+        }
+
+        return bIT_BURY_ACTION_PLANT;
+    }
+#endif
     if (fg_bury_item == ITM_FOOD_APPLE || fg_bury_item == ITM_FOOD_CHERRY || fg_bury_item == ITM_FOOD_PEAR ||
         fg_bury_item == ITM_FOOD_PEACH || fg_bury_item == ITM_FOOD_ORANGE || fg_bury_item == ITM_FOOD_COCONUT) {
         static bIT_fr2tr_c fr2tr_f[] = {
@@ -1069,6 +1084,11 @@ static void drop_fruit(mActor_name_t fg_item, int ut_x, int ut_z, xyz_t* drop_po
                         drop_item = ITM_MONEY_1000;
                     }
                 }
+#ifdef TARGET_PC
+                if (fg_item == TREE_30000BELLS && pc_money_tree_shake(ut_x, ut_z)) {
+                    drop_item = ITM_MONEY_90000;
+                }
+#endif
 
                 fruit_set(drop_item, ut_x, ut_z, fg_ytable[i].drop_count, 0, drop_pos, parent_actor);
             }

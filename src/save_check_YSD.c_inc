@@ -10,6 +10,12 @@ static int sCCk_Check_ItemName(mActor_name_t item) {
     int item_type = ITEM_NAME_GET_TYPE(item_name);
     int res = FALSE;
 
+#ifdef TARGET_PC
+    if (item_name == ITM_MONEY_90000) {
+        return FALSE; /* past the GameCube's money */
+    }
+#endif
+
     if (item_type == NAME_TYPE_ITEM1) {
         int index = ITEM_NAME_GET_INDEX(item_name);
         int category = ITEM_NAME_GET_CAT(item_name);

@@ -409,6 +409,22 @@ typedef struct inventory_icon_info_s {
 
 extern u8 inv_win_mark_tex[];
 
+#ifdef TARGET_PC
+#include "pc_platform.h"
+
+/* ac-plus: the screen's right edge in the menus' 320-wide coordinates. The GameCube stops drawing an icon once its
+ * left side passes 320; on a wider window the screen goes on past that, so icons in the right column vanished while
+ * the menu slid away. */
+f32 mSM_pc_icon_right_edge(void) {
+    f32 edge = 160.0f + 120.0f * (f32)g_pc_window_w / (f32)(g_pc_window_h > 0 ? g_pc_window_h : 1);
+
+    return edge > 320.0f ? edge : 320.0f;
+}
+#define mSM_ICON_RIGHT_EDGE mSM_pc_icon_right_edge()
+#else
+#define mSM_ICON_RIGHT_EDGE 320.0f
+#endif
+
 static void mSM_set_dl_item(GRAPH* graph, f32 x, f32 y, f32 scale, mSM_inventory_icon_info_c* icon_info, u16* palette,
                             u8 l, rgba_t* color, int draw_shadow, int draw_mark) {
     f32 rect_xh;
@@ -451,7 +467,7 @@ static void mSM_set_dl_item(GRAPH* graph, f32 x, f32 y, f32 scale, mSM_inventory
     scale_factor = (int)((1.0f / scale) * 1365.333333333f);
 
     /* Draw 2D rectangle with icon texture */
-    if (x < 320.0f) {
+    if (x < mSM_ICON_RIGHT_EDGE) {
         f32 mod = scale * 24.0f;
 
         rect_xh = x + mod;
@@ -479,7 +495,7 @@ static void mSM_set_dl_item(GRAPH* graph, f32 x, f32 y, f32 scale, mSM_inventory
         gDPSetCombineMode(POLY_OPA_DISP++, G_CC_BLENDPEDECALA, G_CC_BLENDPEDECALA);
 
         /* Draw 2D rectangle with mark texture */
-        if (x < 320.0f) {
+        if (x < mSM_ICON_RIGHT_EDGE) {
             f32 mod = scale * 24.0f;
 
             rect_xh = x + mod;
@@ -944,6 +960,9 @@ static void mSM_draw_item(GRAPH* graph, f32 pos_x, f32 pos_y, f32 scale, mActor_
         { inv_mwin_okane1_pal, inv_mwin_okane2_tex },
         { inv_mwin_okane1_pal, inv_mwin_okane3_tex },
         { inv_mwin_okane1_pal, inv_mwin_okane4_tex },
+#ifdef TARGET_PC
+        { inv_mwin_okane1_pal, inv_mwin_okane3_tex }, /* 90,000 Bells: the 30,000 Bells bag */
+#endif
     };
     // clang-format on
 

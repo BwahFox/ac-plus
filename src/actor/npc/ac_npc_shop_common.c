@@ -814,7 +814,7 @@ static int aNSC_check_money_overflow(u32 p1, u32 counter) {
 
     empty_spaces = mPr_GetPossessionItemSum(Now_Private, EMPTY_NO);
     bags = 0;
-    for (; p1 >= mPr_WALLET_MAX; p1 -= 30000) {
+    for (; p1 >= mPr_WALLET_MAX; p1 -= MONEY_OVERFLOW_BELLS) {
         bags += 1;
     }
 
@@ -1444,7 +1444,7 @@ static int aNSC_message_ctrl(NPC_SHOP_COMMON_ACTOR* shop_common, GAME_PLAY* play
 
 #endif
 
-static mActor_name_t aNSC_exchange_itemNo[2] = { ITM_MONEY_30000, EMPTY_NO };
+static mActor_name_t aNSC_exchange_itemNo[2] = { ITM_MONEY_OVERFLOW, EMPTY_NO };
 
 static int aNSC_buy_item_single(u32* bells, mActor_name_t item, u32 p2) {
     int idx;
@@ -1456,7 +1456,7 @@ static int aNSC_buy_item_single(u32* bells, mActor_name_t item, u32 p2) {
     for (; p2 != 0; p2--) {
         bells_before = *bells;
         if (bells_before >= mPr_WALLET_MAX) {
-            *bells -= 30000;
+            *bells -= MONEY_OVERFLOW_BELLS;
             replace_with_bag = 0;
             res = 0;
         } else {
@@ -1468,8 +1468,8 @@ static int aNSC_buy_item_single(u32* bells, mActor_name_t item, u32 p2) {
     }
 
     while (*bells >= mPr_WALLET_MAX) {
-        *bells -= 30000;
-        mPr_SetFreePossessionItem(Now_Private, ITM_MONEY_30000, mPr_ITEM_COND_NORMAL);
+        *bells -= MONEY_OVERFLOW_BELLS;
+        mPr_SetFreePossessionItem(Now_Private, ITM_MONEY_OVERFLOW, mPr_ITEM_COND_NORMAL);
     }
 
     return res;
@@ -1486,7 +1486,7 @@ static int aNSC_buy_paper(u32* money, mActor_name_t itm, int quant) {
     mActor_name_t current_item = paper_type + ITM_PAPER_START + (stack_quant - 1) * PAPER_UNIQUE_NUM;
 
     if (*money >= mPr_WALLET_MAX) {
-        *money -= 30000;
+        *money -= MONEY_OVERFLOW_BELLS;
         place_in_wallet = FALSE;
         next = aNSC_BUY_OUTCOME_BREAK_BAG;
     } else {
@@ -1520,7 +1520,7 @@ static int aNSC_buy_item_only_one(u32* bells, mActor_name_t itm, u8* p3, int sel
     int idx;
 
     if (*bells >= mPr_WALLET_MAX) {
-        *bells -= 30000;
+        *bells -= MONEY_OVERFLOW_BELLS;
         next = aNSC_BUY_OUTCOME_BREAK_BAG;
     }
 
@@ -1539,10 +1539,10 @@ static int aNSC_buy_item_only_one(u32* bells, mActor_name_t itm, u8* p3, int sel
                     if (empty_idx != -1) {
                         item = ITM_PAPER_START + paper_type + (quant - 2) * PAPER_UNIQUE_NUM;
                         mPr_SetPossessionItem(Now_Private, idx, item, mPr_ITEM_COND_NORMAL);
-                        mPr_SetPossessionItem(Now_Private, empty_idx, ITM_MONEY_30000, mPr_ITEM_COND_NORMAL);
+                        mPr_SetPossessionItem(Now_Private, empty_idx, ITM_MONEY_OVERFLOW, mPr_ITEM_COND_NORMAL);
                     } else {
                         next = 3;
-                        *bells += 30000;
+                        *bells += MONEY_OVERFLOW_BELLS;
                         *bells -= sell_value;
                     }
                 } else {
@@ -1557,8 +1557,8 @@ static int aNSC_buy_item_only_one(u32* bells, mActor_name_t itm, u8* p3, int sel
     }
 
     while (*bells >= mPr_WALLET_MAX) {
-        *bells -= 30000;
-        mPr_SetFreePossessionItem(Now_Private, ITM_MONEY_30000, mPr_ITEM_COND_NORMAL);
+        *bells -= MONEY_OVERFLOW_BELLS;
+        mPr_SetFreePossessionItem(Now_Private, ITM_MONEY_OVERFLOW, mPr_ITEM_COND_NORMAL);
     }
 
     return next;
@@ -2230,7 +2230,7 @@ static void aNSC_buy_check(NPC_SHOP_COMMON_ACTOR* shop_common, GAME_PLAY* play) 
                             int change;
                             for (; counter > 0; counter--) {
                                 if (bells >= mPr_WALLET_MAX) {
-                                    bells -= 30000;
+                                    bells -= MONEY_OVERFLOW_BELLS;
                                     change = 0;
                                     next = aNSC_BUY_OUTCOME_BREAK_BAG;
                                 } else {
@@ -2242,8 +2242,8 @@ static void aNSC_buy_check(NPC_SHOP_COMMON_ACTOR* shop_common, GAME_PLAY* play) 
                             }
 
                             while (bells >= mPr_WALLET_MAX) {
-                                bells -= 30000;
-                                mPr_SetFreePossessionItem(Now_Private, ITM_MONEY_30000, mPr_ITEM_COND_NORMAL);
+                                bells -= MONEY_OVERFLOW_BELLS;
+                                mPr_SetFreePossessionItem(Now_Private, ITM_MONEY_OVERFLOW, mPr_ITEM_COND_NORMAL);
                             }
                         } else if (ITEM_IS_PAPER(item)) {
                             next = aNSC_buy_paper(&bells, item, counter);

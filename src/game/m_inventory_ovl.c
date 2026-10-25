@@ -1892,6 +1892,64 @@ static int mIV_up_page_draw_check(Submenu* submenu, int page) {
     return FALSE;
 }
 
+#ifdef TARGET_PC
+#include "m_museum_display.h"
+
+extern u8 kan_win_mu_tex[]; /* the map's museum marker (kan_hyouji3.c), 16x16 I4 */
+
+/* ac-plus: fish and insects donated to the museum get the map's museum marker in the corner of their slot.
+ * (x, y) as the item icon's (mSM_set_dl_item: a 24 pixel icon around it) */
+static void mIV_pc_draw_donated(GRAPH* graph, f32 x, f32 y) {
+    static const int size = 11, shadow = 1;
+    int sx = (int)(160.0f + (f32)(int)(x * 0.975f) - 12.0f) + 24 - size + 2;
+    int sy = (int)(120.0f - y - 12.0f) + 24 - size + 2;
+    int dsdx = (int)(1024.0f * 16.0f / (f32)size);
+    int pass;
+
+    extern f32 mSM_pc_icon_right_edge(void);
+
+    if ((f32)(sx - 24 + size - 2) >= mSM_pc_icon_right_edge()) {
+        return; /* off the screen, where its fish or insect isn't drawn either (mSM_set_dl_item) */
+    }
+
+    OPEN_POLY_OPA_DISP(graph);
+    gDPPipeSync(POLY_OPA_DISP++);
+    gDPSetTextureLUT(POLY_OPA_DISP++, G_TT_NONE);
+    gDPSetTexturePersp(POLY_OPA_DISP++, G_TP_NONE);
+    gDPSetAlphaCompare(POLY_OPA_DISP++, G_AC_THRESHOLD);
+    gDPSetBlendColor(POLY_OPA_DISP++, 255, 255, 255, 96);
+    gDPSetCombineLERP(POLY_OPA_DISP++, 0, 0, 0, PRIMITIVE, 0, 0, 0, TEXEL0, 0, 0, 0, PRIMITIVE, 0, 0, 0, TEXEL0);
+    gDPSetTextureImage_Dolphin(POLY_OPA_DISP++, G_IM_FMT_I, G_IM_SIZ_4b, 16, 16, kan_win_mu_tex);
+    gDPSetTile_Dolphin(POLY_OPA_DISP++, G_DOLPHIN_TLUT_DEFAULT_MODE, G_TX_RENDERTILE, 0, GX_MIRROR, GX_MIRROR, GX_CLAMP,
+                       GX_CLAMP);
+    for (pass = 0; pass < 2; pass++) {
+        int o = pass == 0 ? shadow : 0;
+
+        /* a dark copy just below and right, then the marker in the map's own orange */
+        if (pass == 0) {
+            gDPSetPrimColor(POLY_OPA_DISP++, 0, 255, 70, 40, 20, 255);
+        } else {
+            gDPSetPrimColor(POLY_OPA_DISP++, 0, 255, 255, 190, 70, 255);
+        }
+        POLY_OPA_DISP = gfx_gSPScisTextureRectangle1(POLY_OPA_DISP, (sx + o) * 4, (sy + o) * 4, (sx + o + size) * 4,
+                                                     (sy + o + size) * 4, G_TX_RENDERTILE, 0, 0, dsdx, dsdx);
+    }
+    gDPPipeSync(POLY_OPA_DISP++);
+    gDPSetTextureLUT(POLY_OPA_DISP++, G_TT_RGBA16);
+    gDPSetAlphaCompare(POLY_OPA_DISP++, G_AC_NONE);
+    gDPSetBlendColor(POLY_OPA_DISP++, 255, 255, 255, 8);
+    gDPSetTexturePersp(POLY_OPA_DISP++, G_TP_PERSP);
+    CLOSE_POLY_OPA_DISP(graph);
+}
+
+static int mIV_pc_donated(int type, int page) {
+    if (page == mIV_PAGE_INSECT_COLLECTION) {
+        return mMmd_InsectInfo(mIV_insect_collect_list[type]) != 0;
+    }
+    return mMmd_FishInfo(mIV_fish_collect_list[type]) != 0;
+}
+#endif
+
 static void mIV_set_collect_dl(Submenu* submenu, mSM_MenuInfo_c* menu_info, GAME* game, int page) {
     GRAPH* graph = game->graph;
     mActor_name_t item;
@@ -1930,6 +1988,11 @@ static void mIV_set_collect_dl(Submenu* submenu, mSM_MenuInfo_c* menu_info, GAME
                 submenu->overlay->tag_ovl->set_hand_pos_proc(submenu, pos, mTG_TABLE_COLLECT, i);
                 submenu->overlay->draw_item_proc(graph, pos_x + pos[0], pos_y + pos[1], 1.0f, item, FALSE, TRUE, 1,
                                                  FALSE, FALSE);
+#ifdef TARGET_PC
+                if (mIV_pc_donated(i, page)) {
+                    mIV_pc_draw_donated(graph, pos_x + pos[0], pos_y + pos[1]);
+                }
+#endif
             }
         }
     }

@@ -504,7 +504,11 @@ static void mHD_drop_item2(Submenu* submenu, mTG_tag_c* tag, mActor_name_t* item
 }
 
 static void mHD_open_sack(Submenu* submenu) {
+#ifdef TARGET_PC
+    static int sack_amount[] = { 1000, 10000, 30000, 100, 90000 };
+#else
     static int sack_amount[] = { 1000, 10000, 30000, 100 };
+#endif
     mHD_Ovl_c* hand_ovl = submenu->overlay->hand_ovl;
     int amount = sack_amount[hand_ovl->info.item - ITM_MONEY_START];
 

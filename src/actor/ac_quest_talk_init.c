@@ -1032,18 +1032,18 @@ static int aQMgr_actor_hand_reward(aQMgr_target_c* target) {
 
         money += target->pay;
         if (money > mPr_WALLET_MAX) {
-            if (money <= (mPr_WALLET_MAX + mPr_GetPossessionItemSum(priv, EMPTY_NO) * 30000)) {
+            if (money <= (mPr_WALLET_MAX + mPr_GetPossessionItemSum(priv, EMPTY_NO) * MONEY_OVERFLOW_BELLS)) {
                 if (inv_idx != -1 && priv->inventory.pockets[inv_idx] == EMPTY_NO) {
-                    mPr_SetPossessionItem(priv, inv_idx, ITM_MONEY_30000, mPr_ITEM_COND_NORMAL);
-                    money -= 30000;
+                    mPr_SetPossessionItem(priv, inv_idx, ITM_MONEY_OVERFLOW, mPr_ITEM_COND_NORMAL);
+                    money -= MONEY_OVERFLOW_BELLS;
                 }
 
                 while (money > mPr_WALLET_MAX) {
                     inv_idx = mPr_GetPossessionItemIdx(priv, EMPTY_NO);
 
                     if (inv_idx != -1) {
-                        mPr_SetPossessionItem(priv, inv_idx, ITM_MONEY_30000, mPr_ITEM_COND_NORMAL);
-                        money -= 30000;
+                        mPr_SetPossessionItem(priv, inv_idx, ITM_MONEY_OVERFLOW, mPr_ITEM_COND_NORMAL);
+                        money -= MONEY_OVERFLOW_BELLS;
                     } else {
                         money = mPr_WALLET_MAX; // ran out of space
                         break;

@@ -238,6 +238,9 @@ static void mTG_m100_proc(Submenu*, mSM_MenuInfo_c*);
 static void mTG_m1000_proc(Submenu*, mSM_MenuInfo_c*);
 static void mTG_m10000_proc(Submenu*, mSM_MenuInfo_c*);
 static void mTG_m30000_proc(Submenu*, mSM_MenuInfo_c*);
+#ifdef TARGET_PC
+static void mTG_m90000_proc(Submenu*, mSM_MenuInfo_c*);
+#endif
 static void mTG_1catch_proc(Submenu*, mSM_MenuInfo_c*);
 static void mTG_order_proc(Submenu*, mSM_MenuInfo_c*);
 static void mTG_bury_proc(Submenu*, mSM_MenuInfo_c*);
@@ -403,6 +406,13 @@ static mTG_tag_word_c mTG_tag_word_30000 = {
     "30000           ",
     &mTG_m30000_proc,
 };
+
+#ifdef TARGET_PC
+static mTG_tag_word_c mTG_tag_word_90000 = {
+    "90000           ",
+    &mTG_m90000_proc,
+};
+#endif
 
 static mTG_tag_word_c mTG_tag_word_okane = {
     "Price\xD3:\xD3\xD3\xD3\xD3\xD3\xD3\xD3  ",
@@ -845,6 +855,13 @@ static mTG_tag_word_c* mTG_money_sack3[] = {
 static mTG_tag_word_c* mTG_money_sack4[] = {
     &mTG_tag_word_100, &mTG_tag_word_1000, &mTG_tag_word_10000, &mTG_tag_word_30000, &mTG_tag_word_yameru,
 };
+
+#ifdef TARGET_PC
+static mTG_tag_word_c* mTG_money_sack5[] = {
+    &mTG_tag_word_100,   &mTG_tag_word_1000,  &mTG_tag_word_10000,
+    &mTG_tag_word_30000, &mTG_tag_word_90000, &mTG_tag_word_yameru,
+};
+#endif
 
 static mTG_tag_word_c* mTG_quest_item[] = {
     &mTG_tag_word_watasu,
@@ -3072,6 +3089,10 @@ static int mTG_itemNo_to_amount(mActor_name_t itemNo) {
             return 30000;
         case ITM_MONEY_100:
             return 100;
+#ifdef TARGET_PC
+        case ITM_MONEY_90000:
+            return 90000;
+#endif
         default:
             return 0;
     }
@@ -3332,8 +3353,14 @@ static void mTG_sell_all_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
 }
 
 static void mTG_get_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
+#ifdef TARGET_PC
+    static mActor_name_t mTG_money_name[] = { ITM_MONEY_100, ITM_MONEY_1000, ITM_MONEY_10000, ITM_MONEY_30000,
+                                              ITM_MONEY_90000 };
+    static u32 mTG_money_amount[] = { 100, 1000, 10000, 30000, 90000 };
+#else
     static mActor_name_t mTG_money_name[] = { ITM_MONEY_100, ITM_MONEY_1000, ITM_MONEY_10000, ITM_MONEY_30000 };
     static u32 mTG_money_amount[] = { 100, 1000, 10000, 30000 };
+#endif
     int money;
     mActor_name_t* item_p2;
     int k;
@@ -4926,6 +4953,12 @@ static void mTG_m10000_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
 static void mTG_m30000_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
     mTG_make_money_sack(submenu, menu_info, ITM_MONEY_30000);
 }
+
+#ifdef TARGET_PC
+static void mTG_m90000_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
+    mTG_make_money_sack(submenu, menu_info, ITM_MONEY_90000);
+}
+#endif
 
 static void mTG_1catch_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
     mHD_Ovl_c* hand_ovl = submenu->overlay->hand_ovl;
@@ -7098,6 +7131,12 @@ static int mTG_select_tag_decide_money(Submenu* submenu, mSM_MenuInfo_c* menu_in
     u32 money = Now_Private->inventory.wallet;
     mTG_tag_data_c* tag_data_p = &mTG_label_table[mTG_TYPE_MONEY_SACK];
 
+#ifdef TARGET_PC
+    if (money >= 90000) {
+        tag_data_p->words = mTG_money_sack5;
+        tag_data_p->lines = ARRAY_COUNT(mTG_money_sack5);
+    } else
+#endif
     if (money >= 30000) {
         tag_data_p->words = mTG_money_sack4;
         tag_data_p->lines = ARRAY_COUNT(mTG_money_sack4);

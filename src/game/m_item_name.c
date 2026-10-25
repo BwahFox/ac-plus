@@ -61,6 +61,9 @@ static u8 itemArt_Money[MONEY_NUM] = {
     mIN_ARTICLE_NONE,
     mIN_ARTICLE_NONE,
     mIN_ARTICLE_NONE,
+#ifdef TARGET_PC
+    mIN_ARTICLE_NONE,
+#endif
 };
 
 static u8 itemArt_Tool[TOOL_NUM] = {
@@ -512,6 +515,19 @@ extern void mIN_copy_name_str(u8* dst, mActor_name_t item) {
 
         for (k = 0; k < mIN_ITEM_NAME_LEN; k++) {
             dst[k] = name[k] != '\0' && k < (int)strlen(name) ? (u8)name[k] : CHAR_SPACE;
+        }
+        return;
+    }
+    if (item == ITM_MONEY_90000) {
+        /* the GameCube has no name for it: the 30,000 Bells one, with a 9 for its 3 */
+        int k;
+
+        mem_copy(dst, itemName_money + (ITM_MONEY_30000 - ITM_MONEY_START) * mIN_ITEM_NAME_LEN, mIN_ITEM_NAME_LEN);
+        for (k = 0; k < mIN_ITEM_NAME_LEN; k++) {
+            if (dst[k] == '3') {
+                dst[k] = '9';
+                break;
+            }
         }
         return;
     }

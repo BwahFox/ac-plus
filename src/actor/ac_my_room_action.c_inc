@@ -763,6 +763,61 @@ static aMR_sit_data_c* aME_sit_data[] = {
     &aMR_sit_middle_sofa_data,
 };
 
+#ifdef TARGET_PC
+/* ac-plus: walking into a one-way chair from its side: the player goes round to its front and sits facing the way it
+ * faces. The chair's front is the side touched turned a quarter (sign flipped by PC_SIT_FLIP, for finding which). */
+static int aMR_pc_sit_side(MY_ROOM_ACTOR* my_room, aMR_contact_info_c* contact_info, PLAYER_ACTOR* player, GAME* game,
+                           int ftr_no) {
+    f32* n = contact_info->normal_p;
+    f32 front[2], mid[2], d;
+    xyz_t pos = player->actor_class.world.position;
+    int left = contact_info->contact_direction == aMR_CONTACT_DIR_LEFT;
+
+    if (!left && contact_info->contact_direction != aMR_CONTACT_DIR_RIGHT) {
+        return FALSE;
+    }
+    if (left) {
+        front[0] = -n[1], front[1] = n[0];
+    } else {
+        front[0] = n[1], front[1] = -n[0];
+    }
+    mid[0] = (contact_info->contact_edge_start[0] + contact_info->contact_edge_end[0]) * 0.5f;
+    mid[1] = (contact_info->contact_edge_start[1] + contact_info->contact_edge_end[1]) * 0.5f;
+    /* as far out from the front as the player stands from the side now */
+    d = (pos.x - mid[0]) * n[0] + (pos.z - mid[1]) * n[1];
+    pos.x = mid[0] - n[0] * mFI_UT_WORLDSIZE_HALF_X_F + front[0] * (mFI_UT_WORLDSIZE_HALF_X_F + d);
+    pos.z = mid[1] - n[1] * mFI_UT_WORLDSIZE_HALF_Z_F + front[1] * (mFI_UT_WORLDSIZE_HALF_Z_F + d);
+    my_room->nice_pos = pos;
+    mPlib_request_main_sitdown_type1(game, aMR_GetPlayerDirect(front), &pos, ftr_no);
+    return TRUE;
+}
+
+/* ac-plus: is the room's unit at pos free to stand on (no furniture in the way, no wall)? For getting up off a
+ * chair to its side (m_player_main_standup.c_inc); TRUE outside a room. */
+int pc_myroom_unit_free(xyz_t pos) {
+    int ut_x, ut_z;
+    mActor_name_t item_no;
+    int ftrID;
+    mActor_name_t* fg_p;
+
+    if (aMR_CLIP == NULL || aMR_CLIP->my_room_actor_p == NULL) {
+        return TRUE;
+    }
+    if (!mFI_Wpos2UtNum(&ut_x, &ut_z, pos) || ut_x < 0 || ut_z < 0 || ut_x >= UT_X_NUM || ut_z >= UT_Z_NUM) {
+        return FALSE;
+    }
+    aMR_UnitNum2FtrItemNoFtrID(&item_no, &ftrID, ut_x, ut_z, mCoBG_LAYER0);
+    if ((ITEM_IS_FTR(item_no) || item_no == RSV_FE1F) && ftrID >= 0 && ftrID < l_aMR_work.list_size) {
+        aFTR_PROFILE* profile = aMR_GetFurnitureProfile(l_aMR_work.ftr_actor_list[ftrID].name);
+
+        return profile != NULL && aFTR_CHECK_INTERACTION(profile->interaction_type, aFTR_INTERACTION_TYPE_NO_COLLISION);
+    }
+    fg_p = aMR_GetLayerTopFg(mCoBG_LAYER0);
+    item_no = fg_p[ut_z * UT_X_NUM + ut_x];
+    return item_no != RSV_WALL_NO && item_no != RSV_FE1C && ITEM_NAME_GET_TYPE(item_no) != NAME_TYPE_WARP;
+}
+#endif
+
 static void aMR_SitDownFurniture(MY_ROOM_ACTOR* my_room, aMR_contact_info_c* contact_info, PLAYER_ACTOR* player,
                                  GAME* game) {
     GAME_PLAY* play = (GAME_PLAY*)game;
@@ -806,6 +861,12 @@ static void aMR_SitDownFurniture(MY_ROOM_ACTOR* my_room, aMR_contact_info_c* con
                     aMR_sit_data_c* sit_data = aME_sit_data[i];
                     int j;
 
+#ifdef TARGET_PC
+                    /* ac-plus: a one-way chair takes you from its sides too (pc_sit_side below) */
+                    if (i == 0 && aMR_pc_sit_side(my_room, contact_info, player, game, ftr_no)) {
+                        return;
+                    }
+#endif
                     for (j = 0; j < sit_data->direction_count; j++) {
                         if (contact_info->contact_direction == sit_data->direction_p[j]) {
                             xyz_t nice_pos = { 0.0f, 0.0f, 0.0f };

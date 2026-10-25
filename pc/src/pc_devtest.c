@@ -63,6 +63,9 @@ static u32 s_ctl_buttons, s_ctl_buttons_until;
 static s8 s_ctl_stick[2], s_ctl_cstick[2];
 static u32 s_ctl_stick_until, s_ctl_cstick_until;
 static char s_ctl_shot[72];
+static char s_ctl_burst[56]; /* burst N name: a shot every presented frame, name_000.ppm on */
+static int s_ctl_burst_left;
+static int s_ctl_burst_n;
 
 static int devtest_env_int(const char* name) {
     const char* env = getenv(name);
@@ -473,6 +476,10 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
     } else if (strcmp(cmd, "cstick") == 0 && sscanf(line, "%*s %d %d %d", &x, &y, &n) == 3) {
         s_ctl_cstick[0] = (s8)x, s_ctl_cstick[1] = (s8)y;
         s_ctl_cstick_until = s_frame + (u32)n;
+    } else if (strcmp(cmd, "burst") == 0 && sscanf(line, "%*s %d %47s", &n, a) == 2) {
+        snprintf(s_ctl_burst, sizeof(s_ctl_burst), "%s", a);
+        s_ctl_burst_left = n;
+        s_ctl_burst_n = 0;
     } else if (strcmp(cmd, "shot") == 0 && sscanf(line, "%*s %55s", a) == 1) {
         snprintf(s_ctl_shot, sizeof(s_ctl_shot), "%s.ppm", a);
     } else if (strcmp(cmd, "warp") == 0 && sscanf(line, "%*s %d", &n) == 1) {
@@ -526,6 +533,18 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
     } else if (strcmp(cmd, "ground") == 0) {
         extern void pc_ground_pattern_request(int image);
         pc_ground_pattern_request(sscanf(line, "%*s %d", &n) == 1 ? n : 0);
+    } else if (strcmp(cmd, "fg") == 0 && sscanf(line, "%*s %d %d %x", &x, &y, &n) == 3) {
+        /* fg DX DZ ITEM(hex, -1 just logs): a field item near the player */
+        extern void pc_dev_fg_set(void* play, int dx, int dz, int item);
+        extern void* gamePT;
+        pc_dev_fg_set(gamePT, x, y, n);
+    } else if (strcmp(cmd, "mtree") == 0 && sscanf(line, "%*s %d %d", &x, &y) == 2) {
+        extern void pc_dev_mtree(void* play, int dx, int dz);
+        extern void* gamePT;
+        pc_dev_mtree(gamePT, x, y);
+    } else if (strcmp(cmd, "fgfind") == 0 && sscanf(line, "%*s %x", &n) == 1) {
+        extern void pc_dev_fg_find(int item);
+        pc_dev_fg_find(n);
     } else if (strcmp(cmd, "quit") == 0) {
         *quit_at = (int)s_frame;
     } else if (strcmp(cmd, "exit") == 0) {
@@ -590,6 +609,13 @@ void pc_devtest_frame_end(void) {
     if (s_ctl_shot[0] != '\0') {
         devtest_write_shot(s_ctl_shot);
         s_ctl_shot[0] = '\0';
+    }
+    if (s_ctl_burst_left > 0) {
+        char path[72];
+
+        snprintf(path, sizeof(path), "%s_%03d.ppm", s_ctl_burst, s_ctl_burst_n++);
+        devtest_write_shot(path);
+        s_ctl_burst_left--;
     }
 
     {

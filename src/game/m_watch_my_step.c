@@ -582,8 +582,13 @@ static void mWt_mybell_confirmation_draw(GAME_PLAY* play) {
 }
 
 static u32 get_all_money() {
+#ifdef TARGET_PC
+    static mActor_name_t fg_name[MONEY_NUM] = { ITM_MONEY_1000, ITM_MONEY_10000, ITM_MONEY_30000, ITM_MONEY_100, ITM_MONEY_90000 };
+    static u32 amount[MONEY_NUM] = { 1000, 10000, 30000, 100, 90000 };
+#else
     static mActor_name_t fg_name[MONEY_NUM] = { ITM_MONEY_1000, ITM_MONEY_10000, ITM_MONEY_30000, ITM_MONEY_100 };
     static u32 amount[MONEY_NUM] = { 1000, 10000, 30000, 100 };
+#endif
 
     u32 money = Common_Get(now_private)->inventory.wallet;
     int i;

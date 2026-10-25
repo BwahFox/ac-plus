@@ -2014,9 +2014,15 @@ extern void mSP_SetTanukiShopStatus() {
     }
 }
 
+#ifdef TARGET_PC
+static u32 mSP_sack_amount[MONEY_NUM] = { 100, 1000, 10000, 30000, 90000 };
+
+static mActor_name_t mSP_itemNo[MONEY_NUM] = { ITM_MONEY_100, ITM_MONEY_1000, ITM_MONEY_10000, ITM_MONEY_30000, ITM_MONEY_90000 };
+#else
 static u32 mSP_sack_amount[MONEY_NUM] = { 100, 1000, 10000, 30000 };
 
 static mActor_name_t mSP_itemNo[MONEY_NUM] = { ITM_MONEY_100, ITM_MONEY_1000, ITM_MONEY_10000, ITM_MONEY_30000 };
+#endif
 
 extern int mSP_money_check(u32 amount) {
     u32 money = Common_Get(now_private)->inventory.wallet;

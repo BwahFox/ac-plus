@@ -567,15 +567,15 @@ static void aQMgr_trade_give_money(void) {
         money = 0;
     } else if (money > mPr_WALLET_MAX) {
         if (idx != -1) {
-            mPr_SetPossessionItem(priv, idx, ITM_MONEY_30000, mPr_ITEM_COND_NORMAL);
-            money -= 30000;
+            mPr_SetPossessionItem(priv, idx, ITM_MONEY_OVERFLOW, mPr_ITEM_COND_NORMAL);
+            money -= MONEY_OVERFLOW_BELLS;
         }
 
         while (money > mPr_WALLET_MAX) {
             idx = mPr_GetPossessionItemIdx(priv, EMPTY_NO);
             if (idx != -1) {
-                mPr_SetPossessionItem(priv, idx, ITM_MONEY_30000, mPr_ITEM_COND_NORMAL);
-                money -= 30000;
+                mPr_SetPossessionItem(priv, idx, ITM_MONEY_OVERFLOW, mPr_ITEM_COND_NORMAL);
+                money -= MONEY_OVERFLOW_BELLS;
             } else {
                 money = mPr_WALLET_MAX;
                 break;

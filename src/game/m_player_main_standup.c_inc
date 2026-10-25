@@ -1,8 +1,39 @@
+#ifdef TARGET_PC
+/* ac-plus: the way to get up off a seat, as an angle: where the stick points (forward, either side, or back), if
+ * there's room to land there; else forward, else either side, else back, else forward anyway as before */
+int pc_myroom_unit_free(xyz_t pos);
+static s16 l_pc_standup_angle;
+
+static s16 Player_actor_pc_standup_angle(GAME* game, PLAYER_ACTOR* player) {
+    s16 rot = player->actor_class.shape_info.rotation.y;
+    s16 stick = (s16)(DEG2SHORT_ANGLE2(270.0f) + (s16)Player_actor_GetController_move_angle() +
+                        (s16)getCamera2AngleY((GAME_PLAY*)game));
+    s16 want = (s16)(rot + (s16)(((s16)(stick - rot) + 0x2000) & 0xC000)); /* the stick, to the nearest quarter */
+    s16 order[5] = { want, rot, (s16)(rot + 0x4000), (s16)(rot - 0x4000), (s16)(rot + 0x8000) };
+    int i;
+
+    for (i = 0; i < 5; i++) {
+        xyz_t pos = player->actor_class.world.position;
+
+        pos.x += 35.0f * sin_s(order[i]);
+        pos.z += 35.0f * cos_s(order[i]);
+        if (pc_myroom_unit_free(pos)) {
+            return order[i];
+        }
+    }
+    return rot;
+}
+#endif
+
 static int Player_actor_request_main_standup(GAME* game, int ftr_no, int priority) {
     if (Player_actor_check_request_main_able(game, mPlayer_INDEX_STANDUP, priority)) {
         PLAYER_ACTOR* player = GET_PLAYER_ACTOR_GAME(game);
         xyz_t player_pos = player->actor_class.world.position;
+#ifdef TARGET_PC
+        s16 rot = l_pc_standup_angle = Player_actor_pc_standup_angle(game, player);
+#else
         s16 rot = player->actor_class.shape_info.rotation.y;
+#endif
 
         player_pos.x += 35.0f * sin_s(rot);
         player_pos.z += 35.0f * cos_s(rot);
@@ -36,6 +67,10 @@ static void Player_actor_setup_main_Standup(ACTOR* actor, GAME* game) {
         actor->shape_info.rotation.y += DEG2SHORT_ANGLE2(180.0f);
         actor->world.angle.y = actor->shape_info.rotation.y;
         pc_player_standup_turn = FALSE;
+    } else {
+        /* the way picked when asked (Player_actor_pc_standup_angle) */
+        actor->shape_info.rotation.y = l_pc_standup_angle;
+        actor->world.angle.y = l_pc_standup_angle;
     }
 #endif
 

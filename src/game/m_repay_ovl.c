@@ -7,8 +7,13 @@
 #include "sys_matrix.h"
 
 static mRP_Ovl_c rp_ovl_data;
+#ifdef TARGET_PC
+static mActor_name_t mRP_money_name[MONEY_NUM] = { ITM_MONEY_100, ITM_MONEY_1000, ITM_MONEY_10000, ITM_MONEY_30000, ITM_MONEY_90000 };
+static u32 mRP_money_amount[MONEY_NUM] = { 100, 1000, 10000, 30000, 90000 };
+#else
 static mActor_name_t mRP_money_name[MONEY_NUM] = { ITM_MONEY_100, ITM_MONEY_1000, ITM_MONEY_10000, ITM_MONEY_30000 };
 static u32 mRP_money_amount[MONEY_NUM] = { 100, 1000, 10000, 30000 };
+#endif
 
 static int mRP_money_repay(mRP_Ovl_c* repay_ovl) {
   mActor_name_t* item_p;

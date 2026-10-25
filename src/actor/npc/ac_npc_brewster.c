@@ -536,6 +536,9 @@ static void aBRW_stools(NPC_BREWSTER_ACTOR* brw, GAME* game) {
     if (player == NULL) {
         return;
     }
+    /* By the stool, A is the stool's: he's out of reach there (his reach across the counter covers it), and sitting
+     * down brings him over anyway */
+    ((ACTOR*)brw)->talk_distance = aBRW_stool_near(&player->actor_class.world.position) >= 0 ? 0.0f : 110.0f;
     if ((idx == mPlayer_INDEX_WAIT || idx == mPlayer_INDEX_WALK || idx == mPlayer_INDEX_RUN) && chkTrigger(BUTTON_A)) {
         int s = aBRW_stool_near(&player->actor_class.world.position);
 

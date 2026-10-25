@@ -12,6 +12,8 @@
 #include "m_scene_table.h"
 #include "m_common_data.h"
 #include "m_player_lib.h"
+#include "m_field_info.h"
+#include <stdio.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -95,6 +97,67 @@ void pc_dev_teleport(void* playv, const char* pos) {
     if ((c = strchr(c + 1, ',')) != NULL) {
         player->actor_class.world.angle.y = DEG2SHORT_ANGLE((f32)atof(c + 1));
         player->actor_class.shape_info.rotation.y = player->actor_class.world.angle.y;
+    }
+}
+
+/* The dev field commands only make sense in a play scene with its player (PC_CTL lines can come during boot) */
+static PLAYER_ACTOR* dev_field_player(void* playv) {
+    GAME* game = (GAME*)playv;
+
+    if (game == NULL || game->exec != play_main || !mFI_CheckFieldData()) {
+        return NULL;
+    }
+    return GET_PLAYER_ACTOR((GAME_PLAY*)game);
+}
+
+/* PC_CTL fg: put field item `item` on the unit (dx, dz) units from the player's, and log the units */
+void pc_dev_fg_set(void* playv, int dx, int dz, int item) {
+    PLAYER_ACTOR* player = dev_field_player(playv);
+    int ut_x;
+    int ut_z;
+
+    if (player == NULL || !mFI_Wpos2UtNum(&ut_x, &ut_z, player->actor_class.world.position)) {
+        return;
+    }
+    if (item >= 0) {
+        mFI_UtNumtoFGSet_common((mActor_name_t)item, ut_x + dx, ut_z + dz, TRUE);
+    }
+    printf("[fg] player unit %d,%d; unit %d,%d holds %04X\n", ut_x, ut_z, ut_x + dx, ut_z + dz,
+           mFI_UtNum2UtFG(ut_x + dx, ut_z + dz) != NULL ? *mFI_UtNum2UtFG(ut_x + dx, ut_z + dz) : 0xFFFF);
+}
+
+/* PC_CTL mtree: mark the unit (dx, dz) from the player's as a 90,000 Bells money tree, as burying the bag does */
+void pc_dev_mtree(void* playv, int dx, int dz) {
+    extern void pc_money_tree_plant(xyz_t pos);
+    PLAYER_ACTOR* player = dev_field_player(playv);
+    int ut_x;
+    int ut_z;
+    xyz_t pos;
+
+    if (player != NULL && mFI_Wpos2UtNum(&ut_x, &ut_z, player->actor_class.world.position)) {
+        mFI_UtNum2CenterWpos(&pos, ut_x + dx, ut_z + dz);
+        pc_money_tree_plant(pos);
+        printf("[fg] marked unit %d,%d as a 90,000 Bells tree\n", ut_x + dx, ut_z + dz);
+    }
+}
+
+/* PC_CTL fgfind: log the units holding field item `item` */
+void pc_dev_fg_find(int item) {
+    int ut_x;
+    int ut_z;
+
+    if (!mFI_CheckFieldData()) {
+        return;
+    }
+
+    for (ut_z = 0; ut_z < mFI_GetBlockZMax() * UT_Z_NUM; ut_z++) {
+        for (ut_x = 0; ut_x < mFI_GetBlockXMax() * UT_X_NUM; ut_x++) {
+            mActor_name_t* fg = mFI_UtNum2UtFG(ut_x, ut_z);
+
+            if (fg != NULL && *fg == (mActor_name_t)item) {
+                printf("[fg] %04X at unit %d,%d (world %d,%d)\n", item, ut_x, ut_z, ut_x * 40 + 20, ut_z * 40 + 20);
+            }
+        }
     }
 }
 

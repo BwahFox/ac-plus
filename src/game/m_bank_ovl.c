@@ -7,9 +7,18 @@
 #include "m_lib.h"
 #include "m_common_data.h"
 
+#ifdef TARGET_PC
+static int aNSM_sack_amount[MONEY_NUM] = { 100, 1000, 10000, 30000, 90000 };
+
+static mActor_name_t aNSM_itemNo[MONEY_NUM] = { ITM_MONEY_100, ITM_MONEY_1000, ITM_MONEY_10000, ITM_MONEY_30000, ITM_MONEY_90000 };
+#else
 static int aNSM_sack_amount[MONEY_NUM] = { 100, 1000, 10000, 30000 };
 
 static mActor_name_t aNSM_itemNo[MONEY_NUM] = { ITM_MONEY_100, ITM_MONEY_1000, ITM_MONEY_10000, ITM_MONEY_30000 };
+#endif
+
+/* The biggest sack, that a withdrawal past the wallet comes in */
+#define mBN_BIG_SACK (MONEY_NUM - 1)
 
 static void mBN_now_bell_2_bell(mBN_Ovl_c* bank_ovl) {
     int diff = bank_ovl->now_bell - bank_ovl->player_bell;
@@ -71,7 +80,7 @@ static void mBN_bank_ok(Submenu* submenu, mSM_MenuInfo_c* menu, mBN_Ovl_c* bank_
         total_item_bell = mBN_total_item_bell(); /* update total bell count in sacks */
     }
     
-    /* Replace non-30k bell bags with 30k bell bags */
+    /* Replace smaller bell bags with the biggest (30k, or 90k on PC) */
     remain_item_bell = bank_ovl->now_bell - mBN_total_item_bell();
     i = 0;
 
@@ -82,12 +91,12 @@ static void mBN_bank_ok(Submenu* submenu, mSM_MenuInfo_c* menu, mBN_Ovl_c* bank_
         if (sack_idx == -1) {
             i++;
         } else {
-            mPr_SetPossessionItem(Common_Get(now_private), sack_idx, ITM_MONEY_30000, mPr_ITEM_COND_NORMAL);
-            remain_item_bell -= 30000 - aNSM_sack_amount[i];
+            mPr_SetPossessionItem(Common_Get(now_private), sack_idx, aNSM_itemNo[mBN_BIG_SACK], mPr_ITEM_COND_NORMAL);
+            remain_item_bell -= aNSM_sack_amount[mBN_BIG_SACK] - aNSM_sack_amount[i];
         }
     }
 
-    /* Add 30k bell bags to the inventory where empty spaces are */
+    /* Add the biggest bell bags to the inventory where empty spaces are */
     i = 0;
     while (remain_item_bell > mPr_WALLET_MAX && i < 1) {
         int sack_idx = mPr_GetPossessionItemIdxWithCond(Common_Get(now_private), EMPTY_NO, mPr_ITEM_COND_NORMAL);
@@ -95,8 +104,8 @@ static void mBN_bank_ok(Submenu* submenu, mSM_MenuInfo_c* menu, mBN_Ovl_c* bank_
         if (sack_idx == -1) {
             i++;
         } else {
-            mPr_SetPossessionItem(Common_Get(now_private), sack_idx, ITM_MONEY_30000, mPr_ITEM_COND_NORMAL);
-            remain_item_bell -= 30000;
+            mPr_SetPossessionItem(Common_Get(now_private), sack_idx, aNSM_itemNo[mBN_BIG_SACK], mPr_ITEM_COND_NORMAL);
+            remain_item_bell -= aNSM_sack_amount[mBN_BIG_SACK];
         }
     }
 
@@ -362,13 +371,13 @@ static void mBN_bank_ovl_init(Submenu* submenu) {
     for (i = 0; i < MONEY_NUM; i++) {
         int sack_sum = mPr_GetPossessionItemSumWithCond(Common_Get(now_private), aNSM_itemNo[i], mPr_ITEM_COND_NORMAL);
 
-        bank_ovl->player_max_bell += sack_sum * aNSM_sack_amount[3];
+        bank_ovl->player_max_bell += sack_sum * aNSM_sack_amount[mBN_BIG_SACK];
     }
 
     {
         int sack_sum = mPr_GetPossessionItemSumWithCond(Common_Get(now_private), EMPTY_NO, mPr_ITEM_COND_NORMAL);
 
-        bank_ovl->player_max_bell += sack_sum * aNSM_sack_amount[3];
+        bank_ovl->player_max_bell += sack_sum * aNSM_sack_amount[mBN_BIG_SACK];
     }
     bank_ovl->bank_bell = Common_Get(now_private)->bank_account;
     bank_ovl->cursol = 0;

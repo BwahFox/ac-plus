@@ -100,7 +100,11 @@ static u8 item1_0_tableNo[] = {
     44, 44, 44, 44, 44, 44, 44, 44, 44, 44, 44, 44, 44, 44, 44, 44, 44, 44, 44, 44, 44, 44, 44, 44,
 };
 
+#ifdef TARGET_PC
+static u8 item1_1_tableNo[] = { 9, 9, 9, 9, 9 }; /* the 90,000 Bells bag looks like the others */
+#else
 static u8 item1_1_tableNo[] = { 9, 9, 9, 9 };
+#endif
 
 static u8 item1_2_tableNo[] = {
     34, 33, 36, 35, 41, 41, 41, 41, 41, 41, 41, 41, 41, 41, 41, 41, 41, 41, 41, 41, 41, 41, 41,
