@@ -13,9 +13,15 @@
  * (pc_basement.c), the New Leaf style extra rooms (NLRM, pc_nlrooms.c), the dressers' storages (DRSR/DRBD/DRTG, pc_dresser.c) and the pattern chunks of
  * pc_pattern.c. STOR (one shared storage per resident) is only read, from older files, and handed to
  * pc_dresser.c. GRND (ground as player/slot bytes) is only read, from older
- * files, and turned into IDs. */
+ * files, and turned into IDs.
+ *
+ * MADE says who wrote the file: { u32 save level; char release[28] } (the level is EXT_SAVE_LEVEL, raised
+ * whenever a release adds save data older ones don't know). A town from a newer level gets a warning before it
+ * loads (pc_ext_save_newer_warning), and chunks this version doesn't know are kept and written back as they were,
+ * so playing an older version doesn't throw a newer one's data away. Files without MADE are level 0. */
 #include "pc_basement.h"
 #include "pc_money_tree.h"
+#include "pc_outdoor_ftr.h"
 #include "pc_skin.h"
 #include "pc_nlrooms.h"
 #include "pc_brewster.h"
@@ -27,12 +33,27 @@
 #include "m_name_table.h"
 
 #include <dolphin/os.h>
+#include "pc_platform.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
 
 #define EXT_MAGIC "ACPX"
 #define EXT_VERSION 2
+/* Raise when a release adds save data that older ones don't know (a new chunk). 1 = Alpha 6. */
+#define EXT_SAVE_LEVEL 1
+#define EXT_UNKNOWN_MAX 64
+
+/* Chunks from a newer version, kept to be written back */
+static struct {
+    char tag[4];
+    u32 size;
+    u8* data;
+} s_unknown[EXT_UNKNOWN_MAX];
+static int s_unknown_n;
+static u32 s_made_level;
+static char s_made_by[28];
 
 void pc_save_rotate_backups(const char* base_path); /* pc_m_card.c */
 
@@ -68,12 +89,19 @@ static void ext_reset(u16 land_id) {
 
     memset(&s_ext, 0, sizeof(s_ext));
     memset(s_ground_used, 0, sizeof(s_ground_used));
+    for (p = 0; p < s_unknown_n; p++) {
+        free(s_unknown[p].data);
+    }
+    s_unknown_n = 0;
+    s_made_level = 0;
+    s_made_by[0] = '\0';
     s_legacy_ground_read = FALSE;
     pc_pattern_reset();
     pc_const_reset();
     pc_brewster_reset();
     pc_basement_reset();
     pc_money_tree_reset();
+    pc_oftr_reset();
     pc_skin_reset();
     pc_nlr_reset();
     pc_dresser_reset();
@@ -224,8 +252,32 @@ static void ext_read_file(const char* path) {
             break;
         }
         if (pc_pattern_read_chunk(tag, f, size) || pc_const_read_chunk(tag, f, size) ||
-            pc_brewster_read_chunk(tag, f, size) || pc_basement_read_chunk(tag, f, size) || pc_money_tree_read_chunk(tag, f, size) || pc_skin_read_chunk(tag, f, size) || pc_nlr_read_chunk(tag, f, size) ||
+            pc_brewster_read_chunk(tag, f, size) || pc_basement_read_chunk(tag, f, size) || pc_money_tree_read_chunk(tag, f, size) || pc_oftr_read_chunk(tag, f, size) || pc_skin_read_chunk(tag, f, size) || pc_nlr_read_chunk(tag, f, size) ||
             pc_dresser_read_chunk(tag, f, size)) {
+            continue;
+        }
+        if (memcmp(tag, "MADE", 4) == 0 && size == 4 + sizeof(s_made_by)) {
+            if (fread(&s_made_level, 4, 1, f) != 1 || fread(s_made_by, 1, sizeof(s_made_by), f) != sizeof(s_made_by)) {
+                break;
+            }
+            s_made_by[sizeof(s_made_by) - 1] = '\0';
+            continue;
+        }
+        if (memcmp(tag, "CSUM", 4) != 0 && memcmp(tag, "GRNI", 4) != 0 && memcmp(tag, "GRND", 4) != 0 &&
+            memcmp(tag, "STOR", 4) != 0 && memcmp(tag, "MADE", 4) != 0) {
+            /* a newer version's: kept as it is */
+            u8* data = size <= 64u * 1024 * 1024 ? (u8*)malloc(size ? size : 1) : NULL;
+
+            if (data == NULL || s_unknown_n == EXT_UNKNOWN_MAX || fread(data, 1, size, f) != size) {
+                free(data);
+                OSReport("[acplus] couldn't keep the unknown chunk %.4s\n", tag);
+                break;
+            }
+            memcpy(s_unknown[s_unknown_n].tag, tag, 4);
+            s_unknown[s_unknown_n].size = size;
+            s_unknown[s_unknown_n].data = data;
+            s_unknown_n++;
+            OSReport("[acplus] kept a newer version's chunk %.4s (%u bytes)\n", tag, (unsigned)size);
             continue;
         }
         if (memcmp(tag, "GRNI", 4) == 0) {
@@ -271,6 +323,104 @@ static void ext_keep_bad(const char* path) {
         fclose(out);
     }
     fclose(in);
+}
+
+/* Says msg, and lets the player quit (nothing saved) or play on */
+static void pc_ext_save_newer_ask(const char* msg) {
+    extern SDL_Window* g_pc_window;
+    extern const char* pc_updater_version_label(void);
+    static const SDL_MessageBoxButtonData buttons[] = {
+        { SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT | SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Quit" },
+        { 0, 1, "Play anyway" },
+    };
+    const char* answer = getenv("PC_SAVE_NEWER_ANSWER"); /* dev: tests can't click */
+    SDL_MessageBoxData box;
+    int hit = 0;
+
+    OSReport("[acplus] %s\n", msg);
+    if (answer != NULL) {
+        hit = strcmp(answer, "play") == 0;
+    } else {
+        memset(&box, 0, sizeof(box));
+        box.flags = SDL_MESSAGEBOX_WARNING;
+        box.window = g_pc_window;
+        box.title = "ac-plus - save from a newer version";
+        box.message = msg;
+        box.numbuttons = 2;
+        box.buttons = buttons;
+        if (SDL_ShowMessageBox(&box, &hit) != 0) {
+            hit = 0;
+        }
+    }
+    if (hit != 1) {
+        OSReport("[acplus] quitting without saving\n");
+        fflush(stdout);
+        SDL_Quit();
+        exit(0);
+    }
+}
+
+/* The town was last saved by a newer ac-plus (its MADE level is higher than ours) */
+static void pc_ext_save_newer_warning(const char* made_by) {
+    extern const char* pc_updater_version_label(void);
+    char msg[640];
+
+    snprintf(msg, sizeof(msg),
+             "This town was last saved by a newer version of ac-plus (%s). You're running %s.\n\n"
+             "This version doesn't know everything the newer one added. What it doesn't know is kept, but playing "
+             "here can still leave things out of step.\n\n"
+             "It's best to quit and update first. Quitting now saves nothing.",
+             made_by[0] != '\0' ? made_by : "unknown", pc_updater_version_label());
+    pc_ext_save_newer_ask(msg);
+}
+
+/* At startup, before any save is touched: a save file in a newer format than this version reads (an "ACPX" header
+ * with a higher version, as the planned single-file .acplus will have) means a newer ac-plus has been here. This
+ * version wouldn't see that town and could start a new one over it. */
+void pc_ext_save_check_newer_format(void) {
+    extern const char* pc_updater_version_label(void);
+    static const char* dirs[] = { "save/card_a", "save/card_b" };
+    size_t d;
+
+    for (d = 0; d < sizeof(dirs) / sizeof(dirs[0]); d++) {
+        DIR* dir = opendir(dirs[d]);
+        struct dirent* e;
+
+        if (dir == NULL) {
+            continue;
+        }
+        while ((e = readdir(dir)) != NULL) {
+            size_t n = strlen(e->d_name);
+            char path[512];
+            u8 head[8];
+            FILE* f;
+            int newer = FALSE;
+
+            if (n < 7 || strcmp(e->d_name + n - 7, ".acplus") != 0) {
+                continue;
+            }
+            snprintf(path, sizeof(path), "%s/%s", dirs[d], e->d_name);
+            if ((f = fopen(path, "rb")) == NULL) {
+                continue;
+            }
+            newer = fread(head, 1, 8, f) == 8 && memcmp(head, EXT_MAGIC, 4) == 0 && ext_get32(&head[4]) > EXT_VERSION;
+            fclose(f);
+            if (newer) {
+                char msg[1024];
+
+                closedir(dir);
+                snprintf(msg, sizeof(msg),
+                         "Your save (%s) was written by a newer version of ac-plus, in a format this version (%s) "
+                         "can't read.\n\n"
+                         "Playing here, it wouldn't find your town and could start a new one.\n\n"
+                         "Please quit and update ac-plus first. Quitting now changes nothing.",
+                         path, pc_updater_version_label());
+                pc_ext_save_newer_ask(msg);
+                return;
+            }
+        }
+        closedir(dir);
+    }
 }
 
 void pc_ext_save_load(const char* gci_path) {
@@ -324,7 +474,11 @@ void pc_ext_save_load(const char* gci_path) {
         migrate_legacy_ground();
     }
     rebuild_ground_used();
-    OSReport("[acplus] Loaded %s\n", from);
+    OSReport("[acplus] Loaded %s (save level %u, %s)\n", from, (unsigned)s_made_level,
+             s_made_by[0] != '\0' ? s_made_by : "an older ac-plus");
+    if (s_made_level > EXT_SAVE_LEVEL) {
+        pc_ext_save_newer_warning(s_made_by);
+    }
 }
 
 static int write_chunk(FILE* f, const char* tag, const void* data, u32 size) {
@@ -350,6 +504,31 @@ static int write_checksum(FILE* f) {
     return fwrite("CSUM", 1, 4, f) == 4 && fwrite(&size, 4, 1, f) == 1 && fwrite(&crc, 4, 1, f) == 1;
 }
 
+/* MADE: this version's save level and release; a newer level's, if the town came from one, so it still
+ * warns there (its chunks are kept) */
+static int write_made(FILE* f) {
+    extern const char* pc_updater_version_label(void);
+    u8 buf[4 + sizeof(s_made_by)];
+    u32 level = s_made_level > EXT_SAVE_LEVEL ? s_made_level : EXT_SAVE_LEVEL;
+
+    memset(buf, 0, sizeof(buf));
+    memcpy(buf, &level, 4);
+    snprintf((char*)buf + 4, sizeof(s_made_by), "%s",
+             s_made_level > EXT_SAVE_LEVEL ? s_made_by : pc_updater_version_label());
+    return write_chunk(f, "MADE", buf, sizeof(buf));
+}
+
+static int write_unknown(FILE* f) {
+    int i;
+
+    for (i = 0; i < s_unknown_n; i++) {
+        if (!write_chunk(f, s_unknown[i].tag, s_unknown[i].data, s_unknown[i].size)) {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
 void pc_ext_save_write(const char* gci_path) {
     char path[320];
     char tmp[330];
@@ -370,8 +549,8 @@ void pc_ext_save_write(const char* gci_path) {
     ok = fwrite(EXT_MAGIC, 1, 4, f) == 4 && fwrite(&version, 4, 1, f) == 1 && fwrite(&s_ext.land_id, 2, 1, f) == 1 &&
          fwrite(&pad, 2, 1, f) == 1 && write_chunk(f, "GRNI", s_ext.ground, sizeof(s_ext.ground)) &&
          pc_dresser_write_chunks(f) && pc_pattern_write_chunks(f) &&
-         pc_const_write_chunk(f) && pc_brewster_write_chunk(f) && pc_basement_write_chunk(f) && pc_money_tree_write_chunk(f) && pc_skin_write_chunk(f) && pc_nlr_write_chunk(f) &&
-         write_checksum(f);
+         pc_const_write_chunk(f) && pc_brewster_write_chunk(f) && pc_basement_write_chunk(f) && pc_money_tree_write_chunk(f) && pc_oftr_write_chunk(f) && pc_skin_write_chunk(f) && pc_nlr_write_chunk(f) &&
+         write_made(f) && write_unknown(f) && write_checksum(f);
     if (fclose(f) != 0) {
         ok = FALSE;
     }

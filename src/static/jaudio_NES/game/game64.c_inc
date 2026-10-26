@@ -3381,6 +3381,12 @@ extern void Na_Pause(u8 pauseFlag) {
     switch (pauseFlag) {
         case 0: {
             switch (sou_scene_mode) {
+#ifdef TARGET_PC
+                case 1: /* outdoor furniture: its instruments come back after a pause outdoors too */
+                    sou_chime_volume = 1.f;
+                    NA_COMMAND_AUDIO_GRP_FADE_VOLUME_SCALE(FTR_INST_GROUP, 1.f);
+                    break;
+#endif
                 case 2: {
                     sou_chime_volume = 0.45f;
                     NA_COMMAND_AUDIO_GRP_FADE_VOLUME_SCALE(FTR_INST_GROUP, 1.f);
@@ -3392,6 +3398,12 @@ extern void Na_Pause(u8 pauseFlag) {
         } break;
         case 1: {
             switch (sou_scene_mode) {
+#ifdef TARGET_PC
+                case 1: /* outdoor furniture: quiet while paused, as in a room */
+                    sou_chime_volume = 0.45f;
+                    NA_COMMAND_AUDIO_GRP_FADE_VOLUME_SCALE(FTR_INST_GROUP, 0.f);
+                    break;
+#endif
                 case 2: {
                     NA_COMMAND_AUDIO_GRP_FADE_VOLUME_SCALE(FTR_INST_GROUP, 0.f);
                     sou_chime_volume = 0.35f;
@@ -3707,7 +3719,13 @@ extern void Na_SceneMode(u8 a) {
                 na_melody_id_hist[0] = -1;
                 na_melody_id_hist[1] = -1;
                 Na_BGMVolume(1.f, 0);
+#ifdef TARGET_PC
+                /* Outdoor furniture: instruments and clocks play outdoors too, as in a room */
+                NA_COMMAND_AUDIO_START_SEQ(FTR_INST_GROUP, 246, 0);
+                NA_COMMAND_AUDIO_GRP_FADE_VOLUME_SCALE(FTR_INST_GROUP, 1.f);
+#else
                 NA_COMMAND_AUDIO_STOP_SEQ(FTR_INST_GROUP, 0);
+#endif
                 sou_chime_volume = 1.f;
                 sou_chime_status = 1;
                 switch (sou_scene_mode) {
@@ -3724,6 +3742,9 @@ extern void Na_SceneMode(u8 a) {
                         Sou_SeVolumeReset();
                     } break;
 #ifdef TARGET_PC
+                    case 0x11:
+                        /* Back from the NES outdoors (outdoor furniture): only the room modes restarted the SFX */
+                        sou_sub_game_flag = 0;
                     case 0x12:
                         /* Card B return enters the field directly after this mode stops the SFX sequence. */
 #endif

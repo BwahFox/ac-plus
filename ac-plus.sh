@@ -88,9 +88,9 @@ case "${1:-}" in
         version="$(git describe --tags --exact-match 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo dev)"
         image
         # only what the build put there: no disc image, saves, settings or City Folk files
-        run -i "$IMAGE" python3 - "dist/ac-plus-$version.zip" <<'PY'
+        run -i "$IMAGE" python3 - "dist/ac-plus-$version.zip" "$version" <<'PY'
 import os, sys, zipfile
-out = sys.argv[1]
+out, version = sys.argv[1], sys.argv[2]
 keep = ['AnimalCrossing.exe', 'ac-plus-inhibit', 'ac-sync.sh', 'README.md', 'LICENSE', 'shaders/default.vert', 'shaders/default.frag',
         'rom/PUT_YOUR_DISCS_HERE.txt']
 for top, dirs, files in os.walk('dist/ac-plus/cf-tools'):  # the City Folk converter
@@ -101,8 +101,17 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
         z.write(os.path.join('dist/ac-plus', f), 'ac-plus/' + f.replace(os.sep, '/'))
     for d in ('save', 'texture_pack', 'music'):
         z.writestr('ac-plus/%s/' % d, '')
+    z.writestr('ac-plus/VERSION', version + '\n')  # the updater's idea of this release (pc_updater.c)
 print('wrote', out)
 PY
+        # The updater installs only signed releases: sign here, on the host, where the key is (never in the image)
+        if [ -f "${AC_PLUS_SIGNING_KEY:-$HOME/.config/ac-plus/release-signing-key.pem}" ]; then
+            python3 "$ROOT/pc/tools/release-sign.py" sign "$ROOT/dist/ac-plus-$version.zip" &&
+                echo "upload both ac-plus-$version.zip and ac-plus-$version.zip.sig to the release"
+        else
+            echo "WARNING: no release signing key here; the in-game updater won't install this zip" >&2
+            echo "(pc/tools/release-sign.py keygen makes one; the public half goes in pc_updater.c)" >&2
+        fi
         ;;
     shell)
         image

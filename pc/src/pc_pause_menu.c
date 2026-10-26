@@ -286,7 +286,9 @@ static MenuAction translate_pad_axis(int axis, int value) {
 
 /* dev (pc_devtest.c PC_CTL "menu N"): an action as if pressed, N as MenuAction */
 void pc_pause_menu_dev_action(int act) {
-    if (g_pc_paused) {
+    if (act == 0) {
+        pc_pause_menu_toggle();
+    } else if (g_pc_paused) {
         handle_action((MenuAction)act);
     }
 }

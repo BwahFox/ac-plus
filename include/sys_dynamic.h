@@ -24,14 +24,25 @@ extern "C" {
 #define FONT_SIZE 256
 */
 
+#ifdef TARGET_PC
+/* Room for outdoor furniture (pc_outdoor_ftr.c): hundreds of pieces, each with its matrices and shadow */
+#define POLY_OPA_SIZE (9952 * 6)
+#define POLY_XLU_SIZE (2048 * 6)
+#else
 #define POLY_OPA_SIZE 9952
 #define POLY_XLU_SIZE 2048
+#endif
 #define OVERLAY_SIZE 1024
 #define WORK_SIZE 128
 #define UNK_BUF0_SIZE 32
 #define FONT_SIZE 1792
+#ifdef TARGET_PC
+#define SHADOW_SIZE (512 * 8)
+#define LIGHT_SIZE (256 * 4)
+#else
 #define SHADOW_SIZE 512
 #define LIGHT_SIZE 256
+#endif
 #define NEW0_SIZE 512
 #define NEW1_SIZE 256
 

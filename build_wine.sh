@@ -37,6 +37,7 @@ if [ ! -f Makefile ]; then
     # Linux SDL2; the port's own fallback then finds ../SDL2-2.30.10.
     cmake .. -DCMAKE_TOOLCHAIN_FILE=../cmake/Toolchain-mingw32.cmake \
         -DPC_CONSOLE="${PC_CONSOLE:-ON}" \
+        -DPC_MEMTRACK="${PC_MEMTRACK:-OFF}" \
         -DCMAKE_DISABLE_FIND_PACKAGE_SDL2=ON \
         -DCMAKE_DISABLE_FIND_PACKAGE_PkgConfig=ON \
         -DCMAKE_C_FLAGS="$FLAGS" -DCMAKE_CXX_FLAGS="$FLAGS"

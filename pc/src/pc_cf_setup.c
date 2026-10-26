@@ -150,7 +150,7 @@ static int pc_cf_setup_run(char* err, size_t err_size) {
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
     CloseHandle(rd);
-    SDL_SetWindowTitle(g_pc_window, "Animal Crossing");
+    SDL_SetWindowTitle(g_pc_window, "Animal Crossing Plus");
     return code == 0;
 }
 #endif

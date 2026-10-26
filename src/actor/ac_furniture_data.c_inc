@@ -18,7 +18,12 @@ static aFTR_size_info_c* aMR_furniture_size_table[] = {
 #include "../src/actor/ac_furniture_profile_data.c_inc"
 
 // clang-format off
+#ifdef TARGET_PC
+/* The room tables as the GameCube has them (200 free, 201 wall); aMR_pc_set_grid fills the working ones */
+static u8 l_place_table_gc[] = {
+#else
 static u8 l_place_table[] = {
+#endif
     201, 201, 201, 201, 201, 201, 201, 201, 201, 201, 201, 201, 201, 201, 201, 201,
     201, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 201,
     201, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 201,
@@ -39,7 +44,11 @@ static u8 l_place_table[] = {
 // clang-format on
 
 // clang-format off
+#ifdef TARGET_PC
+static u8 l_place_table2_gc[] = {
+#else
 static u8 l_place_table2[] = {
+#endif
     201, 201, 201, 201, 201, 201, 201, 201, 201, 201, 201, 201, 201, 201, 201, 201,
     201, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 201,
     201, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 201,
@@ -59,7 +68,12 @@ static u8 l_place_table2[] = {
 };
 // clang-format on
 
-static u8* aMR_place_table[] = {
+#ifdef TARGET_PC
+static aMR_place_t l_place_table[UT_TOTAL_NUM];
+static aMR_place_t l_place_table2[UT_TOTAL_NUM];
+#endif
+
+static aMR_place_t* aMR_place_table[] = {
     l_place_table,
     l_place_table2,
 };

@@ -13,6 +13,9 @@
 #include "m_common_data.h"
 #include "m_player_lib.h"
 #include "m_field_info.h"
+#include "m_collision_bg.h"
+#include "ac_my_room.h"
+#include "m_room_type.h"
 #include <stdio.h>
 
 #include <stdlib.h>
@@ -72,6 +75,12 @@ void pc_dev_warp(void* playv, int which) {
         door.next_scene_id = shops[level];
         door.exit_orientation = mSc_DIRECT_NORTH;
         door.exit_position.x = width[level] / 2, door.exit_position.z = width[level] - 80;
+    } else if (scene != NULL && atoi(scene) == 13 && GET_PLAYER_ACTOR(play) != NULL) {
+        /* the town again, right where the player stands (the scene is built anew) */
+        door.next_scene_id = SCENE_FG;
+        door.exit_orientation = mSc_DIRECT_SOUTH;
+        door.exit_position.x = (s16)GET_PLAYER_ACTOR(play)->actor_class.world.position.x;
+        door.exit_position.z = (s16)GET_PLAYER_ACTOR(play)->actor_class.world.position.z;
     } else if (scene != NULL && atoi(scene) == 3) {
         door.next_scene_id = SCENE_MUSEUM_CAFE;
         door.exit_orientation = mSc_DIRECT_WEST;
@@ -138,6 +147,83 @@ void pc_dev_mtree(void* playv, int dx, int dz) {
         mFI_UtNum2CenterWpos(&pos, ut_x + dx, ut_z + dz);
         pc_money_tree_plant(pos);
         printf("[fg] marked unit %d,%d as a 90,000 Bells tree\n", ut_x + dx, ut_z + dz);
+    }
+}
+
+/* PC_CTL oftr: furniture item ftr outdoors on the unit (dx, dz) from the player's (pc_outdoor_ftr.c) */
+void pc_dev_oftr(void* playv, int dx, int dz, int ftr) {
+    extern int aMR_pc_dev_put(int ut_x, int ut_z, mActor_name_t ftr);
+    PLAYER_ACTOR* player = dev_field_player(playv);
+    int ut_x;
+    int ut_z;
+
+    if (player != NULL && mFI_Wpos2UtNum(&ut_x, &ut_z, player->actor_class.world.position)) {
+        printf("[oftr] %04X on unit %d,%d: %s\n", ftr, ut_x + dx, ut_z + dz,
+               aMR_pc_dev_put(ut_x + dx, ut_z + dz, (mActor_name_t)ftr) ? "ok" : "can't go there");
+    }
+}
+
+/* PC_CTL place: furniture item ftr put down in front of the player the way Place from the pockets does it */
+void pc_dev_place(void* playv, int ftr) {
+    GAME* game = (GAME*)playv;
+    int ux;
+    int uz;
+    int sq_ofs;
+    int layer;
+    u16 rot;
+    u16 ftr_idx = mRmTp_FtrItemNo2FtrIdx((mActor_name_t)ftr);
+    int idx;
+
+    if (aMR_CLIP == NULL) {
+        printf("[place] no furniture actor here\n");
+        return;
+    }
+    idx = aMR_CLIP->judge_breed_new_ftr_proc(game, ftr_idx, &ux, &uz, &rot, &sq_ofs, &layer);
+    printf("[place] %04X: judge %d -> unit %d,%d rot %d layer %d\n", ftr, idx, ux, uz, rot, layer);
+    if (idx >= 0) {
+        aMR_CLIP->reserve_ftr_proc(game, ftr_idx, idx, ux, uz, rot, sq_ofs, layer);
+    }
+}
+
+/* PC_CTL open: the plain trees with the most flat, dry, empty ground around them (5 units each way), best first */
+void pc_dev_open_trees(void) {
+    int ut_x;
+    int ut_z;
+
+    if (!mFI_CheckFieldData()) {
+        return;
+    }
+    for (ut_z = UT_Z_NUM; ut_z < mFI_GetBlockZMax() * UT_Z_NUM; ut_z++) {
+        for (ut_x = UT_X_NUM; ut_x < mFI_GetBlockXMax() * UT_X_NUM; ut_x++) {
+            mActor_name_t* fg = mFI_UtNum2UtFG(ut_x, ut_z);
+            xyz_t c;
+            f32 y0;
+            int free_n = 0;
+            int dx;
+            int dz;
+
+            if (fg == NULL || *fg != TREE) {
+                continue;
+            }
+            mFI_UtNum2CenterWpos(&c, ut_x, ut_z);
+            y0 = mCoBG_GetBgY_OnlyCenter_FromWpos2(c, 0.0f);
+            for (dz = -5; dz <= 5; dz++) {
+                for (dx = -5; dx <= 5; dx++) {
+                    mActor_name_t* f = mFI_UtNum2UtFG(ut_x + dx, ut_z + dz);
+                    xyz_t p;
+
+                    if ((dx == 0 && dz == 0) || f == NULL || *f != EMPTY_NO ||
+                        !mCoBG_Unit2CheckNpc(ut_x + dx, ut_z + dz)) {
+                        continue;
+                    }
+                    mFI_UtNum2CenterWpos(&p, ut_x + dx, ut_z + dz);
+                    if (ABS(mCoBG_GetBgY_OnlyCenter_FromWpos2(p, 0.0f) - y0) < 10.0f) {
+                        free_n++;
+                    }
+                }
+            }
+            printf("[open] tree %d,%d free %d/120\n", ut_x, ut_z, free_n);
+        }
     }
 }
 

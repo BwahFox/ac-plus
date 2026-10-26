@@ -283,6 +283,8 @@ static int pc_save_write_gci_to(const char* gci_path, const char* tmp_path);
 void pc_autosave_reset_timer(void);        /* pc_quick_save.c */
 void pc_cloud_save_push(const char* path); /* pc_cloud_save.c */
 void pc_cloud_save_pull(const char* path);
+void pc_sync_after_save(void);  /* pc_sync.c */
+void pc_sync_before_load(void);
 #include "pc_ext_save.h"
 
 /* mCD_get_land_copyProtect */
@@ -492,6 +494,7 @@ static int pc_save_write_gci_to(const char* gci_path, const char* tmp_path) {
     if (strcmp(gci_path, PC_GCI_PATH) == 0) {
         pc_ext_save_write(gci_path);
         pc_cloud_save_push(gci_path);
+        pc_sync_after_save();
     }
     return TRUE;
 }
@@ -905,6 +908,7 @@ int pc_save_check_and_load(void) {
     pc_ensure_save_dirs();
     pc_save_migrate_legacy();
     pc_cloud_save_pull(PC_GCI_PATH);
+    pc_sync_before_load();
 
     if (stat(PC_GCI_PATH, &st) == 0) {
         OSReport("[PC] Found GCI save: %s (%ld bytes)\n", PC_GCI_PATH, (long)st.st_size);

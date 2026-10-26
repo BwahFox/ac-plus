@@ -48,6 +48,8 @@ static u32 l_autosave_last_tick = 0;
 #define QUIT_WAIT_FRAMES 3
 static int l_quit_wait = 0;
 
+extern int aMR_pc_busy(void);
+
 static int qsave_allowed(GAME_PLAY* play) {
     if (mEv_CheckTitleDemo() != mEv_TITLEDEMO_NONE || mEv_CheckFirstIntro()) {
         return FALSE;
@@ -70,7 +72,7 @@ static int qsave_allowed(GAME_PLAY* play) {
 static int autosave_allowed(GAME_PLAY* play) {
     int index;
 
-    if (!qsave_allowed(play)) {
+    if (!qsave_allowed(play) || aMR_pc_busy()) {
         return FALSE;
     }
     if (play->fb_wipe_mode != WIPE_MODE_NONE || play->fb_fade_type != FADE_TYPE_NONE) {
@@ -150,7 +152,13 @@ void pc_quit_request_poll(void) {
 }
 
 static void quit_save(GAME_PLAY* play) {
+    static int settle = 0;
     const char* msg = "can't save here";
+
+    if (aMR_pc_busy() && settle++ < 120) {
+        l_quit_wait = QUIT_WAIT_FRAMES; /* a moment for the furniture to come to rest: back here next frame */
+        return;
+    }
 
     if (qsave_allowed(play)) {
         msg = do_quick_save(play) != NULL ? "saved" : "save failed";
@@ -179,7 +187,8 @@ void pc_quick_save_tick(GAME* game) {
     /* Swallow the Start press so the inventory doesn't open as well. */
     pad->on.button &= ~BUTTON_START;
 
-    if (!qsave_allowed(play)) {
+    /* furniture mid-move or an item flying onto it would be saved nowhere */
+    if (!qsave_allowed(play) || aMR_pc_busy()) {
         l_qsave_msg = "Can't save right now";
     } else {
         l_qsave_msg = do_quick_save(play);
@@ -199,8 +208,12 @@ void pc_quick_save_show_message(const char* msg) {
 
 /* Called from graph_main next to the pause overlay. */
 void pc_quick_save_draw(struct game_s* game) {
+    extern void pc_sync_poll(void);
     int alpha;
 
+    if (game != NULL && game->exec == play_main) {
+        pc_sync_poll(); /* "Save Upload Complete" and the like (pc_sync.c); held until there's a town to show it on */
+    }
     if (l_qsave_timer <= 0 || l_qsave_msg == NULL || game == NULL || game->graph == NULL) {
         return;
     }

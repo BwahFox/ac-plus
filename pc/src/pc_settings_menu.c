@@ -39,6 +39,9 @@ enum {
     ITEM_QUICK_LOAD,
     ITEM_SERVER_SYNC,
     ITEM_SERVER_HOST,
+    ITEM_SYNC,
+    ITEM_SYNC_URL,
+    ITEM_SYNC_TOKEN,
     ITEM_MOUSE,
 };
 
@@ -75,8 +78,11 @@ static const Item tab_saving_items[] = {
     { "Autosave",     ITEM_AUTOSAVE,     0 },
     { "Save on quit", ITEM_SAVE_ON_QUIT, 0 },
     { "Quick load",   ITEM_QUICK_LOAD,   0 },
-    { "Server sync",  ITEM_SERVER_SYNC,  0 },
-    { "Server",       ITEM_SERVER_HOST,  0 },
+    { "SSH sync",     ITEM_SERVER_SYNC,  0 },
+    { "SSH server",   ITEM_SERVER_HOST,  0 },
+    { "In-game sync", ITEM_SYNC,         0 },
+    { "Sync server",  ITEM_SYNC_URL,     0 },
+    { "Sync token",   ITEM_SYNC_TOKEN,   0 },
 };
 
 static const Item tab_audio_items[] = {
@@ -175,9 +181,11 @@ static int s_bind_sel = 0;
 static int s_bind_col = 0;      /* 0 = keyboard, 1 = gamepad */
 static int s_bind_scroll = 0;
 static int s_capture = 0;       /* waiting for the next key/button press */
-static int s_text_edit = 0;     /* typing the server address (ITEM_SERVER_HOST) */
-static char s_text_before[128]; /* restored if the typing is cancelled */
-static void text_edit_begin(void);
+static int s_text_edit = 0;     /* typing one of the text items (s_text_id) */
+static int s_text_id = 0;       /* ITEM_SERVER_HOST, ITEM_SYNC_URL or ITEM_SYNC_TOKEN */
+static char s_text_before[256]; /* restored if the typing is cancelled */
+static void text_edit_begin(int id);
+static char* text_field(int id, size_t* size);
 static int s_capture_grace = 0; /* frames pad-driven hosts stay blocked after capture */
 
 static PCInputCode* bind_kb_slot(int row) {
@@ -294,6 +302,9 @@ static void recompute_dirty(void) {
         (s_pending.quick_load       != g_pc_settings.quick_load) ||
         (s_pending.server_sync      != g_pc_settings.server_sync) ||
         strcmp(s_pending.server_sync_host, g_pc_settings.server_sync_host) != 0 ||
+        (s_pending.sync_enabled     != g_pc_settings.sync_enabled) ||
+        strcmp(s_pending.sync_url, g_pc_settings.sync_url) != 0 ||
+        strcmp(s_pending.sync_token, g_pc_settings.sync_token) != 0 ||
         (s_pending.mouse_mode       != g_pc_settings.mouse_mode);
 }
 
@@ -403,7 +414,12 @@ static void item_cycle(int id, int dir) {
         case ITEM_SERVER_SYNC:
             s_pending.server_sync = !s_pending.server_sync;
             break;
+        case ITEM_SYNC:
+            s_pending.sync_enabled = !s_pending.sync_enabled;
+            break;
         case ITEM_SERVER_HOST:
+        case ITEM_SYNC_URL:
+        case ITEM_SYNC_TOKEN:
             /* typed in: confirm starts editing (text_edit_begin) */
             break;
         case ITEM_MOUSE:
@@ -499,19 +515,35 @@ static void item_format(int id, char* buf, size_t n) {
         case ITEM_SERVER_SYNC:
             snprintf(buf, n, "%s", s_pending.server_sync ? "< On >" : "< Off >");
             break;
+        case ITEM_SYNC:
+            snprintf(buf, n, "%s", s_pending.sync_enabled ? "< On >" : "< Off >");
+            break;
         case ITEM_SERVER_HOST:
-            if (s_text_edit) {
+        case ITEM_SYNC_URL:
+        case ITEM_SYNC_TOKEN: {
+            size_t size;
+            const char* text = text_field(id, &size);
+
+            if (id == ITEM_SYNC_URL && strstr(text, "//") != NULL) {
+                text = strstr(text, "//") + 2; /* the font has no '/': the address without http:// */
+            }
+            if (s_text_edit && s_text_id == id) {
                 /* the end of what's typed, with a cursor */
-                size_t len = strlen(s_pending.server_sync_host);
-                const char* tail = len > 22 ? s_pending.server_sync_host + len - 22 : s_pending.server_sync_host;
+                size_t len = strlen(text);
+                const char* tail = len > 22 ? text + len - 22 : text;
                 snprintf(buf, n, "%s%s", tail, (SDL_GetTicks() / 400) % 2 ? "_" : " ");
-            } else if (s_pending.server_sync_host[0] != '\0') {
-                snprintf(buf, n, "%.24s", s_pending.server_sync_host);
+                sanitize_glyphs(buf);
+            } else if (text[0] != '\0' && id == ITEM_SYNC_TOKEN) {
+                snprintf(buf, n, "%.4s...", text); /* it's a password: shown on stream or screenshots */
+                sanitize_glyphs(buf);
+            } else if (text[0] != '\0') {
+                snprintf(buf, n, "%.24s", text);
                 sanitize_glyphs(buf);
             } else {
                 snprintf(buf, n, "Press A to type");
             }
             break;
+        }
         case ITEM_MOUSE:
             snprintf(buf, n, "%s",
                 s_pending.mouse_mode == 1 ? "< Menus >" :
@@ -554,6 +586,9 @@ static int item_changed(int id) {
         case ITEM_QUICK_LOAD:    return s_pending.quick_load    != g_pc_settings.quick_load;
         case ITEM_SERVER_SYNC:   return s_pending.server_sync   != g_pc_settings.server_sync;
         case ITEM_SERVER_HOST:   return strcmp(s_pending.server_sync_host, g_pc_settings.server_sync_host) != 0;
+        case ITEM_SYNC:          return s_pending.sync_enabled  != g_pc_settings.sync_enabled;
+        case ITEM_SYNC_URL:      return strcmp(s_pending.sync_url, g_pc_settings.sync_url) != 0;
+        case ITEM_SYNC_TOKEN:    return strcmp(s_pending.sync_token, g_pc_settings.sync_token) != 0;
         case ITEM_MOUSE:         return s_pending.mouse_mode    != g_pc_settings.mouse_mode;
         case ITEM_BINDINGS:      return 0; /* bindings save themselves */
     }
@@ -767,7 +802,7 @@ int pc_settings_menu_confirm(void) {
     } else if (s_sel < cur_item_count()) {
         int id = s_tabs[s_tab].items[s_sel].id;
         if (id == ITEM_BINDINGS)         bind_enter_page();
-        else if (id == ITEM_SERVER_HOST) text_edit_begin();
+        else if (id == ITEM_SERVER_HOST || id == ITEM_SYNC_URL || id == ITEM_SYNC_TOKEN) text_edit_begin(id);
         else                             item_cycle(id, +1);
     } else if (s_sel == idx_apply()) {
         apply_pending();
@@ -820,17 +855,31 @@ void pc_settings_menu_tick(void) {
     }
 }
 
-/* --- Typing the server address --- */
+/* --- Typing the server addresses and the sync token --- */
 
-static void text_edit_begin(void) {
-    snprintf(s_text_before, sizeof(s_text_before), "%s", s_pending.server_sync_host);
+static char* text_field(int id, size_t* size) {
+    switch (id) {
+        case ITEM_SYNC_URL:   *size = sizeof(s_pending.sync_url);   return s_pending.sync_url;
+        case ITEM_SYNC_TOKEN: *size = sizeof(s_pending.sync_token); return s_pending.sync_token;
+        default:              *size = sizeof(s_pending.server_sync_host); return s_pending.server_sync_host;
+    }
+}
+
+static void text_edit_begin(int id) {
+    size_t size;
+
+    s_text_id = id;
+    snprintf(s_text_before, sizeof(s_text_before), "%s", text_field(id, &size));
     s_text_edit = 1;
     SDL_StartTextInput();
 }
 
 static void text_edit_finish(int keep) {
+    size_t size;
+    char* text = text_field(s_text_id, &size);
+
     if (!keep) {
-        snprintf(s_pending.server_sync_host, sizeof(s_pending.server_sync_host), "%s", s_text_before);
+        snprintf(text, size, "%s", s_text_before);
     }
     s_text_edit = 0;
     s_capture_grace = 15;
@@ -838,27 +887,45 @@ static void text_edit_finish(int keep) {
     recompute_dirty();
 }
 
-/* Enter or A keeps it, Escape or B puts back what was there; on the Steam Deck,
+/* Typed or pasted text: ssh destinations (user@host), URLs and tokens have no spaces or quotes */
+static void text_edit_add(char* text, size_t size, const char* add) {
+    size_t len = strlen(text);
+
+    for (const char* c = add; *c; c++) {
+        int ok = glyph_ok((unsigned char)*c) || (*c == '/' && s_text_id == ITEM_SYNC_URL); /* http://... */
+
+        if (ok && *c != ' ' && *c != '"' && *c != '\'' && len + 1 < size) {
+            text[len++] = *c;
+            text[len] = '\0';
+        }
+    }
+}
+
+/* Enter or A keeps it, Escape or B puts back what was there, Ctrl+V pastes; on the Steam Deck,
  * Steam + X brings up the keyboard */
 static int text_edit_event(const SDL_Event* e) {
-    char* host = s_pending.server_sync_host;
-    size_t len = strlen(host);
+    size_t size;
+    char* text = text_field(s_text_id, &size);
+    size_t len = strlen(text);
 
     switch (e->type) {
         case SDL_TEXTINPUT:
-            for (const char* c = e->text.text; *c; c++) {
-                /* ssh destinations: user@host, host names, ports in ~/.ssh/config */
-                if (glyph_ok((unsigned char)*c) && *c != ' ' && *c != '"' && *c != '\'' &&
-                    len + 1 < sizeof(s_pending.server_sync_host)) {
-                    host[len++] = *c;
-                    host[len] = '\0';
-                }
-            }
+            text_edit_add(text, size, e->text.text);
             break;
         case SDL_KEYDOWN:
             switch (e->key.keysym.sym) {
                 case SDLK_BACKSPACE:
-                    if (len > 0) host[len - 1] = '\0';
+                    if (len > 0) text[len - 1] = '\0';
+                    break;
+                case SDLK_v:
+                    if (e->key.keysym.mod & KMOD_CTRL) {
+                        char* clip = SDL_GetClipboardText();
+
+                        if (clip != NULL) {
+                            text_edit_add(text, size, clip);
+                            SDL_free(clip);
+                        }
+                    }
                     break;
                 case SDLK_RETURN:
                 case SDLK_KP_ENTER:

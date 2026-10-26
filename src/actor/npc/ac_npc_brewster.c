@@ -496,14 +496,28 @@ static void aBRW_set_talk_info(ACTOR* actorx) {
 
 /* --- the stools --- */
 
-/* The stool the player stands by (within reach, on the room's side of it), or -1. Only the one across from
- * Brewster seats the player, as in City Folk. */
-static int aBRW_stool_near(const xyz_t* p) {
+/* The stool the player stands by, or -1: behind it (on the room's side), or beside it facing it, as a chair at
+ * home takes the player from its side (ac_my_room_action.c_inc). Facing matters beside it: the middle stool is
+ * close, and a player there faces Brewster to talk to him. Only the one across from Brewster seats the player,
+ * as in City Folk. */
+static int aBRW_stool_near(const PLAYER_ACTOR* player) {
+    const xyz_t* p = &player->actor_class.world.position;
     int i;
 
     for (i = aBRW_SIT_STOOL; i <= aBRW_SIT_STOOL; i++) {
-        if (p->x > aBRW_STOOL_X - 50.0f && p->x < aBRW_STOOL_X + 8.0f && ABS(p->z - aBRW_stool_z[i]) < 20.0f) {
-            return i;
+        f32 dz = aBRW_stool_z[i] - p->z;
+
+        if (p->x > aBRW_STOOL_X - 50.0f && p->x < aBRW_STOOL_X + 8.0f && ABS(dz) < 20.0f) {
+            return i; /* behind it */
+        }
+        if (p->x > aBRW_STOOL_X - 22.0f && p->x < aBRW_STOOL_X + 22.0f && ABS(dz) >= 20.0f && ABS(dz) < 45.0f) {
+            /* beside it: facing it, within 60 degrees */
+            s16 to = (s16)(atan2f(aBRW_STOOL_X - p->x, dz) * (32768.0f / 3.14159265f));
+            s16 off = (s16)(player->actor_class.shape_info.rotation.y - to);
+
+            if (ABS(off) < DEG2SHORT_ANGLE(60.0f)) {
+                return i;
+            }
         }
     }
     return -1;
@@ -538,9 +552,9 @@ static void aBRW_stools(NPC_BREWSTER_ACTOR* brw, GAME* game) {
     }
     /* By the stool, A is the stool's: he's out of reach there (his reach across the counter covers it), and sitting
      * down brings him over anyway */
-    ((ACTOR*)brw)->talk_distance = aBRW_stool_near(&player->actor_class.world.position) >= 0 ? 0.0f : 110.0f;
+    ((ACTOR*)brw)->talk_distance = aBRW_stool_near(player) >= 0 ? 0.0f : 110.0f;
     if ((idx == mPlayer_INDEX_WAIT || idx == mPlayer_INDEX_WALK || idx == mPlayer_INDEX_RUN) && chkTrigger(BUTTON_A)) {
-        int s = aBRW_stool_near(&player->actor_class.world.position);
+        int s = aBRW_stool_near(player);
 
         if (s >= 0) {
             xyz_t pos = { aBRW_SEAT_X + 35.0f, 0.0f, 0.0f }; /* sitting backs the player 35 onto the seat */
@@ -602,7 +616,7 @@ static void aBRW_talk_request(ACTOR* actorx, GAME* game) {
     PLAYER_ACTOR* player = GET_PLAYER_ACTOR((GAME_PLAY*)game);
 
     if (((GAME_PLAY*)game)->game_frame - brw->sit_frame < 4 ||
-        (player != NULL && aBRW_stool_seated(game) < 0 && aBRW_stool_near(&player->actor_class.world.position) >= 0)) {
+        (player != NULL && aBRW_stool_seated(game) < 0 && aBRW_stool_near(player) >= 0)) {
         return; /* that A was for a stool */
     }
     brw->seated_talk = aBRW_stool_seated(game) >= 0;

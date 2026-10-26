@@ -18,8 +18,8 @@ static aMR_process_info_c* aMR_poccess_table[aFTR_SHAPE_TYPE_NUM] = {
 };
 
 static int aMR_GetFurniturePoccessUnitNo(int* ut_info, int ut_x, int ut_z, u8 type) {
-    if (ut_x < UT_X_NUM && ut_z < UT_Z_NUM) {
-        int ut = ut_x + ut_z * UT_X_NUM;
+    if (ut_x < aMR_UT_X_NUM && ut_z < aMR_UT_Z_NUM) {
+        int ut = ut_x + ut_z * aMR_UT_X_NUM;
 
         if (type < aFTR_SHAPE_TYPE_NUM) {
             aMR_process_info_c* process_info = aMR_poccess_table[type];
@@ -135,8 +135,8 @@ static int aMR_RequestItemToFitFurniture(ACTOR* actorx, FTR_ACTOR* ftr_actor) {
             if (fg_layer1_p != NULL) {
                 for (i = 0; i < ut_count; i++) {
                     int ut_pos = ut_info[i]; /* absolute unit position */
-                    int ut_x = (ut_pos & 15);
-                    int ut_z = (ut_pos >> 4) & 15;
+                    int ut_x = ut_pos % aMR_UT_X_NUM;
+                    int ut_z = ut_pos / aMR_UT_X_NUM;
                     mActor_name_t cur_item = fg_layer1_p[ut_pos];
 
                     if (cur_item != EMPTY_NO) {
@@ -153,11 +153,15 @@ static int aMR_RequestItemToFitFurniture(ACTOR* actorx, FTR_ACTOR* ftr_actor) {
                                     on_top_ftr_actor->position.y - (ftr_actor->position.y + ftr_actor->base_position.y);
                                 pos.z =
                                     on_top_ftr_actor->position.z - (ftr_actor->position.z + ftr_actor->base_position.z);
+#ifdef TARGET_PC
+                                /* ac-plus: no shop goods actor outdoors (outdoor furniture) */
+                                if (Common_Get(clip).shop_goods_clip != NULL)
+#endif
                                 Common_Get(clip).shop_goods_clip->single_set_angle_y_proc(ut_z, ut_x, mCoBG_LAYER1,
                                                                                           DEG2SHORT_ANGLE(0.0f));
                                 aMR_RegistItemToFitFurniture(actorx, &pos, on_top_ftrID, NULL, 0);
                                 aMR_SetFurniture2FG(on_top_ftr_actor, on_top_ftr_actor->position, FALSE);
-                                aMR_SetInfoFurnitureTable(aFTR_SHAPE_TYPEA, ut_x + ut_z * UT_X_NUM, aMR_NO_FTR_ID,
+                                aMR_SetInfoFurnitureTable(aFTR_SHAPE_TYPEA, ut_x + ut_z * aMR_UT_X_NUM, aMR_NO_FTR_ID,
                                                           mCoBG_LAYER1);
                             }
                         } else {
@@ -208,7 +212,7 @@ static void aMR_RequestItemToUnFitFurniture(MY_ROOM_ACTOR* my_room, FTR_ACTOR* f
                 fit_ftr_p->exist_flag = FALSE;
                 ut_x = (int)(fit_ftr_p->ut_pos.x / mFI_UT_WORLDSIZE_X_F);
                 ut_z = (int)(fit_ftr_p->ut_pos.z / mFI_UT_WORLDSIZE_Z_F);
-                ut = ut_x + ut_z * UT_X_NUM;
+                ut = ut_x + ut_z * aMR_UT_X_NUM;
 
                 if (fit_ftr_p->ftr_ID != -1) {
                     FTR_ACTOR* on_top_ftr_actor = &l_aMR_work.ftr_actor_list[fit_ftr_p->ftr_ID];
@@ -230,6 +234,9 @@ static void aMR_RequestItemToUnFitFurniture(MY_ROOM_ACTOR* my_room, FTR_ACTOR* f
                     s16 ftr_angle = fit_ftr_p->angle_y + (ftr_actor->s_angle_y - my_room->parent_ftr.angle_y);
 
                     fg_layer1_p[ut] = fit_ftr_p->item_no;
+#ifdef TARGET_PC
+                    if (Common_Get(clip).shop_goods_clip != NULL)
+#endif
                     Common_Get(clip).shop_goods_clip->single_set_angle_y_proc(ut_z, ut_x, mCoBG_LAYER1, ftr_angle);
                 }
             }
@@ -531,22 +538,39 @@ static u8 aMR_JudgeStickFull(int direct, GAME* game) {
 
 static int aMR_JudgeFurnitureMove(u8 type, int ut) {
     mActor_name_t* fg_p = aMR_GetLayerTopFg(mCoBG_LAYER0);
-    u8* place_table = aMR_place_table[mCoBG_LAYER0];
+    aMR_place_t* place_table = aMR_place_table[mCoBG_LAYER0];
     int ut_info[4];
-    int count = aMR_GetFurniturePoccessUnitNo(ut_info, (ut & 0xF), ((ut >> 4) & 0xF), type);
+    int count = aMR_GetFurniturePoccessUnitNo(ut_info, ut % aMR_UT_X_NUM, ut / aMR_UT_X_NUM, type);
+
+#ifdef TARGET_PC
+    /* Outdoors each acre holds so many pieces; the one being moved is already off the grid */
+    if (aMR_pc_field && pc_oftr_acre_full(ut)) {
+        return FALSE;
+    }
+#endif
 
     if (count > 0) {
         int i;
 
         for (i = 0; i < count; i++) {
-            if (place_table[ut_info[i]] != 200) {
+            if (place_table[ut_info[i]] != aMR_NO_FTR_ID) {
                 return FALSE;
             }
+#ifdef TARGET_PC
+            if (aMR_pc_field && !pc_oftr_unit_free(ut_info[i] % aMR_UT_X_NUM, ut_info[i] / aMR_UT_X_NUM)) {
+                return FALSE;
+            }
+#endif
 
             if (fg_p[ut_info[i]] != EMPTY_NO) {
                 return FALSE;
             }
         }
+#ifdef TARGET_PC
+        if (aMR_pc_field && !pc_oftr_units_level(ut_info, count)) {
+            return FALSE; /* not across a cliff */
+        }
+#endif
 
         return TRUE;
     }
@@ -964,8 +988,8 @@ static int aMR_CheckDiaryOnMe(FTR_ACTOR* ftr_actor, GAME* game) {
                 int ut = ut_info[i];
 
                 if (fg_layer1_p[ut] >= ITM_DIARY_START && fg_layer1_p[ut] <= ITM_DIARY15) {
-                    int ut_x = ut & 0xF;
-                    int ut_z = (ut >> 4) & 0xF;
+                    int ut_x = ut % aMR_UT_X_NUM;
+                    int ut_z = ut / aMR_UT_X_NUM;
                     f32 x = ut_x * mFI_UT_WORLDSIZE_X_F + mFI_UT_WORLDSIZE_HALF_X_F;
                     f32 z = ut_z * mFI_UT_WORLDSIZE_Z_F + mFI_UT_WORLDSIZE_HALF_Z_F;
 
@@ -1553,7 +1577,7 @@ static int aMR_CheckPlaceSituation(int ut, int target_ut, u16 ftr_no, u16 angle_
                 return TRUE;
             } else {
                 int ut_info[4];
-                int ut_count = aMR_GetFurniturePoccessUnitNo(ut_info, target_ut & 0xF, (target_ut >> 4) & 0xF, shape);
+                int ut_count = aMR_GetFurniturePoccessUnitNo(ut_info, target_ut % aMR_UT_X_NUM, target_ut / aMR_UT_X_NUM, shape);
 
                 if (ut_count > 0) {
                     int i;
@@ -1584,6 +1608,13 @@ static int aMR_ReserveFurniture(GAME* game, u16 ftr_no, int free_idx, int ut_x, 
         for (i = 0; i < aMR_RSV_FTR_NUM; i++) {
             if (my_room->rsv_ftr[i].exist_flag == FALSE) {
                 PLAYER_ACTOR* player = GET_PLAYER_ACTOR((GAME_PLAY*)game);
+#ifdef TARGET_PC
+                if (aMR_pc_field) {
+                    printf("[oftr] place %d on unit %d,%d layer %d (player %.0f,%.0f)\n", ftr_no, ut_x, ut_z, layer,
+                           player->actor_class.world.position.x / mFI_UT_WORLDSIZE_X_F,
+                           player->actor_class.world.position.z / mFI_UT_WORLDSIZE_Z_F);
+                }
+#endif
 
                 my_room->rsv_ftr[i].exist_flag = TRUE;
                 my_room->rsv_ftr[i].ftr_name = ftr_no;
@@ -1733,14 +1764,14 @@ static mActor_name_t aMR_SearchPickupFurniture(GAME* game) {
         mActor_name_t layer1_item;
 
         aMR_Wpos2PlaceNumber(&ut_x, &ut_z, playerx->world.position, 0);
-        ut = ut_x + ut_z * UT_X_NUM;
+        ut = ut_x + ut_z * aMR_UT_X_NUM;
 
         /* Search the three closest 'in front of' units relative to the player's look direction */
         for (i = 0; i < 3; i++) {
             target_ut_x = ut_x;
             target_ut_z = ut_z;
             aMR_GetPlayerLookAtUnit(&target_ut_x, &target_ut_z, player_angle, i);
-            target_ut = target_ut_x + target_ut_z * UT_X_NUM;
+            target_ut = target_ut_x + target_ut_z * aMR_UT_X_NUM;
             mFI_UtNum2CenterWpos(&ut_pos, target_ut_x, target_ut_z);
 
             dX = playerx->world.position.x - ut_pos.x;
@@ -1785,15 +1816,15 @@ static mActor_name_t aMR_SearchPickupFurniture(GAME* game) {
                     mActor_name_t pickup_item;
                     if (ftr_actor2->state != aFTR_STATE_BYE && ftr_actor2->state != aFTR_STATE_BIRTH_WAIT &&
                         ftr_actor2->state != aFTR_STATE_BIRTH && ftr_actor2->state != aFTR_STATE_DEATH) {
-                        u8* place_table = aMR_GetLayerPlaceTable(mCoBG_LAYER0);
+                        aMR_place_t* place_table = aMR_GetLayerPlaceTable(mCoBG_LAYER0);
                         int unused_count = aMR_GetItemCountInFurniture(ftr_actor2);
                         int x;
                         int z;
 
-                        for (z = 1; z < (UT_Z_NUM - 1); z++) {
-                            for (x = 1; x < (UT_X_NUM - 1); x++) {
+                        for (z = 1; z < (aMR_UT_Z_NUM - 1); z++) {
+                            for (x = 1; x < (aMR_UT_X_NUM - 1); x++) {
                                 /* Check that there are no items on top of this piece of furniture */
-                                int idx = x + z * UT_X_NUM;
+                                int idx = x + z * aMR_UT_X_NUM;
 
                                 if (ftrID2 == place_table[idx] && fg_layer1_p[idx] != EMPTY_NO) {
                                     return EMPTY_NO; /* There's something on top of this furniture actor */
@@ -1859,7 +1890,7 @@ static void aMR_Furniture2ItemBag(GAME* game) {
             int ut_z;
 
             if (aMR_Wpos2PlaceNumber(&ut_x, &ut_z, ftr_actor->position, shape)) {
-                int ut = ut_x + ut_z * UT_X_NUM;
+                int ut = ut_x + ut_z * aMR_UT_X_NUM;
                 int item_count = aMR_GetItemCountInFurniture(ftr_actor);
                 aFTR_PROFILE* profile = aMR_GetFurnitureProfile(ftr_actor->name);
                 Private_c* priv = Now_Private;
@@ -1941,7 +1972,7 @@ static int aMR_JudgeBreedNewFurniture(GAME* game, u16 ftr_no, int* ut_x, int* ut
         }
 
         aMR_Wpos2PlaceNumber(&cur_ut_x, &cur_ut_z, player_pos, 0);
-        cur_ut = cur_ut_x + cur_ut_z * UT_X_NUM;
+        cur_ut = cur_ut_x + cur_ut_z * aMR_UT_X_NUM;
 
         if (aMR_SearchReserveRam(ftr_no) && aMR_CountFurniture() < l_aMR_work.list_size) {
             free_ftrID = aMR_SearchFreeFurnitureActorNumber();
@@ -1980,7 +2011,7 @@ static int aMR_JudgeBreedNewFurniture(GAME* game, u16 ftr_no, int* ut_x, int* ut
                         target_ut_x = cur_ut_x;
                         target_ut_z = cur_ut_z;
                         aMR_GetPlayerLookAtUnit(&target_ut_x, &target_ut_z, player_angle, i);
-                        target_ut = target_ut_x + target_ut_z * UT_X_NUM;
+                        target_ut = target_ut_x + target_ut_z * aMR_UT_X_NUM;
 
                         if (aMR_CheckPlaceSituation(cur_ut, target_ut, ftr_no, angle_idx & 3)) {
                             *ut_x = target_ut_x;
@@ -2012,7 +2043,7 @@ static int aMR_JudgeBreedNewFurniture(GAME* game, u16 ftr_no, int* ut_x, int* ut
                             target_ut_x = cur_ut_x;
                             target_ut_z = cur_ut_z;
                             aMR_GetPlayerLookAtUnit(&target_ut_x, &target_ut_z, player_angle, i);
-                            target_ut = target_ut_x + target_ut_z * UT_X_NUM;
+                            target_ut = target_ut_x + target_ut_z * aMR_UT_X_NUM;
 #endif
 
                             if (aMR_CheckPlaceSituation(cur_ut, target_ut, ftr_no, j)) {
@@ -2048,7 +2079,7 @@ static int aMR_JudgeBreedNewFurniture(GAME* game, u16 ftr_no, int* ut_x, int* ut
                         target_ut_x = cur_ut_x;
                         target_ut_z = cur_ut_z;
                         aMR_GetPlayerLookAtUnit(&target_ut_x, &target_ut_z, player_angle, i);
-                        target_ut = target_ut_x + target_ut_z * UT_X_NUM;
+                        target_ut = target_ut_x + target_ut_z * aMR_UT_X_NUM;
 
                         /* Check that the item we're setting down is placeable on the surface and it's 1x1 */
                         if (layer_set_info[ftr_no] == aFTR_SET_TYPE_ON_SURFACE && profile->shape == aFTR_SHAPE_TYPEA) {
@@ -2061,6 +2092,12 @@ static int aMR_JudgeBreedNewFurniture(GAME* game, u16 ftr_no, int* ut_x, int* ut
                                 aMR_UnitNum2FtrItemNoFtrID(&item, &ftrID, target_ut_x, target_ut_z, mCoBG_LAYER0)) {
                                 FTR_ACTOR* ftr_actor = &l_aMR_work.ftr_actor_list[ftrID];
 
+#ifdef TARGET_PC
+                                /* outdoors a piece on a table counts toward its acre's limit too */
+                                if (aMR_pc_field && pc_oftr_acre_full(target_ut)) {
+                                    continue;
+                                }
+#endif
                                 if (aMR_layer_set_info[ftr_actor->name] == aFTR_SET_TYPE_SURFACE) {
                                     *ut_x = target_ut_x;
                                     *ut_z = target_ut_z;
@@ -2123,8 +2160,8 @@ static int aMR_JudgeBreedNewFurniture(GAME* game, u16 ftr_no, int* ut_x, int* ut
 
                             for (j = 0; j < 4; j++) {
                                 int target_ut2 = target_ut + square_offset_data[j];
-                                int target_ut_x2 = (target_ut2 & 0xF);
-                                int target_ut_z2 = (target_ut2 / 16);
+                                int target_ut_x2 = target_ut2 % aMR_UT_X_NUM;
+                                int target_ut_z2 = target_ut2 / aMR_UT_X_NUM;
 
                                 if (aMR_CheckPlaceSituation(cur_ut, target_ut2, ftr_no, angle_idx & 3)) {
                                     *ut_x = target_ut_x2;
@@ -2239,6 +2276,13 @@ static int aMR_SetFurniture2FG(FTR_ACTOR* ftr_actor, xyz_t pos, int on_flag) {
                             fg_layer_p[ut_info[i]] = set_item;
                         }
                     }
+#ifdef TARGET_PC
+                    if (aMR_pc_field && layer == mCoBG_LAYER0) {
+                        for (i = 0; i < ut_count; i++) {
+                            pc_oftr_unit_changed(ut_info[i]);
+                        }
+                    }
+#endif
 
                     return TRUE;
                 }
@@ -2267,8 +2311,8 @@ static int aMR_SetFurniture2FG(FTR_ACTOR* ftr_actor, xyz_t pos, int on_flag) {
                 tmp_pos.x += pos.x;
                 tmp_pos.z += pos.z;
 
-                ut = (int)(base_pos.x / mFI_UT_WORLDSIZE_X_F) + (int)(base_pos.z / mFI_UT_WORLDSIZE_Z_F) * UT_X_NUM;
-                tmp_ut = (int)(tmp_pos.x / mFI_UT_WORLDSIZE_X_F) + (int)(tmp_pos.z / mFI_UT_WORLDSIZE_Z_F) * UT_X_NUM;
+                ut = (int)(base_pos.x / mFI_UT_WORLDSIZE_X_F) + (int)(base_pos.z / mFI_UT_WORLDSIZE_Z_F) * aMR_UT_X_NUM;
+                tmp_ut = (int)(tmp_pos.x / mFI_UT_WORLDSIZE_X_F) + (int)(tmp_pos.z / mFI_UT_WORLDSIZE_Z_F) * aMR_UT_X_NUM;
 
                 if (on_flag == TRUE) {
                     fg_layer_p[ut] = item;
@@ -2277,6 +2321,12 @@ static int aMR_SetFurniture2FG(FTR_ACTOR* ftr_actor, xyz_t pos, int on_flag) {
                     fg_layer_p[ut] = EMPTY_NO;
                     fg_layer_p[tmp_ut] = EMPTY_NO;
                 }
+#ifdef TARGET_PC
+                if (aMR_pc_field && layer == mCoBG_LAYER0) {
+                    pc_oftr_unit_changed(ut);
+                    pc_oftr_unit_changed(tmp_ut);
+                }
+#endif
 
                 return TRUE;
             }
@@ -3017,6 +3067,12 @@ static void My_Room_Actor_move(ACTOR* actorx, GAME* game) {
     u32 player_no = Common_Get(player_no);
     int i;
 
+#ifdef TARGET_PC
+    if (aMR_pc_field) {
+        aMR_pc_field_stream(actorx, game);
+        aSG_pc_field_move(); /* items tossed onto furniture */
+    }
+#endif
     my_room->goki_ct_proc(actorx, game);
     if (my_room->state == 0) {
         aMR_RequestPlayerBikkuri(actorx, game);
@@ -3032,6 +3088,11 @@ static void My_Room_Actor_move(ACTOR* actorx, GAME* game) {
                 mBGMPsComp_MDPlayerPos_param_set(&md_ftr_actor->position, md_angle,
                                                  aMR_Fname2ConpoIndex(md_ftr_actor->name), (u32)md_ftr_actor);
             }
+#ifdef TARGET_PC
+            if (aMR_pc_field) {
+                aMR_pc_md_range(my_room, md_ftr_actor, game);
+            }
+#endif
         }
     }
 
@@ -3194,13 +3255,13 @@ static int aMR_ftrID2Wpos(xyz_t* pos, int ftrID) {
 
 static int aMR_UnitNum2FtrItemNoFtrID(mActor_name_t* item_no, int* ftrID, int ut_x, int ut_z, int layer) {
     /* ut_x & ut_z are in world coordinates so they go above the standard 0-15 */
-    int local_ut_x = ut_x & 0xF;
-    int local_ut_z = ut_z & 0xF;
+    int local_ut_x = aMR_LOCAL_UT(ut_x);
+    int local_ut_z = aMR_LOCAL_UT(ut_z);
     mActor_name_t* fg_p = aMR_GetLayerTopFg(layer);
-    u8* place_table = aMR_GetLayerPlaceTable(layer);
+    aMR_place_t* place_table = aMR_GetLayerPlaceTable(layer);
 
     if (fg_p != NULL) {
-        int ut = local_ut_x + local_ut_z * UT_X_NUM;
+        int ut = local_ut_x + local_ut_z * aMR_UT_X_NUM;
         int targetFtrID = place_table[ut];
 
         if (targetFtrID != aMR_NO_FTR_ID && targetFtrID != aMR_NO_FTR_ID2 && l_aMR_work.ftr_actor_list != NULL &&
@@ -3250,7 +3311,7 @@ static void aMR_FtrID2ExtinguishFurniture(int ftrID) {
             int ut;
 
             if (aMR_Wpos2PlaceNumber(&ut_x, &ut_z, ftr_actor->position, ftr_actor->shape_type)) {
-                ut = ut_x + ut_z * UT_X_NUM;
+                ut = ut_x + ut_z * aMR_UT_X_NUM;
                 aMR_SetFurniture2FG(ftr_actor, ftr_actor->position, FALSE);
                 ftr_actor->state = aFTR_STATE_BYE;
                 aMR_SetCleanUpFtrSE(ftr_actor->position);
@@ -3270,11 +3331,11 @@ static int aMR_JudgePlace2ndLayer(int ut_x, int ut_z) {
         if (aMR_CheckRoomOwner(player_no, my_room)) {
             mActor_name_t* fg_layer0_p = aMR_GetLayerTopFg(mCoBG_LAYER0);
             mActor_name_t* fg_layer1_p = aMR_GetLayerTopFg(mCoBG_LAYER1);
-            int local_ut_x = ut_x & 0xF;
-            int local_ut_z = ut_z & 0xF;
+            int local_ut_x = aMR_LOCAL_UT(ut_x);
+            int local_ut_z = aMR_LOCAL_UT(ut_z);
 
-            if (local_ut_x < UT_X_NUM && local_ut_z < UT_Z_NUM && fg_layer0_p != NULL && fg_layer1_p != NULL) {
-                int ut = local_ut_x + local_ut_z * UT_X_NUM;
+            if (local_ut_x < aMR_UT_X_NUM && local_ut_z < aMR_UT_Z_NUM && fg_layer0_p != NULL && fg_layer1_p != NULL) {
+                int ut = local_ut_x + local_ut_z * aMR_UT_X_NUM;
                 mActor_name_t item;
                 int ftrID;
 
@@ -3373,6 +3434,12 @@ static void aMR_OpenCloseCommonMove(FTR_ACTOR* ftr_actor, ACTOR* actorx, GAME* g
 static void aMR_MiniDiskCommonMove(FTR_ACTOR* ftr_actor, ACTOR* actorx, GAME* game, f32 start, f32 end) {
 
     if (ftr_actor->haniwa_state == 1) {
+#ifdef TARGET_PC
+        /* ac-plus: switched on with no disc (outdoor furniture loaded without it once): off, not a random song */
+        if (ftr_actor->items[0] < ITM_MINIDISK_START || ftr_actor->items[0] > ITM_MINIDISK_END) {
+            ftr_actor->switch_bit = FALSE;
+        } else
+#endif
         aMR_ReserveBgm(actorx, BGM_MD0 + (ftr_actor->items[0] - ITM_MINIDISK_START), ftr_actor, 0);
         ftr_actor->haniwa_state = 0;
     }

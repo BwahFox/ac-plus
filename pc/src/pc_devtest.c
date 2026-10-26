@@ -525,7 +525,7 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
         }
     } else if (strcmp(cmd, "menu") == 0 && sscanf(line, "%*s %d", &n) == 1) {
         extern void pc_pause_menu_dev_action(int act);
-        pc_pause_menu_dev_action(n); /* 1 up, 2 down, 3 left, 4 right, 5 A, 6 B */
+        pc_pause_menu_dev_action(n); /* 0 open/close, 1 up, 2 down, 3 left, 4 right, 5 A, 6 B */
     } else if (strcmp(cmd, "skinpick") == 0) {
         extern void pc_skin_pick_open(int player, int can_cancel);
         extern int pc_skin_now_player(void);
@@ -542,9 +542,25 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
         extern void pc_dev_mtree(void* play, int dx, int dz);
         extern void* gamePT;
         pc_dev_mtree(gamePT, x, y);
+    } else if (strcmp(cmd, "open") == 0) {
+        extern void pc_dev_open_trees(void);
+        pc_dev_open_trees();
     } else if (strcmp(cmd, "fgfind") == 0 && sscanf(line, "%*s %x", &n) == 1) {
         extern void pc_dev_fg_find(int item);
         pc_dev_fg_find(n);
+    } else if (strcmp(cmd, "oftr") == 0 && sscanf(line, "%*s %d %d %x", &x, &y, &n) == 3) {
+        /* oftr DX DZ FTR(hex): furniture outdoors near the player, there once the scene is entered again */
+        extern void pc_dev_oftr(void* play, int dx, int dz, int ftr);
+        extern void* gamePT;
+        pc_dev_oftr(gamePT, x, y, n);
+    } else if (strcmp(cmd, "place") == 0 && sscanf(line, "%*s %x", &n) == 1) {
+        /* place FTR(hex): as Place from the pockets, in front of the player */
+        extern void pc_dev_place(void* play, int ftr);
+        extern void* gamePT;
+        pc_dev_place(gamePT, n);
+    } else if (strcmp(cmd, "oftrfill") == 0 && sscanf(line, "%*s %d", &n) == 1) {
+        extern void aMR_pc_dev_fill(int per_acre);
+        aMR_pc_dev_fill(n);
     } else if (strcmp(cmd, "quit") == 0) {
         *quit_at = (int)s_frame;
     } else if (strcmp(cmd, "exit") == 0) {

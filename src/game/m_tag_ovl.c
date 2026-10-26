@@ -21,6 +21,7 @@
 #ifdef TARGET_PC
 #include "pc_storage.h"
 #include "pc_dresser.h"
+#include "pc_outdoor_ftr.h"
 #else
 #define pc_storage_slot(home, idx) (&Save_Get(homes[home]).haniwa.items[idx])
 #endif
@@ -256,6 +257,9 @@ static void mTG_nw_st_umbrella_proc(Submenu*, mSM_MenuInfo_c*);
 static void mTG_nw_st_wear_proc(Submenu*, mSM_MenuInfo_c*);
 static void mTG_change_original_proc(Submenu*, mSM_MenuInfo_c*);
 static void mTG_drop_proc(Submenu*, mSM_MenuInfo_c*);
+#ifdef TARGET_PC
+static void mTG_field_place_ftr_proc(Submenu*, mSM_MenuInfo_c*);
+#endif
 
 static mTG_tag_word_c mTG_tag_word_akeru = {
     "Open            ",
@@ -326,6 +330,13 @@ static mTG_tag_word_c mTG_tag_word_zimennioku = {
     "Drop            ",
     &mTG_field_put_proc,
 };
+
+#ifdef TARGET_PC
+static mTG_tag_word_c mTG_tag_word_field_place_ftr = {
+    "Place           ",
+    &mTG_field_place_ftr_proc,
+};
+#endif
 
 static mTG_tag_word_c mTG_tag_word_suteru = {
     "Throw Away      ",
@@ -670,6 +681,34 @@ static mTG_tag_word_c* mTG_field_default_bury[] = {
     &mTG_tag_word_zimenniumeru,
     &mTG_tag_word_yameru,
 };
+
+#ifdef TARGET_PC
+static mTG_tag_word_c* mTG_field_ftr[] = {
+    &mTG_tag_word_tukamu,
+    &mTG_tag_word_field_place_ftr,
+    &mTG_tag_word_zimennioku,
+    &mTG_tag_word_yameru,
+};
+
+static mTG_tag_word_c* mTG_field_ftr_bury[] = {
+    &mTG_tag_word_tukamu,       &mTG_tag_word_field_place_ftr, &mTG_tag_word_zimennioku,
+    &mTG_tag_word_zimenniumeru, &mTG_tag_word_yameru,
+};
+
+/* Fish and bugs outdoors in the home town: Place puts down their tank or case, as in a room */
+static mTG_tag_word_c* mTG_field_catch_ftr[] = {
+    &mTG_tag_word_tukamu,
+    &mTG_tag_word_field_place_ftr,
+    &mTG_tag_word_yameru,
+};
+
+static mTG_tag_word_c* mTG_field_release_ftr[] = {
+    &mTG_tag_word_tukamu,
+    &mTG_tag_word_nigasu,
+    &mTG_tag_word_field_place_ftr,
+    &mTG_tag_word_yameru,
+};
+#endif
 
 static mTG_tag_word_c* mTG_field_letter[] = {
     &mTG_tag_word_tukamu,
@@ -1210,6 +1249,12 @@ static mTG_tag_data_c mTG_label_table[] = {
     { mTG_tag_nw_select_put, ARRAY_COUNT(mTG_tag_nw_select_put) },           /* mTG_TYPE_TAG_NW_SELECT_PUT */
     { NULL, 0 },                                                             /* mTG_TYPE_76 */
     { mTG_tag_password_item, ARRAY_COUNT(mTG_tag_password_item) },           /* mTG_TYPE_TAG_PASSWORD_ITEM */
+#ifdef TARGET_PC
+    { mTG_field_ftr, ARRAY_COUNT(mTG_field_ftr) },                           /* mTG_TYPE_FIELD_FTR */
+    { mTG_field_ftr_bury, ARRAY_COUNT(mTG_field_ftr_bury) },                 /* mTG_TYPE_FIELD_FTR_BURY */
+    { mTG_field_catch_ftr, ARRAY_COUNT(mTG_field_catch_ftr) },               /* mTG_TYPE_FIELD_CATCH_FTR */
+    { mTG_field_release_ftr, ARRAY_COUNT(mTG_field_release_ftr) },           /* mTG_TYPE_FIELD_RELEASE_FTR */
+#endif
 };
 
 static void mTG_init_tag_data_item_win(Submenu*);
@@ -4033,6 +4078,25 @@ static int mTG_check_island_famicom(mActor_name_t item) {
     return res;
 }
 
+#ifdef TARGET_PC
+/* Outdoors in the home town an item goes on top of the furniture in front of the player first, as in a room
+ * (outdoor furniture: ac_my_room.c stands in for the room's shop goods actor) */
+static int mTG_pc_put_on_furniture(GAME_PLAY* play, ACTOR* player, mActor_name_t item) {
+    xyz_t ut_pos;
+    int ux;
+    int uz;
+
+    if (!pc_oftr_here() || aMR_CLIP == NULL || Common_Get(clip).shop_goods_clip == NULL ||
+        ITEM_NAME_GET_TYPE(item) != NAME_TYPE_ITEM1 || item == ITM_SIGNBOARD) {
+        return FALSE;
+    }
+    mTG_get_unit_front_player(&ut_pos, &player->world.position, player->shape_info.rotation.y);
+    return mFI_Wpos2UtNum(&ux, &uz, ut_pos) && pc_oftr_fg(mCoBG_LAYER1)[ux + uz * PC_OFTR_UT_X_NUM] == EMPTY_NO &&
+           aMR_CLIP->judge_place_2nd_layer_proc(ux, uz) &&
+           Common_Get(clip).shop_goods_clip->player_drop_entry_proc(&play->game, item, ux, uz, mCoBG_LAYER1, 0);
+}
+#endif
+
 static void mTG_field_put_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
     GAME_PLAY* play = (GAME_PLAY*)gamePT;
     ACTOR* player = GET_PLAYER_ACTOR_ACTOR(play);
@@ -4086,9 +4150,13 @@ static void mTG_field_put_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
                    mFI_CheckInIsland()) {
             mTG_open_warning_window(submenu, menu_info, mWR_WARNING_PUT_FAMI);
         } else {
-            if (mTG_search_put_pos(player, &pos, put_item == ITM_SIGNBOARD, FALSE, put_item == ITM_SIGNBOARD,
+            if (
+#ifdef TARGET_PC
+                mTG_pc_put_on_furniture(play, player, put_item) ||
+#endif
+                (mTG_search_put_pos(player, &pos, put_item == ITM_SIGNBOARD, FALSE, put_item == ITM_SIGNBOARD,
                                    put_item == ITM_SIGNBOARD, put_item == ITM_SIGNBOARD) &&
-                mTG_common_throw_put_field(play, put_item, &pos, mCoBG_LAYER0)) {
+                mTG_common_throw_put_field(play, put_item, &pos, mCoBG_LAYER0))) {
                 if (menu_info->data0 == 13) {
                     mPr_SetPossessionItem(Now_Private, idx, (mActor_name_t)menu_info->data1, mPr_ITEM_COND_NORMAL);
                     mPlib_request_main_wait_from_submenu();
@@ -4218,6 +4286,48 @@ static void mTG_room_put_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
             break;
     }
 }
+
+#ifdef TARGET_PC
+/* Furniture outdoors in the town: stands in front of the player as in a room (ac_my_room.c field mode) */
+static void mTG_field_place_ftr_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
+    GAME_PLAY* play = (GAME_PLAY*)gamePT;
+    mTG_tag_c* tag = &submenu->overlay->tag_ovl->tags[0];
+    int idx = mTG_get_table_idx(tag);
+    mActor_name_t pocket_item = Now_Private->inventory.pockets[idx];
+    mActor_name_t put_item = mRmTp_Item1ItemNo2FtrItemNo_AtPlayerRoom(pocket_item, TRUE);
+    int dresser_id = pc_dresser_take_pocket(idx, pocket_item);
+    int ftrID;
+
+    pc_dresser_set_pending(dresser_id);
+    ftrID = mTG_drop_furniture(play, put_item);
+    if (ftrID >= 0) {
+        mPr_SetPossessionItem(Now_Private, idx, EMPTY_NO, mPr_ITEM_COND_NORMAL);
+        mTG_return_tag_init(submenu, mTG_TYPE_NONE, mTG_RETURN_CLOSE);
+        mTG_close_window(submenu, menu_info, FALSE);
+    } else {
+        ACTOR* player = GET_PLAYER_ACTOR_ACTOR(play);
+        xyz_t front = player->world.position;
+        int ut_x;
+        int ut_z;
+
+        pc_dresser_set_pending(0);
+        pc_dresser_tag_pocket(idx, pocket_item, dresser_id);
+        /* the unit in front of the player: if its acre is full, that's why (pc_outdoor_ftr.c) */
+        front.x += sin_s(player->shape_info.rotation.y) * mFI_UT_WORLDSIZE_X_F;
+        front.z += cos_s(player->shape_info.rotation.y) * mFI_UT_WORLDSIZE_Z_F;
+        if (mFI_Wpos2UtNum(&ut_x, &ut_z, front) && pc_oftr_acre_full(ut_x + ut_z * PC_OFTR_UT_X_NUM)) {
+            extern void pc_quick_save_show_message(const char* msg);
+
+            mTG_return_tag_init(submenu, mTG_TYPE_NONE, mTG_RETURN_CLOSE);
+            mTG_close_window(submenu, menu_info, FALSE);
+            pc_quick_save_show_message("This acre can't hold any more furniture.");
+        } else {
+            mTG_open_warning_window(submenu, menu_info,
+                                    ftrID == -1 ? mWR_WARNING_PUT_MAX_FURNITURE : mWR_WARNING_PUT_FURNITURE);
+        }
+    }
+}
+#endif
 
 static void mTG_put_all_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
     switch (Common_Get(field_type)) {
@@ -6891,6 +7001,11 @@ static int mTG_select_tag_decide_item_normal(Submenu* submenu, mActor_name_t ite
         ret_tag_type = mTG_TYPE_TAISOU_CARD;
     } else if (type == NAME_TYPE_FTR0 || type == NAME_TYPE_FTR1) {
         ret_tag_type = tag_type[Common_Get(field_type)][ITEM1_CAT_CLOTH];
+#ifdef TARGET_PC
+        if (ret_tag_type == mTG_TYPE_FIELD_DEFAULT && pc_oftr_here()) {
+            ret_tag_type = mTG_TYPE_FIELD_FTR;
+        }
+#endif
     } else if (ITEM_IS_WISP(item)) {
         int wisp_cnt = ITEM_IS_WISP(item) ? (1 + (item - ITM_SPIRIT0)) : 0;
 
@@ -6957,6 +7072,11 @@ static int mTG_select_tag_decide_item_normal(Submenu* submenu, mActor_name_t ite
             } else if (ret_tag_type == mTG_TYPE_FIELD_TICKET) {
                 ret_tag_type = mTG_TYPE_FIELD_TICKET_BURY;
             }
+#ifdef TARGET_PC
+            else if (ret_tag_type == mTG_TYPE_FIELD_FTR) {
+                ret_tag_type = mTG_TYPE_FIELD_FTR_BURY;
+            }
+#endif
         }
     }
 
@@ -6965,6 +7085,19 @@ static int mTG_select_tag_decide_item_normal(Submenu* submenu, mActor_name_t ite
             ret_tag_type = mTG_TYPE_FIELD_PLANT_JOB;
         }
     }
+
+#ifdef TARGET_PC
+    /* Fish and bugs outdoors in the home town can be placed as their tank or case (outdoor furniture) */
+    if (pc_oftr_here() && type == NAME_TYPE_ITEM1 && (category == ITEM1_CAT_FISH || category == ITEM1_CAT_INSECT) &&
+        (item_cond & (mPr_ITEM_COND_PRESENT | mPr_ITEM_COND_QUEST)) == 0 &&
+        ITEM_IS_FTR(mRmTp_Item1ItemNo2FtrItemNo_AtPlayerRoom(item, TRUE))) {
+        if (ret_tag_type == mTG_TYPE_CATCH_ITEM) {
+            ret_tag_type = mTG_TYPE_FIELD_CATCH_FTR;
+        } else if (ret_tag_type == mTG_TYPE_FIELD_RELEASE) {
+            ret_tag_type = mTG_TYPE_FIELD_RELEASE_FTR;
+        }
+    }
+#endif
 
     return ret_tag_type;
 }

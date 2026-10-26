@@ -300,7 +300,11 @@ typedef struct bg_register_s {
     f32* scale_percent;
 } mCoBG_bg_regist_c;
 
+#ifdef TARGET_PC
+#define mCoBG_MOVE_REGIST_MAX 1280 /* outdoor furniture (pc_outdoor_ftr.c) brings its collision */
+#else
 #define mCoBG_MOVE_REGIST_MAX 64
+#endif
 typedef struct bg_mgr_s {
     mCoBG_bg_regist_c* regist_p[mCoBG_MOVE_REGIST_MAX];
     int count;

@@ -30,6 +30,12 @@ PCSettings g_pc_settings = {
     .server_sync = 0,
     .server_sync_host = "",
     .server_sync_dir = "ac-plus-saves/sync",
+    .sync_enabled = 0,
+    .sync_url = "",
+    .sync_token = "",
+    .update_check = 1,
+    .update_repo = "BwahFox/ac-plus",
+    .update_skip = "",
     .music_pack = "",
     .music_volume = 100,
     .stick_deadzone = 12,
@@ -115,6 +121,21 @@ static const char* DEFAULT_SETTINGS =
     "server_sync = 0\n"
     "server_sync_host =\n"
     "server_sync_dir = ac-plus-saves/sync\n"
+    "\n"
+    "# In-game sync: 1 = the game keeps the town in sync with an ac-plus-server by itself (no wrapper\n"
+    "# script): it downloads a newer save at startup and uploads after every save. sync_url is the server\n"
+    "# (https://... or http://...), sync_token comes from the server's add-token. See server/README.md.\n"
+    "sync_enabled = 0\n"
+    "sync_url =\n"
+    "sync_token =\n"
+    "\n"
+    "[Updates]\n"
+    "# Update check: 1 = at startup, look for a newer ac-plus release and offer to install it (saves, settings,\n"
+    "# music and texture packs are kept). update_repo is the GitHub repository it comes from (owner/name), so a\n"
+    "# fork can point it at its own. update_skip is a release you chose to skip.\n"
+    "update_check = 1\n"
+    "update_repo = BwahFox/ac-plus\n"
+    "update_skip =\n"
     "\n"
     "[Audio]\n"
     "# Master output volume as a percentage (0-100)\n"
@@ -213,6 +234,18 @@ static void apply_setting(const char* key, const char* value) {
         snprintf(g_pc_settings.server_sync_host, sizeof(g_pc_settings.server_sync_host), "%s", value);
     } else if (strcmp(key, "server_sync_dir") == 0) {
         snprintf(g_pc_settings.server_sync_dir, sizeof(g_pc_settings.server_sync_dir), "%s", value);
+    } else if (strcmp(key, "sync_enabled") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.sync_enabled = val;
+    } else if (strcmp(key, "sync_url") == 0) {
+        snprintf(g_pc_settings.sync_url, sizeof(g_pc_settings.sync_url), "%s", value);
+    } else if (strcmp(key, "sync_token") == 0) {
+        snprintf(g_pc_settings.sync_token, sizeof(g_pc_settings.sync_token), "%s", value);
+    } else if (strcmp(key, "update_check") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.update_check = val;
+    } else if (strcmp(key, "update_repo") == 0) {
+        snprintf(g_pc_settings.update_repo, sizeof(g_pc_settings.update_repo), "%s", value);
+    } else if (strcmp(key, "update_skip") == 0) {
+        snprintf(g_pc_settings.update_skip, sizeof(g_pc_settings.update_skip), "%s", value);
     } else if (strcmp(key, "stick_deadzone") == 0) {
         if (val >= 0 && val <= 40) g_pc_settings.stick_deadzone = val;
     } else if (strcmp(key, "mouse_mode") == 0) {
@@ -337,6 +370,21 @@ void pc_settings_save(void) {
     fprintf(f, "server_sync = %d\n", g_pc_settings.server_sync);
     fprintf(f, "server_sync_host = %s\n", g_pc_settings.server_sync_host);
     fprintf(f, "server_sync_dir = %s\n", g_pc_settings.server_sync_dir);
+    fprintf(f, "\n");
+    fprintf(f, "# In-game sync: 1 = the game keeps the town in sync with an ac-plus-server by itself (no wrapper\n");
+    fprintf(f, "# script): it downloads a newer save at startup and uploads after every save. sync_url is the server\n");
+    fprintf(f, "# (https://... or http://...), sync_token comes from the server's add-token. See server/README.md.\n");
+    fprintf(f, "sync_enabled = %d\n", g_pc_settings.sync_enabled);
+    fprintf(f, "sync_url = %s\n", g_pc_settings.sync_url);
+    fprintf(f, "sync_token = %s\n", g_pc_settings.sync_token);
+    fprintf(f, "\n");
+    fprintf(f, "[Updates]\n");
+    fprintf(f, "# Update check: 1 = at startup, look for a newer ac-plus release and offer to install it (saves, settings,\n");
+    fprintf(f, "# music and texture packs are kept). update_repo is the GitHub repository it comes from (owner/name), so a\n");
+    fprintf(f, "# fork can point it at its own. update_skip is a release you chose to skip.\n");
+    fprintf(f, "update_check = %d\n", g_pc_settings.update_check);
+    fprintf(f, "update_repo = %s\n", g_pc_settings.update_repo);
+    fprintf(f, "update_skip = %s\n", g_pc_settings.update_skip);
     fprintf(f, "\n");
     fprintf(f, "[Audio]\n");
     fprintf(f, "# Master output volume as a percentage (0-100)\n");

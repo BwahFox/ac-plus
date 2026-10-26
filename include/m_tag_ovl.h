@@ -141,6 +141,12 @@ enum {
     mTG_TYPE_TAG_NW_SELECT_PUT,
     mTG_TYPE_76,
     mTG_TYPE_TAG_PASSWORD_ITEM,
+#ifdef TARGET_PC
+    mTG_TYPE_FIELD_FTR,      /* furniture outdoors in the town: Place as well (pc_outdoor_ftr.c) */
+    mTG_TYPE_FIELD_FTR_BURY,
+    mTG_TYPE_FIELD_CATCH_FTR,   /* a fish outdoors in the town: Grab, Place (its tank), Quit */
+    mTG_TYPE_FIELD_RELEASE_FTR, /* a bug, or a fish by the water: Release as well */
+#endif
 
     mTG_TYPE_NUM
 };

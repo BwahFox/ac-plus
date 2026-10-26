@@ -92,6 +92,20 @@ static void Player_actor_Item_draw(ACTOR* actor, GAME* game) {
     PLAYER_ACTOR* player = (PLAYER_ACTOR*)actor;
     int now_index = player->now_item_main_index;
 
+#ifdef TARGET_PC
+    /* ac-plus: the tool is put away while handling furniture (outdoor furniture makes that common), back after */
+    switch (player->now_main_index) {
+        case mPlayer_INDEX_HOLD:
+        case mPlayer_INDEX_PUSH:
+        case mPlayer_INDEX_PULL:
+        case mPlayer_INDEX_ROTATE_FURNITURE:
+        case mPlayer_INDEX_OPEN_FURNITURE:
+        case mPlayer_INDEX_CLOSE_FURNITURE:
+        case mPlayer_INDEX_PICKUP_FURNITURE:
+            return;
+    }
+#endif
+
     if (mPlayer_ITEM_MAIN_VALID(now_index)) {
         GRAPH* graph = game->graph;
 

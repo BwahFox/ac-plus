@@ -22,6 +22,7 @@ extern "C" {
 
 #define PC_DRESSER_MAX 128
 #define PC_DRESSER_HOUSES 5 /* the four houses and the island cottage */
+#define PC_DRESSER_TOWN PC_DRESSER_HOUSES
 
 void pc_dresser_reset(void);
 int pc_dresser_read_chunk(const char tag[4], void* f, unsigned int size);
@@ -34,9 +35,12 @@ PCExtStoredItem* pc_dresser_items(int id);
 /* An ID for storage furniture that has none (see above); 0 when all PC_DRESSER_MAX are taken */
 int pc_dresser_new_id(void);
 
-/* Rooms: house 0-3 (homes[]) or 4 (the cottage), floor 0-2 (mFI_GetPlayerHouseFloorNo) */
+/* Rooms: house 0-3 (homes[]) or 4 (the cottage), floor 0-2 (mFI_GetPlayerHouseFloorNo); outdoors in the town
+ * PC_DRESSER_TOWN, floor 0, with ut a unit of the town's grid (pc_outdoor_ftr.c) */
 int pc_dresser_bound(int house, int floor, int layer, int ut);
 void pc_dresser_room_clear(int house, int floor);
+/* Outdoors: forget the town's bindings in the units [x0, x1) x [z0, z1) of a grid w units wide */
+void pc_dresser_town_clear(int w, int x0, int z0, int x1, int z1);
 void pc_dresser_room_bind(int house, int floor, int layer, int ut, int id);
 
 /* Pockets (of the player playing): furniture with `id` was just picked up into `slot` */

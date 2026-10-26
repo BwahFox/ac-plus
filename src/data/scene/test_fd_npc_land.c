@@ -8,7 +8,11 @@ extern s16 TEST_FD_NPC_LAND_object_bank[];
 extern Scene_Word_u test_fd_npc_land_info[] = {
     mSc_DATA_SOUND(0, 0),                                       // Sound data
     mSc_DATA_PLAYER(TEST_FD_NPC_LAND_player_data),              // Player Data
+    #ifdef TARGET_PC
+    mSc_DATA_CTRL_ACTORS(18, TEST_FD_NPC_LAND_ctrl_actor_data), // Control actors
+#else
     mSc_DATA_CTRL_ACTORS(17, TEST_FD_NPC_LAND_ctrl_actor_data), // Control actors
+#endif
     mSc_DATA_ACTORS(2, TEST_FD_NPC_LAND_actor_data),            // Player Data
     mSc_DATA_OBJ_BANK(2, TEST_FD_NPC_LAND_object_bank),         // Required object banks
     mSc_DATA_FIELDCT(mSc_ITEM_TYPE_BGITEM, 4, 0x1C00, mSc_ROOM_TYPE_OUTDOORS,
@@ -43,6 +47,9 @@ extern s16 TEST_FD_NPC_LAND_ctrl_actor_data[] = {
     mAc_PROFILE_SET_NPC_MANAGER, // 14
     mAc_PROFILE_BALL,            // 15
     mAc_PROFILE_MSCORE_CONTROL,  // 16
+#ifdef TARGET_PC
+    mAc_PROFILE_MY_ROOM, // 17: furniture outdoors (pc_outdoor_ftr.c)
+#endif
 };
 
 extern Actor_data TEST_FD_NPC_LAND_actor_data[] = {

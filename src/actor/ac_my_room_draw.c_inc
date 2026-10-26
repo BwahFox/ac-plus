@@ -273,6 +273,28 @@ static void aMR_DrawOneFurniture(FTR_ACTOR* ftr_actor, ACTOR* actorx, GAME* game
     }
 }
 
+#ifdef TARGET_PC
+/* Outdoors only what the camera can see is drawn (a room shows all of itself): the actors' own test, with sizes
+ * for a piece of furniture */
+static int aMR_pc_in_view(GAME_PLAY* play, FTR_ACTOR* ftr_actor) {
+    static ACTOR cull;
+    xyz_t pos;
+    xyz_t proj;
+    f32 w;
+
+    if (!aMR_pc_field) {
+        return TRUE;
+    }
+    cull.cull_width = 100.0f;
+    cull.cull_height = 200.0f;
+    cull.cull_distance = 1200.0f;
+    cull.cull_radius = 100.0f;
+    pc_sky_curve_world(&ftr_actor->position.x, &pos.x); /* where the curved world draws it */
+    Skin_Matrix_PrjMulVector(&play->projection_matrix, &pos, &proj, &w);
+    return Actor_draw_actor_no_culling_check2(&cull, &proj, w);
+}
+#endif
+
 static void aMR_DrawFurniture(MY_ROOM_ACTOR* my_room, GAME_PLAY* play, int ftr_flag, u16 ftr_no) {
     ACTOR* actorx = (ACTOR*)my_room;
     GAME* game = (GAME*)play;
@@ -286,12 +308,21 @@ static void aMR_DrawFurniture(MY_ROOM_ACTOR* my_room, GAME_PLAY* play, int ftr_f
 
     CLOSE_DISP(game->graph);
 
-    for (z = UT_Z_NUM - 1; z >= 0; z--) {
+    for (z = aMR_UT_Z_NUM - 1; z >= 0; z--) {
         FTR_ACTOR* ftr_actor = l_aMR_work.ftr_actor_list;
         u8* used = l_aMR_work.used_list;
 
+#ifdef TARGET_PC
+        if (aMR_pc_field && (z < (aMR_pc_acre_z - 1) * UT_Z_NUM || z >= (aMR_pc_acre_z + 2) * UT_Z_NUM)) {
+            continue; /* no loaded acre has this row */
+        }
+#endif
         for (i = 0; i < l_aMR_work.list_size; i++) {
+#ifdef TARGET_PC
+            if (*used == TRUE && mFI_POS2UT(ftr_actor->position.z) == z && aMR_pc_in_view(play, ftr_actor)) {
+#else
             if (*used == TRUE && mFI_POS2UT(ftr_actor->position.z) == z) {
+#endif
                 if ((ftr_flag == FALSE && ftr_actor->name != ftr_no) ||
                     (ftr_flag == TRUE && ftr_actor->name == ftr_no)) {
                     int alpha_edge;
@@ -375,4 +406,7 @@ static void My_Room_Actor_draw(ACTOR* actorx, GAME* game) {
     aMR_DrawFurniture(my_room, play, FALSE, FTR_TAK_TOUDAI); /* lighthouse model */
     aMR_DrawFurniture(my_room, play, TRUE, FTR_TAK_TOUDAI);  /* lighthouse model */
     aMR_DrawLeaf(my_room, play);
+#ifdef TARGET_PC
+    aMR_pc_draw_items_on_top(game); /* outdoors: no shop goods actor to draw them */
+#endif
 }

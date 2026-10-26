@@ -135,7 +135,7 @@ static int aMR_FtrColCheck(xyz_t pos, f32 radius) {
 
             ut_x = (int)(chk_pos.x / mFI_UT_WORLDSIZE_X_F);
             ut_z = (int)(chk_pos.z / mFI_UT_WORLDSIZE_Z_F);
-            ut = ut_x + ut_z * UT_X_NUM;
+            ut = ut_x + ut_z * aMR_UT_X_NUM;
 
             if (ITEM_IS_FTR(fg_p[ut]) || fg_p[ut] == RSV_FE1F) {
                 mActor_name_t item_no;
@@ -192,6 +192,13 @@ static int aMR_ConvertDirectLevel(int direct) {
     return -1;
 }
 
+#ifdef TARGET_PC
+/* The floor a piece is pushed over; outdoors grass (one of the two carpets the lawn mower mows) */
+#define aMR_FLOOR_IDX() (aMR_pc_field ? FLOOR_NPC026 : Common_Get(floor_idx))
+#else
+#define aMR_FLOOR_IDX() Common_Get(floor_idx)
+#endif
+
 static void aMR_SetMoveSE(FTR_ACTOR* ftr_actor) {
     aMR_contact_info_c* contact_layer;
     int floor_idx;
@@ -218,7 +225,7 @@ static void aMR_SetMoveSE(FTR_ACTOR* ftr_actor) {
             }
             break;
         case FTR_NOG_LAWNMOWER: /* lawn mower */
-            floor_idx = Common_Get(floor_idx);
+            floor_idx = aMR_FLOOR_IDX();
 
             if (floor_idx == FLOOR_NPC026 || floor_idx == FLOOR_NPC048) {
                 contact_layer = aMR_GetContactInfoLayer1();
@@ -234,17 +241,21 @@ static void aMR_SetMoveSE(FTR_ACTOR* ftr_actor) {
                     }
                 }
             } else {
-                sAdo_FloorTrgStart(Common_Get(floor_idx), &ftr_actor->position);
+                sAdo_FloorTrgStart(aMR_FLOOR_IDX(), &ftr_actor->position);
             }
             break;
         default:
-            sAdo_FloorTrgStart(Common_Get(floor_idx), &ftr_actor->position);
+            sAdo_FloorTrgStart(aMR_FLOOR_IDX(), &ftr_actor->position);
             break;
     }
 }
 
 static void aMR_SetRotateSE(FTR_ACTOR* ftr_actor) {
+#ifdef TARGET_PC
+    if (mFI_GET_TYPE(mFI_GetFieldId()) == mFI_FIELD_PLAYER0_ROOM || aMR_pc_field) {
+#else
     if (mFI_GET_TYPE(mFI_GetFieldId()) == mFI_FIELD_PLAYER0_ROOM) {
+#endif
         sAdo_OngenTrgStart(NA_SE_ROTATE, &ftr_actor->position);
     }
 }
@@ -338,13 +349,18 @@ static int aMR_CheckPullPlayerObstacle(xyz_t* pull0, xyz_t* pull1, PLAYER_ACTOR*
         int ut_z = (int)(player->actor_class.world.position.z / mFI_UT_WORLDSIZE_Z_F);
 
         if (aMR_Direct2PlussUnit(&ut_x, &ut_z, direct)) {
-            int ut = ut_x + ut_z * UT_X_NUM;
+            int ut = ut_x + ut_z * aMR_UT_X_NUM;
             mActor_name_t item_no;
             int ftrID;
 
             if (fg_p[ut] == RSV_WALL_NO || fg_p[ut] == RSV_FE1C || ITEM_NAME_GET_TYPE(fg_p[ut]) == NAME_TYPE_WARP) {
                 return TRUE;
             }
+#ifdef TARGET_PC
+            if (aMR_pc_field && !pc_oftr_unit_walkable(ut_x, ut_z, player->actor_class.world.position.y)) {
+                return TRUE; /* water, a cliff or a tree behind the player */
+            }
+#endif
 
             aMR_UnitNum2FtrItemNoFtrID(&item_no, &ftrID, ut_x, ut_z, mCoBG_LAYER0);
             if ((ITEM_IS_FTR(item_no) || item_no == RSV_FE1F) && ftrID >= 0 && ftrID < l_aMR_work.list_size) {
@@ -404,11 +420,11 @@ static void aMR_PlacePullFurniture(MY_ROOM_ACTOR* my_room, aMR_contact_info_c* c
             int target_ut;
 
             aMR_Wpos2PlaceNumber(&ut_x, &ut_z, ftr_actor->position, ftr_actor->shape_type);
-            ut = ut_x + ut_z * UT_X_NUM;
+            ut = ut_x + ut_z * aMR_UT_X_NUM;
 
             target_ut_x = ut_x + move_table[direct].x;
             target_ut_z = ut_z + move_table[direct].z;
-            target_ut = target_ut_x + target_ut_z * UT_X_NUM;
+            target_ut = target_ut_x + target_ut_z * aMR_UT_X_NUM;
 
             if (aMR_JudgeStickFull(direct, game) == TRUE) {
                 xyz_t* target_pos = &target_table[direct];
@@ -446,6 +462,9 @@ static void aMR_PlacePullFurniture(MY_ROOM_ACTOR* my_room, aMR_contact_info_c* c
                             }
                         } else {
                             /* Can't move the furniture */
+#ifdef TARGET_PC
+                            aMR_pc_full_acre_notice(ut, target_ut);
+#endif
                             aMR_SetInfoFurnitureTable(ftr_actor->shape_type, ut, ftr_actor->id, ftr_actor->layer);
                             aMR_SetFurniture2FG(ftr_actor, ftr_actor->position, TRUE);
                             aMR_SetBubu(player, my_room, game, &my_room->pull_bubu);
@@ -492,11 +511,11 @@ static void aMR_PlacePushFurniture(MY_ROOM_ACTOR* my_room, aMR_contact_info_c* c
             int target_ut;
 
             aMR_Wpos2PlaceNumber(&ut_x, &ut_z, ftr_actor->position, ftr_actor->shape_type);
-            ut = ut_x + ut_z * UT_X_NUM;
+            ut = ut_x + ut_z * aMR_UT_X_NUM;
 
             target_ut_x = ut_x + push_move_table[direct].x;
             target_ut_z = ut_z + push_move_table[direct].z;
-            target_ut = target_ut_x + target_ut_z * UT_X_NUM;
+            target_ut = target_ut_x + target_ut_z * aMR_UT_X_NUM;
 
             if (aMR_JudgeStickFull(aMR_PullDirect2PushDirect(direct), game)) {
                 xyz_t* target_pos = &push_target_table[direct];
@@ -527,6 +546,9 @@ static void aMR_PlacePushFurniture(MY_ROOM_ACTOR* my_room, aMR_contact_info_c* c
                     }
                 } else {
                     /* Can't move the furniture */
+#ifdef TARGET_PC
+                    aMR_pc_full_acre_notice(ut, target_ut);
+#endif
                     aMR_SetInfoFurnitureTable(ftr_actor->shape_type, ut, ftr_actor->id, ftr_actor->layer);
                     aMR_SetFurniture2FG(ftr_actor, ftr_actor->position, TRUE);
                     aMR_SetBubu(player, my_room, game, &my_room->push_bubu);
@@ -585,16 +607,21 @@ static s_xyz* aMR_GetRotateForbidData(s16 rotation_state, u8 shape) {
 
 static int aMR_SearchCompleteObstacle(FTR_ACTOR* ftr_actor, s16 rotation_state, int player_ut, int ftr_ut) {
     u8 shape = ftr_actor->shape_type;
-    mActor_name_t* fg_p = mFI_BkNumtoUtFGTop(0, 0);
+    mActor_name_t* fg_p = aMR_GetLayerTopFg(mCoBG_LAYER0);
     s_xyz* rotate_forbid_data = aMR_GetRotateForbidData(rotation_state, shape);
     int i;
 
     for (i = 0; i < 2; i++) {
-        int ut = ftr_ut + rotate_forbid_data[i].z * UT_X_NUM + rotate_forbid_data[i].x;
+        int ut = ftr_ut + rotate_forbid_data[i].z * aMR_UT_X_NUM + rotate_forbid_data[i].x;
 
-        if (l_place_table[ut] != aMR_NO_FTR_ID) {
+        if (aMR_place_table[mCoBG_LAYER0][ut] != aMR_NO_FTR_ID) {
             return FALSE;
         }
+#ifdef TARGET_PC
+        if (aMR_pc_field && !pc_oftr_unit_free(ut % aMR_UT_X_NUM, ut / aMR_UT_X_NUM)) {
+            return FALSE;
+        }
+#endif
 
         if (fg_p[ut] != EMPTY_NO) {
             return FALSE;
@@ -623,10 +650,14 @@ static int aMR_SearchFrictionObstacle(FTR_ACTOR* ftr_actor, s16 rotation_state, 
         }
 
         for (i = 0; i < 2; i++) {
-            int ut = ftr_ut + rotate_forbid_data[i].z * UT_X_NUM + rotate_forbid_data[i].x;
+            int ut = ftr_ut + rotate_forbid_data[i].z * aMR_UT_X_NUM + rotate_forbid_data[i].x;
 
-            if (l_place_table[ut] != aMR_NO_FTR_ID) {
-                FTR_ACTOR* other_ftr_actor = &l_aMR_work.ftr_actor_list[l_place_table[ut]];
+#ifdef TARGET_PC
+            if (aMR_place_table[mCoBG_LAYER0][ut] < l_aMR_work.list_size) { /* not a wall (201 isn't a piece) */
+#else
+            if (aMR_place_table[mCoBG_LAYER0][ut] != aMR_NO_FTR_ID) {
+#endif
+                FTR_ACTOR* other_ftr_actor = &l_aMR_work.ftr_actor_list[aMR_place_table[mCoBG_LAYER0][ut]];
                 aFTR_PROFILE* other_profile = aMR_GetFurnitureProfile(other_ftr_actor->name);
 
                 if (other_profile->check_rotation) {
@@ -648,10 +679,10 @@ static int aMR_RotatePermission(FTR_ACTOR* ftr_actor, PLAYER_ACTOR* player, s16 
     int ftr_ut;
 
     aMR_Wpos2PlaceNumber(&player_ut_x, &player_ut_z, player->actor_class.world.position, 0);
-    player_ut = player_ut_z * UT_X_NUM + player_ut_x;
+    player_ut = player_ut_z * aMR_UT_X_NUM + player_ut_x;
 
     aMR_Wpos2PlaceNumber(&ftr_ut_x, &ftr_ut_z, ftr_actor->position, ftr_actor->shape_type);
-    ftr_ut = ftr_ut_z * UT_X_NUM + ftr_ut_x;
+    ftr_ut = ftr_ut_z * aMR_UT_X_NUM + ftr_ut_x;
 
     if (aMR_SearchCompleteObstacle(ftr_actor, rotation_state, player_ut, ftr_ut)) {
         if (aMR_SearchFrictionObstacle(ftr_actor, rotation_state, ftr_ut)) {
@@ -714,7 +745,7 @@ static int aMR_SearchNextSituation(FTR_ACTOR* ftr_actor) {
     int ut;
 
     aMR_Wpos2PlaceNumber(&ut_x, &ut_z, ftr_actor->position, shape);
-    ut = ut_z * UT_X_NUM + ut_x;
+    ut = ut_z * aMR_UT_X_NUM + ut_x;
 
     if (shape > aFTR_SHAPE_TYPEB_0 && profile->check_rotation) {
         aMR_place_info_c* place_info = next_table[shape];
@@ -725,10 +756,14 @@ static int aMR_SearchNextSituation(FTR_ACTOR* ftr_actor) {
             int i;
 
             for (i = 0; i < count; i++) {
-                int check_ut = ut + ofs_p[i].z * UT_Z_NUM + ofs_p[i].x;
+                int check_ut = ut + ofs_p[i].z * aMR_UT_X_NUM + ofs_p[i].x;
 
-                if (l_place_table[check_ut] != aMR_NO_FTR_ID) {
-                    FTR_ACTOR* other_ftr_actor = &l_aMR_work.ftr_actor_list[l_place_table[check_ut]];
+#ifdef TARGET_PC
+                if (aMR_place_table[mCoBG_LAYER0][check_ut] < l_aMR_work.list_size) { /* not a wall (201 isn't a piece) */
+#else
+                if (aMR_place_table[mCoBG_LAYER0][check_ut] != aMR_NO_FTR_ID) {
+#endif
+                    FTR_ACTOR* other_ftr_actor = &l_aMR_work.ftr_actor_list[aMR_place_table[mCoBG_LAYER0][check_ut]];
                     aFTR_PROFILE* other_profile = aMR_GetFurnitureProfile(other_ftr_actor->name);
 
                     if (other_profile->check_rotation) {
@@ -803,7 +838,7 @@ int pc_myroom_unit_free(xyz_t pos) {
     if (aMR_CLIP == NULL || aMR_CLIP->my_room_actor_p == NULL) {
         return TRUE;
     }
-    if (!mFI_Wpos2UtNum(&ut_x, &ut_z, pos) || ut_x < 0 || ut_z < 0 || ut_x >= UT_X_NUM || ut_z >= UT_Z_NUM) {
+    if (!mFI_Wpos2UtNum(&ut_x, &ut_z, pos) || ut_x < 0 || ut_z < 0 || ut_x >= aMR_UT_X_NUM || ut_z >= aMR_UT_Z_NUM) {
         return FALSE;
     }
     aMR_UnitNum2FtrItemNoFtrID(&item_no, &ftrID, ut_x, ut_z, mCoBG_LAYER0);
@@ -813,7 +848,7 @@ int pc_myroom_unit_free(xyz_t pos) {
         return profile != NULL && aFTR_CHECK_INTERACTION(profile->interaction_type, aFTR_INTERACTION_TYPE_NO_COLLISION);
     }
     fg_p = aMR_GetLayerTopFg(mCoBG_LAYER0);
-    item_no = fg_p[ut_z * UT_X_NUM + ut_x];
+    item_no = fg_p[ut_z * aMR_UT_X_NUM + ut_x];
     return item_no != RSV_WALL_NO && item_no != RSV_FE1C && ITEM_NAME_GET_TYPE(item_no) != NAME_TYPE_WARP;
 }
 #endif
@@ -1077,7 +1112,7 @@ static int aMR_CheckBedUnderfoot(aMR_contact_info_c* contact_info, PLAYER_ACTOR*
                     } else {
                         int underfoot_left_ut_x = (int)(underfoot_left.x / mFI_UT_WORLDSIZE_X_F);
                         int underfoot_left_ut_z = (int)(underfoot_left.z / mFI_UT_WORLDSIZE_Z_F);
-                        int underfoot_left_ut = underfoot_left_ut_z * UT_X_NUM + underfoot_left_ut_x;
+                        int underfoot_left_ut = underfoot_left_ut_z * aMR_UT_X_NUM + underfoot_left_ut_x;
 
                         if (fg_p[underfoot_left_ut] == RSV_WALL_NO || fg_p[underfoot_left_ut] == RSV_FE1C ||
                             ITEM_NAME_GET_TYPE(fg_p[underfoot_left_ut]) == NAME_TYPE_WARP) {
@@ -1097,7 +1132,7 @@ static int aMR_CheckBedUnderfoot(aMR_contact_info_c* contact_info, PLAYER_ACTOR*
                     } else {
                         int underfoot_right_ut_x = (int)(underfoot_right.x / mFI_UT_WORLDSIZE_X_F);
                         int underfoot_right_ut_z = (int)(underfoot_right.z / mFI_UT_WORLDSIZE_Z_F);
-                        int underfoot_right_ut = underfoot_right_ut_z * UT_X_NUM + underfoot_right_ut_x;
+                        int underfoot_right_ut = underfoot_right_ut_z * aMR_UT_X_NUM + underfoot_right_ut_x;
 
                         if (fg_p[underfoot_right_ut] == RSV_WALL_NO || fg_p[underfoot_right_ut] == RSV_FE1C ||
                             ITEM_NAME_GET_TYPE(fg_p[underfoot_right_ut]) == NAME_TYPE_WARP) {
@@ -1185,8 +1220,8 @@ static int aMR_CheckHikidashi(FTR_ACTOR* ftr_actor, PLAYER_ACTOR* player, aMR_co
         mActor_name_t* fg_p = aMR_GetLayerTopFg(mCoBG_LAYER0);
 
         if (fg_p != NULL && aMR_Direct2PlussUnit(&x0, &z0, direct) && aMR_Direct2PlussUnit(&x1, &z1, direct)) {
-            int ut0 = z0 * UT_X_NUM + x0;
-            int ut1 = z1 * UT_X_NUM + x1;
+            int ut0 = z0 * aMR_UT_X_NUM + x0;
+            int ut1 = z1 * aMR_UT_X_NUM + x1;
             mActor_name_t fg0 = fg_p[ut0];
             mActor_name_t fg1 = fg_p[ut1];
 
@@ -1291,7 +1326,7 @@ static void aMR_PlaceKurukuruFurniture(MY_ROOM_ACTOR* my_room, aMR_contact_info_
                 int ftr_ut;
 
                 aMR_Wpos2PlaceNumber(&ftr_ut_x, &ftr_ut_z, ftr_actor->position, ftr_actor->shape_type);
-                ftr_ut = ftr_ut_z * UT_X_NUM + ftr_ut_x;
+                ftr_ut = ftr_ut_z * aMR_UT_X_NUM + ftr_ut_x;
 
                 if (ftr_actor->shape_type <= aFTR_SHAPE_TYPEB_0) {
                     aMR_SetInfoFurnitureTable(shape, ftr_ut, aMR_NO_FTR_ID, ftr_actor->layer);
@@ -1310,7 +1345,7 @@ static void aMR_PlaceKurukuruFurniture(MY_ROOM_ACTOR* my_room, aMR_contact_info_
                         my_room->allow_rotation_flag = FALSE;
                         aMR_TypeChangeByRotate(ftr_actor);
                         aMR_Wpos2PlaceNumber(&next_ut_x, &next_ut_z, ftr_actor->position, ftr_actor->shape_type);
-                        next_ut = next_ut_z * UT_X_NUM + next_ut_x;
+                        next_ut = next_ut_z * aMR_UT_X_NUM + next_ut_x;
                         aMR_SetInfoFurnitureTable(ftr_actor->shape_type, next_ut, ftr_actor->id, ftr_actor->layer);
                         aMR_SetFurniture2FG(ftr_actor, ftr_actor->position, TRUE);
                         aMR_SetRotateSE(ftr_actor);
@@ -1437,7 +1472,7 @@ static int aMR_GetBedAction(ACTOR* player_actorx, int direct) {
                     return mPlayer_BED_ACTION_NONE;
                 }
             } else {
-                int ut = ut_z * UT_X_NUM + ut_x;
+                int ut = ut_z * aMR_UT_X_NUM + ut_x;
 
                 if (fg_p[ut] == RSV_WALL_NO || fg_p[ut] == RSV_FE1C || ITEM_NAME_GET_TYPE(fg_p[ut]) == NAME_TYPE_WARP) {
                     return mPlayer_BED_ACTION_NONE;

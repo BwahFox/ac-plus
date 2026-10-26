@@ -48,6 +48,8 @@ load_settings() {
         AC_SYNC_ON=1
     fi
     [ -n "$AC_SYNC_HOST" ] || AC_SYNC_ON=0
+    # the game syncs by itself (sync_enabled, pc_sync.c): two syncs of one save would fight, so this one stands aside
+    [ "$(setting sync_enabled)" = 1 ] && AC_SYNC_ON=0
 }
 
 log() {
@@ -201,6 +203,9 @@ status() {
     echo "last:   $(cat "$STATE" 2>/dev/null || echo never synced)"
 }
 
+# All of the rest in one block: bash reads it whole before running it, so the updater rewriting this
+# file while the game runs can't change what happens after the game closes.
+{
 mkdir -p "$CARD"
 case "${1:-}" in
     pull|push) sync_now "$1"; exit 0 ;;
@@ -222,3 +227,4 @@ done
 trap - TERM INT HUP
 sync_now push
 exit $code
+}

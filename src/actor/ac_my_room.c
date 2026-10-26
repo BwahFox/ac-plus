@@ -16,12 +16,36 @@
 #include "GBA2/gba2.h"
 #include "m_debug.h"
 #include "m_mark_room.h"
+#include "m_police_box.h"
 #include "sys_matrix.h"
 #include "m_rcp.h"
+#include <stdio.h>
 #ifdef TARGET_PC
 #include "pc_storage.h"
 #include "pc_dresser.h"
 #include "pc_skin.h"
+#include "pc_outdoor_ftr.h"
+#include "pc_sky.h"
+#endif
+
+#ifdef TARGET_PC
+/* Outdoors the grid is the whole town (pc_outdoor_ftr.c) instead of one room block */
+static int aMR_pc_field;
+static int aMR_pc_home; /* field mode in the player's own town (another town's or the island's: a throwaway grid) */
+/* Field mode: the acre the player is in (its furniture and the eight acres' around are loaded), -1 at first */
+static int aMR_pc_acre_x = -1;
+static int aMR_pc_acre_z = -1;
+static int aMR_ut_x_num = UT_X_NUM;
+static int aMR_ut_z_num = UT_Z_NUM;
+#define aMR_UT_X_NUM aMR_ut_x_num
+#define aMR_UT_Z_NUM aMR_ut_z_num
+#define aMR_UT_TOTAL_NUM (aMR_ut_x_num * aMR_ut_z_num)
+#define aMR_LOCAL_UT(ut) (aMR_pc_field ? (ut) : ((ut) & 0xF))
+#else
+#define aMR_UT_X_NUM UT_X_NUM
+#define aMR_UT_Z_NUM UT_Z_NUM
+#define aMR_UT_TOTAL_NUM UT_TOTAL_NUM
+#define aMR_LOCAL_UT(ut) ((ut) & 0xF)
 #endif
 
 enum {
@@ -39,7 +63,16 @@ enum {
 #define aMR_MIN_BOUND 1
 #define aMR_MAX_BOUND 8
 
+#ifdef TARGET_PC
+/* Kinds of furniture loaded at once: outdoors every loaded piece may be a different one (pc_outdoor_ftr.c) */
+#define aMR_FTR_BANK_NUM 1280
+#define aMR_NO_BANK 0xFFFF
+typedef u16 aMR_bank_idx_t;
+#else
 #define aMR_FTR_BANK_NUM 100
+#define aMR_NO_BANK 255
+typedef u8 aMR_bank_idx_t;
+#endif
 #define aMR_FTR_BANK_SIZE 0x800
 
 #define aMR_BOUNDS_OK(x, z) \
@@ -146,7 +179,7 @@ typedef struct my_room_work_s {
 } aMR_work_c;
 
 static aMR_work_c l_aMR_work;
-static u8 l_bank_index_table[FTR_NUM];
+static aMR_bank_idx_t l_bank_index_table[FTR_NUM];
 static u8* l_bank_address_table[aMR_FTR_BANK_NUM];
 
 // clang-format off
@@ -169,6 +202,20 @@ static int aMR_UnitNum2FtrItemNoFtrID(mActor_name_t* item_no, int* ftr_id, int u
 static void aMR_ReserveDefaultBgm(ACTOR* actorx, FTR_ACTOR* ftr_actor);
 static void aMR_ChangeMDBgm(ACTOR* actorx, FTR_ACTOR* ftr_actor);
 static int aMR_SetFurniture2FG(FTR_ACTOR* ftr_actor, xyz_t pos, int on_flag);
+#ifdef TARGET_PC
+static void aMR_pc_set_grid(int field);
+static void aMR_pc_field_ct(void);
+static void aMR_pc_field_dt(void);
+static void aMR_pc_draw_items_on_top(GAME* game);
+static void aMR_pc_field_stream(ACTOR* actorx, GAME* game);
+static void aMR_pc_full_acre_notice(int from_ut, int to_ut);
+static void aMR_pc_md_range(MY_ROOM_ACTOR* my_room, FTR_ACTOR* md_ftr_actor, GAME* game);
+static void aMR_pc_take_items(FTR_ACTOR* ftr_actor);
+static int aMR_pc_md_far; /* outdoors: the playing stereo is out of earshot, the hourly music is back */
+#define aMR_PC_MD_FAR (12.5f * mFI_UT_WORLDSIZE_X_F)
+#define aMR_PC_MD_NEAR (11.0f * mFI_UT_WORLDSIZE_X_F)
+static f32 aMR_GetDistXZ(xyz_t* pos0, xyz_t* pos1);
+#endif
 static int aMR_FtrIdx2ChangeFtrSwitch(ACTOR* actorx, int ftr_id);
 static aFTR_PROFILE* aMR_GetFurnitureProfile(u16 ftr_no);
 static mActor_name_t* aMR_GetLayerTopFg(s16 layer);
@@ -324,6 +371,12 @@ extern Gfx* aMR_IconNo2Gfx2(int icon_no) {
 }
 
 static mActor_name_t* aMR_GetLayerTopFg(s16 layer) {
+#ifdef TARGET_PC
+    if (aMR_pc_field) {
+        /* chosen as the actor started: the next scene may already be set as it ends */
+        return pc_oftr_grid(aMR_pc_home, layer);
+    }
+#endif
     return mFI_BkNum2UtFGTop_layer(0, 0, layer);
 }
 
@@ -511,7 +564,7 @@ static void aMR_SaveSwitchData(MY_ROOM_ACTOR* my_room) {
                 if (fg_p != NULL) {
                     for (ut_z = aMR_MIN_BOUND; ut_z <= aMR_MAX_BOUND; ut_z++) {
                         for (ut_x = aMR_MIN_BOUND; ut_x <= aMR_MAX_BOUND; ut_x++) {
-                            aMR_SaveOneFtrSwitchData(fg_p[ut_x + ut_z * UT_X_NUM], ut_x, ut_z, layer, bit_switch_table);
+                            aMR_SaveOneFtrSwitchData(fg_p[ut_x + ut_z * aMR_UT_X_NUM], ut_x, ut_z, layer, bit_switch_table);
                         }
                     }
                 }
@@ -581,7 +634,7 @@ static int aMR_WeightPossible(ACTOR* actorx, int type) {
 }
 
 static int aMR_CheckFurnitureBankExist(u16 idx) {
-    if (l_bank_index_table[idx] != 255) {
+    if (l_bank_index_table[idx] != aMR_NO_BANK) {
         return TRUE;
     }
 
@@ -589,7 +642,7 @@ static int aMR_CheckFurnitureBankExist(u16 idx) {
 }
 
 static int aMR_GetFtrBankID(u16 idx) {
-    if (l_bank_index_table[idx] == 255) {
+    if (l_bank_index_table[idx] == aMR_NO_BANK) {
         return -1;
     }
 
@@ -627,6 +680,27 @@ static int aMR_SearchFurnitureBankVacancy(void) {
 
 static int aMR_SearchFreeFurnitureBankIdx(void) {
     int i;
+
+#ifdef TARGET_PC
+    /* A bank no kind uses, among those there are (outdoors hundreds: one pass, not one per bank) */
+    {
+        static u8 in_use[aMR_FTR_BANK_NUM];
+        int banks = l_aMR_work.list_size < aMR_FTR_BANK_NUM ? l_aMR_work.list_size : aMR_FTR_BANK_NUM;
+
+        memset(in_use, 0, sizeof(in_use));
+        for (i = 0; i < FTR_NUM; i++) {
+            if (l_bank_index_table[i] < aMR_FTR_BANK_NUM) {
+                in_use[l_bank_index_table[i]] = TRUE;
+            }
+        }
+        for (i = 0; i < banks; i++) {
+            if (!in_use[i]) {
+                return i;
+            }
+        }
+        return -1;
+    }
+#endif
 
     for (i = 0; i < l_aMR_work.list_size; i++) {
         int j;
@@ -706,6 +780,11 @@ static void aMR_UnitNumber2Position(xyz_t* pos, u8 type, int ut_x, int ut_z) {
         pos->x += mFI_UT_WORLDSIZE_HALF_X_F;
         pos->z += mFI_UT_WORLDSIZE_HALF_Z_F;
     }
+#ifdef TARGET_PC
+    if (aMR_pc_field) {
+        pos->y = mCoBG_GetBgY_OnlyCenter_FromWpos2(*pos, 0.0f);
+    }
+#endif
 }
 
 static int aMR_Wpos2PlaceNumber(int* ut_x, int* ut_z, xyz_t pos, u8 type) {
@@ -717,14 +796,14 @@ static int aMR_Wpos2PlaceNumber(int* ut_x, int* ut_z, xyz_t pos, u8 type) {
     *ut_x = (int)(pos.x / mFI_UT_WORLDSIZE_X_F);
     *ut_z = (int)(pos.z / mFI_UT_WORLDSIZE_Z_F);
 
-    if (*ut_x < UT_X_NUM && *ut_z < UT_Z_NUM) {
+    if (*ut_x < aMR_UT_X_NUM && *ut_z < aMR_UT_Z_NUM) {
         return TRUE;
     }
 
     return FALSE;
 }
 
-static u8* aMR_GetLayerPlaceTable(s16 layer) {
+static aMR_place_t* aMR_GetLayerPlaceTable(s16 layer) {
     if (layer == mCoBG_LAYER0) {
         return aMR_place_table[0];
     }
@@ -782,7 +861,7 @@ static int aMR_GetTypeBPlaceInfo(int* x0, int* z0, int* x1, int* z1, u8 type, xy
 }
 
 static void aMR_SetInfoFurnitureTable(u8 type, int idx, int id, s16 layer) {
-    u8* place_table = aMR_GetLayerPlaceTable(layer);
+    aMR_place_t* place_table = aMR_GetLayerPlaceTable(layer);
 
     switch (type) {
         case aFTR_SHAPE_TYPEA:
@@ -790,7 +869,7 @@ static void aMR_SetInfoFurnitureTable(u8 type, int idx, int id, s16 layer) {
             break;
         case aFTR_SHAPE_TYPEB_90:
             place_table[idx] = id;
-            place_table[idx - UT_X_NUM] = id;
+            place_table[idx - aMR_UT_X_NUM] = id;
             break;
         case aFTR_SHAPE_TYPEB_180:
             place_table[idx] = id;
@@ -798,7 +877,7 @@ static void aMR_SetInfoFurnitureTable(u8 type, int idx, int id, s16 layer) {
             break;
         case aFTR_SHAPE_TYPEB_270:
             place_table[idx] = id;
-            place_table[idx + UT_X_NUM] = id;
+            place_table[idx + aMR_UT_X_NUM] = id;
             break;
         case aFTR_SHAPE_TYPEB_0:
             place_table[idx] = id;
@@ -807,8 +886,8 @@ static void aMR_SetInfoFurnitureTable(u8 type, int idx, int id, s16 layer) {
         case aFTR_SHAPE_TYPEC:
             place_table[idx] = id;
             place_table[idx + 1] = id;
-            place_table[idx + UT_X_NUM] = id;
-            place_table[idx + UT_X_NUM + 1] = id;
+            place_table[idx + aMR_UT_X_NUM] = id;
+            place_table[idx + aMR_UT_X_NUM + 1] = id;
             break;
     }
 }
@@ -851,7 +930,7 @@ static void aMR_SetFirstScale(FTR_ACTOR* ftr_actor) {
 
 static void aMR_DeleteFurnitureBank(u16 ftr_no) {
     if (aMR_CountAppointFurniture(ftr_no) == 0) {
-        l_bank_index_table[ftr_no] = 255;
+        l_bank_index_table[ftr_no] = aMR_NO_BANK;
     }
 }
 
@@ -1101,15 +1180,22 @@ static void aMR_MiniDiskCommonDt(FTR_ACTOR* ftr_actor, ACTOR* actorx) {
 
     if (aFTR_CHECK_INTERACTION(profile->interaction_type, aFTR_INTERACTION_TYPE_MUSIC_DISK) &&
         ftr_actor->switch_bit == TRUE) {
-        mBGMPsComp_delete_ps_room(my_room->bgm_info.md_no, 0);
+#ifdef TARGET_PC
+        if (aMR_pc_md_far) {
+            aMR_pc_md_far = FALSE; /* out of earshot: its song was already off (aMR_pc_md_range) */
+        } else
+#endif
+        {
+            mBGMPsComp_delete_ps_room(my_room->bgm_info.md_no, 0);
+
+            /* Don't delete for aerobics radio music */
+            if (my_room->bgm_info.md_no != BGM_SPORTSFAIR_AEROBICS) {
+                mBGMPsComp_MDPlayerPos_delete();
+            }
+        }
         my_room->bgm_info.active_flag = FALSE;
         my_room->bgm_info.active_ftr_actor = NULL;
         my_room->bgm_info.last_md_no = -1;
-
-        /* Don't delete for aerobics radio music */
-        if (my_room->bgm_info.md_no != BGM_SPORTSFAIR_AEROBICS) {
-            mBGMPsComp_MDPlayerPos_delete();
-        }
     }
 }
 
@@ -1132,38 +1218,78 @@ static void aMR_RadioCommonDt(FTR_ACTOR* ftr_actor, ACTOR* actorx) {
     }
 }
 
+#ifdef TARGET_PC
+/* A stereo's song on or off; outdoors not while the player is out of earshot (aMR_pc_md_range), where the hourly
+ * music must play on undisturbed */
+static int aMR_pc_md_out_of_earshot(FTR_ACTOR* ftr_actor) {
+    PLAYER_ACTOR* player = GET_PLAYER_ACTOR_NOW();
+
+    return aMR_pc_field && ftr_actor != NULL && player != NULL &&
+           aMR_GetDistXZ(&player->actor_class.world.position, &ftr_actor->position) > aMR_PC_MD_NEAR;
+}
+
+static void aMR_pc_md_on(int md_no, FTR_ACTOR* ftr_actor) {
+    if (md_no != BGM_SPORTSFAIR_AEROBICS && aMR_pc_md_out_of_earshot(ftr_actor)) {
+        aMR_pc_md_far = TRUE;
+        return;
+    }
+    aMR_pc_md_far = FALSE;
+    mBGMPsComp_make_ps_room(md_no, 0);
+    if (md_no != BGM_SPORTSFAIR_AEROBICS) {
+        mBGMPsComp_MDPlayerPos_make();
+    }
+}
+
+static void aMR_pc_md_off(int md_no) {
+    if (aMR_pc_md_far) {
+        aMR_pc_md_far = FALSE;
+        return;
+    }
+    mBGMPsComp_delete_ps_room(md_no, 0);
+    if (md_no != BGM_SPORTSFAIR_AEROBICS) {
+        mBGMPsComp_MDPlayerPos_delete();
+    }
+}
+#define aMR_MD_ON(md_no, ftr_actor) aMR_pc_md_on(md_no, ftr_actor)
+#define aMR_MD_OFF(md_no) aMR_pc_md_off(md_no)
+#else
+#define aMR_MD_ON(md_no, ftr_actor)                       \
+    do {                                                  \
+        mBGMPsComp_make_ps_room(md_no, 0);                \
+        if ((md_no) != BGM_SPORTSFAIR_AEROBICS) {         \
+            mBGMPsComp_MDPlayerPos_make();                \
+        }                                                 \
+    } while (0)
+#define aMR_MD_OFF(md_no)                                 \
+    do {                                                  \
+        mBGMPsComp_delete_ps_room(md_no, 0);              \
+        if ((md_no) != BGM_SPORTSFAIR_AEROBICS) {         \
+            mBGMPsComp_MDPlayerPos_delete();              \
+        }                                                 \
+    } while (0)
+#endif
+
 static void aMR_ChangeMDBgm(ACTOR* actorx, FTR_ACTOR* ftr_actor) {
     MY_ROOM_ACTOR* my_room = (MY_ROOM_ACTOR*)actorx;
+
 
     if ((int)my_room->bgm_info.reserve_flag == TRUE) {
         if (my_room->bgm_info.active_flag == FALSE) {
             if (my_room->bgm_info.md_no != -1) {
-                mBGMPsComp_make_ps_room(my_room->bgm_info.md_no, 0);
-
-                if (my_room->bgm_info.md_no != BGM_SPORTSFAIR_AEROBICS) {
-                    mBGMPsComp_MDPlayerPos_make();
-                }
+                aMR_MD_ON(my_room->bgm_info.md_no, ftr_actor);
 
                 my_room->bgm_info.active_flag = TRUE;
                 my_room->bgm_info.active_ftr_actor = ftr_actor;
                 my_room->bgm_info.last_md_no = my_room->bgm_info.md_no;
             }
         } else if (my_room->bgm_info.md_no == -1) {
-            mBGMPsComp_delete_ps_room(my_room->bgm_info.last_md_no, 0);
-            mBGMPsComp_MDPlayerPos_delete();
+            aMR_MD_OFF(my_room->bgm_info.last_md_no);
             my_room->bgm_info.active_flag = FALSE;
             my_room->bgm_info.active_ftr_actor = NULL;
             my_room->bgm_info.last_md_no = my_room->bgm_info.md_no;
         } else {
-            mBGMPsComp_delete_ps_room(my_room->bgm_info.last_md_no, 0);
-            if (my_room->bgm_info.last_md_no != BGM_SPORTSFAIR_AEROBICS) {
-                mBGMPsComp_MDPlayerPos_delete();
-            }
-
-            mBGMPsComp_make_ps_room(my_room->bgm_info.md_no, 0);
-            if (my_room->bgm_info.md_no != BGM_SPORTSFAIR_AEROBICS) {
-                mBGMPsComp_MDPlayerPos_make();
-            }
+            aMR_MD_OFF(my_room->bgm_info.last_md_no);
+            aMR_MD_ON(my_room->bgm_info.md_no, ftr_actor);
 
             my_room->bgm_info.active_flag = TRUE;
             my_room->bgm_info.active_ftr_actor = ftr_actor;
@@ -1255,7 +1381,7 @@ static void aMR_FurnitureCt(FTR_ACTOR* ftr_actor, GAME* game, int ut_x, int ut_z
     ftr_actor->position = pos;
     ftr_actor->last_position = pos;
     ftr_actor->id = ftr_idx;
-    aMR_SetInfoFurnitureTable(ftr_actor->shape_type, ut_x + ut_z * UT_X_NUM, ftr_idx, ftr_actor->layer);
+    aMR_SetInfoFurnitureTable(ftr_actor->shape_type, ut_x + ut_z * aMR_UT_X_NUM, ftr_idx, ftr_actor->layer);
     ftr_actor->collision_direction = 0;
 
     if (aMR_CLIP != NULL && aMR_CLIP->my_room_actor_p != NULL) {
@@ -1345,9 +1471,14 @@ static void aMR_MakeFurnitureActor(ACTOR* actorx, GAME_PLAY* play, s16 layer) {
     int ut_x;
     int ut_z;
 
+#ifdef TARGET_PC
+    if (aMR_pc_field) {
+        return; /* only the acres around the player, as they walk (aMR_pc_field_stream) */
+    }
+#endif
     if (fg_p != NULL) {
-        for (ut_z = 0; ut_z < UT_Z_NUM; ut_z++) {
-            for (ut_x = 0; ut_x < UT_X_NUM; ut_x++) {
+        for (ut_z = 0; ut_z < aMR_UT_Z_NUM; ut_z++) {
+            for (ut_x = 0; ut_x < aMR_UT_X_NUM; ut_x++) {
                 aMR_MakeOneFurniture(actorx, *fg_p, game, ut_x, ut_z, layer);
                 fg_p++;
             }
@@ -1367,7 +1498,7 @@ static void aMR_InitFurnitureBankTable(void) {
     int i;
 
     for (i = 0; i < FTR_NUM; i++) {
-        l_bank_index_table[i] = 255;
+        l_bank_index_table[i] = aMR_NO_BANK;
     }
 }
 
@@ -1408,6 +1539,12 @@ static void aMR_SecureFurnitureBank(MY_ROOM_ACTOR* my_room, GAME* game) {
     }
 
     bank_p = (u8*)zelda_malloc_align(size, 32);
+#ifdef TARGET_PC
+    if (bank_p == NULL && size != 0) {
+        OSReport("[My_Room] no room for %d furniture banks (%u bytes)\n", my_room->bank_count0, (unsigned)size);
+        my_room->bank_count0 = 0;
+    }
+#endif
     my_room->bank0_p = bank_p;
     for (i = 0; i < my_room->bank_count0; i++) {
         int size = i * aMR_FTR_BANK_SIZE;
@@ -1460,6 +1597,11 @@ static int aMR_GetSceneFurnitureMax(void) {
     int scene = Save_Get(scene_no);
     int i;
 
+#ifdef TARGET_PC
+    if (aMR_pc_field) {
+        return pc_oftr_loaded_max();
+    }
+#endif
     for (i = 0; scene_table[i] != -1; i++) {
         if (scene == scene_table[i]) {
             return bank_count_table[i];
@@ -1579,8 +1721,8 @@ static void aMR_MakeItemDataInFurniture(void) {
                 mActor_name_t* fg_top_p = layer_top_table[j];
 
                 if (fg_top_p != NULL) {
-                    for (ut_z = 0; ut_z < UT_Z_NUM; ut_z++) {
-                        for (ut_x = 0; ut_x < UT_X_NUM; ut_x++) {
+                    for (ut_z = 0; ut_z < aMR_UT_Z_NUM; ut_z++) {
+                        for (ut_x = 0; ut_x < aMR_UT_X_NUM; ut_x++) {
                             if (*fg_top_p != EMPTY_NO && *fg_top_p != RSV_NO && *fg_top_p != RSV_WALL_NO) {
                                 mActor_name_t item;
                                 int ftr_id;
@@ -1667,6 +1809,11 @@ static int aMR_CheckRoomOwner(u32 player_no, MY_ROOM_ACTOR* my_room) {
     if (Common_Get(field_type) == mFI_FIELDTYPE2_PLAYER_ROOM || my_room->scene == SCENE_COTTAGE_MY) {
         return TRUE;
     }
+#ifdef TARGET_PC
+    if (aMR_pc_field) {
+        return TRUE; /* the town's furniture is everyone's */
+    }
+#endif
 
     return FALSE;
 }
@@ -1714,11 +1861,11 @@ static void aMR_InitFurnitureWork(void) {
     int j;
 
     for (i = mCoBG_LAYER0; i < mCoBG_LAYER2; i++) {
-        u8* place_p = aMR_place_table[i & 1];
+        aMR_place_t* place_p = aMR_place_table[i & 1];
 
-        for (j = 0; j < UT_TOTAL_NUM; j++) {
-            if (*place_p != 201 && *place_p != 200) {
-                *place_p = 200;
+        for (j = 0; j < aMR_UT_TOTAL_NUM; j++) {
+            if (*place_p != aMR_NO_FTR_ID2 && *place_p != aMR_NO_FTR_ID) {
+                *place_p = aMR_NO_FTR_ID;
             }
 
             place_p++;
@@ -1798,6 +1945,9 @@ static void My_Room_Actor_ct(ACTOR* actorx, GAME* game) {
 
     bzero(&l_aMR_work, sizeof(l_aMR_work));
     my_room->scene = Save_Get(scene_no);
+#ifdef TARGET_PC
+    aMR_pc_set_grid(Common_Get(field_type) == mFI_FIELDTYPE2_FG);
+#endif
     aMR_SetClip(actorx);
     aMR_InitFurnitureWork();
     aMR_SetMelodyData(my_room->melody);
@@ -1815,6 +1965,11 @@ static void My_Room_Actor_ct(ACTOR* actorx, GAME* game) {
     aMR_InitFurnitureBankTable();
     aMR_MakeFurnitureActor(actorx, play, mCoBG_LAYER0);
     aMR_MakeFurnitureActor(actorx, play, mCoBG_LAYER1);
+#ifdef TARGET_PC
+    if (aMR_pc_field) {
+        aMR_pc_field_ct();
+    }
+#endif
     my_room->parent_ftr.ftrID = -1;
     Common_Set(make_npc2_actor, TRUE);
     aMR_MakeItemDataInFurniture();
@@ -1885,6 +2040,11 @@ static int aMR_pc_dresser_room(int* house, int* floor) {
         return FALSE;
     }
     my_room = (MY_ROOM_ACTOR*)aMR_CLIP->my_room_actor_p;
+    if (aMR_pc_field) {
+        *house = PC_DRESSER_TOWN;
+        *floor = 0;
+        return pc_oftr_here() && aMR_pc_acre_x >= 0;
+    }
     if (my_room->scene == SCENE_COTTAGE_MY) {
         *house = PC_DRESSER_HOUSES - 1;
     } else if (mFI_GET_TYPE(field_id) == mFI_FIELD_PLAYER0_ROOM) {
@@ -1903,7 +2063,7 @@ static int aMR_pc_dresser_unit(FTR_ACTOR* ftr_actor) {
     if (!aMR_Wpos2PlaceNumber(&ut_x, &ut_z, ftr_actor->position, ftr_actor->shape_type)) {
         return -1;
     }
-    return ut_x + ut_z * UT_X_NUM;
+    return ut_x + ut_z * aMR_UT_X_NUM;
 }
 
 /* The room just made its furniture: each piece of storage furniture gets its storage ID back */
@@ -1939,7 +2099,7 @@ void aMR_pc_dresser_list(void) {
 
             printf("[Dresser] in the room (house %d floor %d): furniture %03X at %.0f,%.0f (unit %d,%d layer %d), "
                    "storage %d\n", house, floor, ftr_actor->name, ftr_actor->position.x, ftr_actor->position.z,
-                   ut % UT_X_NUM, ut / UT_X_NUM, ftr_actor->layer, ftr_actor->pc_dresser_id);
+                   ut % aMR_UT_X_NUM, ut / aMR_UT_X_NUM, ftr_actor->layer, ftr_actor->pc_dresser_id);
         }
     }
 }
@@ -1951,7 +2111,13 @@ void aMR_pc_dresser_flush(void) {
     if (!aMR_pc_dresser_room(&house, &floor)) {
         return;
     }
-    pc_dresser_room_clear(house, floor);
+    if (aMR_pc_field) {
+        /* only the loaded acres: the others keep what they had */
+        pc_dresser_town_clear(aMR_UT_X_NUM, (aMR_pc_acre_x - 1) * UT_X_NUM, (aMR_pc_acre_z - 1) * UT_Z_NUM,
+                              (aMR_pc_acre_x + 2) * UT_X_NUM, (aMR_pc_acre_z + 2) * UT_Z_NUM);
+    } else {
+        pc_dresser_room_clear(house, floor);
+    }
     for (i = 0; i < l_aMR_work.list_size; i++) {
         FTR_ACTOR* ftr_actor = &l_aMR_work.ftr_actor_list[i];
 
@@ -1979,7 +2145,7 @@ static void aMR_KeepItem2Fg(FTR_ACTOR* ftr_actor) {
                 int ut_z;
 
                 if (aMR_Wpos2PlaceNumber(&ut_x, &ut_z, ftr_actor->position, ftr_actor->shape_type)) {
-                    fg_p[ut_x + ut_z * UT_X_NUM] = ftr_actor->items[idx];
+                    fg_p[ut_x + ut_z * aMR_UT_X_NUM] = ftr_actor->items[idx];
                     ftr_actor->items[idx] = EMPTY_NO;
                 }
             }
@@ -2105,7 +2271,18 @@ static void My_Room_Actor_dt(ACTOR* actorx, GAME* game) {
 
     aMR_SaveSwitchData(my_room);
     aMR_AllFurnitureDestruct(actorx, game);
+#ifdef TARGET_PC
+    if (aMR_pc_field) {
+        aMR_pc_field_dt();
+    }
+#endif
     aMR_FreeHeapArea(actorx);
+#ifdef TARGET_PC
+    /* a save made after leaving (a shop has no furniture actor) mustn't read the freed list (aMR_pc_items_to_fg) */
+    l_aMR_work.ftr_actor_list = NULL;
+    l_aMR_work.used_list = NULL;
+    aMR_pc_field = FALSE;
+#endif
     aMR_GokiInfoDt();
     aMR_CLIP = NULL;
     mCkRh_SetGoingOutCottageTime(my_room->scene);
@@ -2138,7 +2315,7 @@ static void aMR_RedmaFtrBank(void) {
     int i;
 
     for (i = 0; i < FTR_NUM; i++) {
-        if (l_bank_index_table[i] != 255) {
+        if (l_bank_index_table[i] != aMR_NO_BANK) {
             u8* bank_addr = aMR_BankNo2BankAddress(l_bank_index_table[i]);
             mActor_name_t item = mRmTp_FtrIdx2FtrItemNo(i, mRmTp_DIRECT_SOUTH);
 
@@ -2260,7 +2437,7 @@ static int aMR_CheckDannaKill(xyz_t* pos) {
             mActor_name_t item_no;
             int ftrID;
 
-            if (aMR_UnitNum2FtrItemNoFtrID(&item_no, &ftrID, ut_x & 0xF, ut_z & 0xF, mCoBG_LAYER0)) {
+            if (aMR_UnitNum2FtrItemNoFtrID(&item_no, &ftrID, aMR_LOCAL_UT(ut_x), aMR_LOCAL_UT(ut_z), mCoBG_LAYER0)) {
                 FTR_ACTOR* ftr_actor = l_aMR_work.ftr_actor_list + ftrID;
                 aFTR_PROFILE* profile = aMR_GetFurnitureProfile(ftr_actor->name);
 
@@ -2475,3 +2652,507 @@ extern void aMR_SameFurnitureSwitchOFF(u16 ftr_name) {
         used++;
     }
 }
+
+#ifdef TARGET_PC
+/* Rooms: one block of 16 x 16 units at the world's origin. Field mode (outdoors in the town): the whole town map,
+ * whose units are the world's own (pc_outdoor_ftr.c). */
+static void aMR_pc_set_grid(int field) {
+    int w = field ? PC_OFTR_UT_X_NUM : UT_X_NUM;
+    int i;
+
+    aMR_pc_field = field;
+    aMR_pc_home = field && pc_oftr_here();
+    aMR_pc_md_far = FALSE;
+    aMR_pc_acre_x = -1;
+    aMR_pc_acre_z = -1;
+    aMR_ut_x_num = w;
+    aMR_ut_z_num = field ? PC_OFTR_UT_Z_NUM : UT_Z_NUM;
+    aMR_poccess_typeB90.unit_ofs[1] = -w;
+    aMR_poccess_typeB270.unit_ofs[1] = w;
+    aMR_poccess_typeC.unit_ofs[2] = w;
+    aMR_poccess_typeC.unit_ofs[3] = w + 1;
+    square_offset_data[2] = -w;
+    square_offset_data[3] = -(w + 1);
+    if (field) {
+        for (i = 0; i < 2; i++) {
+            int ut;
+
+            aMR_place_table[i] = pc_oftr_place_table(i);
+            for (ut = 0; ut < PC_OFTR_UT_TOTAL_NUM; ut++) {
+                aMR_place_table[i][ut] = aMR_NO_FTR_ID;
+            }
+        }
+    } else {
+        for (i = 0; i < UT_TOTAL_NUM; i++) {
+            l_place_table[i] = l_place_table_gc[i] == 201 ? aMR_NO_FTR_ID2 : aMR_NO_FTR_ID;
+            l_place_table2[i] = l_place_table2_gc[i] == 201 ? aMR_NO_FTR_ID2 : aMR_NO_FTR_ID;
+        }
+        aMR_place_table[0] = l_place_table;
+        aMR_place_table[1] = l_place_table2;
+    }
+}
+
+/* The town's markers under every piece, loaded or not */
+/* Items lying on furniture outdoors: the town has no shop goods actor (a room's draws and drops them), so the
+ * furniture actor stands in for it over its grid (layer 1 of pc_outdoor_ftr.c) */
+extern void aSG_pc_single_draw(GAME* game, mActor_name_t item, xyz_t* pos, f32 scale, s16 angle_y, int layer);
+extern int aSG_pc_field_drop(GAME* game, mActor_name_t item, int ut_x, int ut_z);
+extern void aSG_pc_field_move(void);
+extern void aSG_pc_field_draw(GAME* game);
+extern void aSG_pc_field_flush(void);
+static aSG_Clip_c aMR_pc_sg_clip;
+static int aMR_pc_sg_owned;
+
+static s16 aMR_pc_sg_get_angle_y(int ut_z, int ut_x, int layer) {
+    return layer == mCoBG_LAYER1 ? pc_oftr_angle(ut_x + ut_z * aMR_UT_X_NUM) : 0;
+}
+
+static void aMR_pc_sg_set_angle_y(int ut_z, int ut_x, int layer, s16 angle_y) {
+    if (layer == mCoBG_LAYER1) {
+        pc_oftr_set_angle(ut_x + ut_z * aMR_UT_X_NUM, angle_y);
+    }
+}
+
+/* Tossed onto the furniture like in a house (ac_shop_goods.c does the flight outdoors too) */
+static int aMR_pc_sg_drop_entry(GAME* game, mActor_name_t item, int ut_x, int ut_z, int layer, int delay_timer) {
+    if (layer != mCoBG_LAYER1 || ut_x < 0 || ut_z < 0 || ut_x >= aMR_UT_X_NUM || ut_z >= aMR_UT_Z_NUM) {
+        return FALSE;
+    }
+    return aSG_pc_field_drop(game, item, ut_x, ut_z);
+}
+
+/* Draw what lies on furniture in the acres around the player */
+static void aMR_pc_draw_items_on_top(GAME* game) {
+    mActor_name_t* fg_p = aMR_GetLayerTopFg(mCoBG_LAYER1);
+    int ut_x;
+    int ut_z;
+
+    if (!aMR_pc_field || aMR_pc_acre_x < 0 || fg_p == NULL) {
+        return;
+    }
+    aSG_pc_field_draw(game); /* still flying onto furniture */
+    for (ut_z = (aMR_pc_acre_z - 1) * UT_Z_NUM; ut_z < (aMR_pc_acre_z + 2) * UT_Z_NUM; ut_z++) {
+        for (ut_x = (aMR_pc_acre_x - 1) * UT_X_NUM; ut_x < (aMR_pc_acre_x + 2) * UT_X_NUM; ut_x++) {
+            mActor_name_t item;
+            xyz_t pos;
+
+            if (ut_x < 0 || ut_z < 0 || ut_x >= aMR_UT_X_NUM || ut_z >= aMR_UT_Z_NUM) {
+                continue;
+            }
+            item = fg_p[ut_x + ut_z * aMR_UT_X_NUM];
+            if (item == EMPTY_NO || item == RSV_NO || item == RSV_FE1F || ITEM_IS_FTR(item)) {
+                continue;
+            }
+            mFI_UtNum2CenterWpos(&pos, ut_x, ut_z);
+            pos.y = mCoBG_GetBgY_AngleS_FromWpos(NULL, pos, 0.0f); /* the furniture top */
+            aSG_pc_single_draw(game, item, &pos, 0.01f, pc_oftr_angle(ut_x + ut_z * aMR_UT_X_NUM), mCoBG_LAYER1);
+        }
+    }
+}
+
+static void aMR_pc_field_dt(void) {
+    aSG_pc_field_flush(); /* what is still flying lands */
+    if (aMR_pc_sg_owned) {
+        Common_Get(clip).shop_goods_clip = NULL;
+        aMR_pc_sg_owned = FALSE;
+    }
+}
+
+/* Entering the town: a piece whose place the town has since taken (a villager's house built next to it...) goes to
+ * the police station's lost and found, with whatever it holds or has on top. One at a time: a full lost and found
+ * lets its oldest go, as always */
+static void aMR_pc_evict_misplaced(void) {
+    static u8 rotate_angle_types[] = {
+        aFTR_SHAPE_TYPEB_0,
+        aFTR_SHAPE_TYPEB_90,
+        aFTR_SHAPE_TYPEB_180,
+        aFTR_SHAPE_TYPEB_270,
+    };
+    mActor_name_t* fg0 = pc_oftr_fg(mCoBG_LAYER0);
+    int evicted = 0;
+    int ut;
+
+    if (fg0 == NULL || !pc_oftr_here()) {
+        return;
+    }
+    for (ut = 0; ut < PC_OFTR_UT_TOTAL_NUM; ut++) {
+        mActor_name_t item = fg0[ut];
+        aFTR_PROFILE* profile;
+        int ut_info[4];
+        int count;
+        int ok = TRUE;
+        int layer;
+        int i;
+        u8 shape;
+
+        if (!ITEM_IS_FTR(item) || (profile = aMR_GetFurnitureProfile(mRmTp_FtrItemNo2FtrIdx(item))) == NULL) {
+            continue;
+        }
+        shape = profile->shape == aFTR_SHAPE_TYPEB_0 ? rotate_angle_types[item & 3] : profile->shape;
+        count = aMR_GetFurniturePoccessUnitNo(ut_info, ut % aMR_UT_X_NUM, ut / aMR_UT_X_NUM, shape);
+        for (i = 0; i < count; i++) {
+            if (ut_info[i] < 0 || ut_info[i] >= PC_OFTR_UT_TOTAL_NUM || !pc_oftr_unit_still_ok(ut_info[i])) {
+                ok = FALSE;
+            }
+        }
+        if (ok) {
+            continue;
+        }
+        /* what lies on it or in it first, then the piece itself */
+        for (layer = mCoBG_LAYER_NUM - 1; layer >= mCoBG_LAYER0; layer--) {
+            mActor_name_t* fg_p = pc_oftr_fg(layer);
+
+            for (i = 0; i < count; i++) {
+                int u = ut_info[i];
+
+                if (u < 0 || u >= PC_OFTR_UT_TOTAL_NUM || fg_p == NULL) {
+                    continue;
+                }
+                if (ITEM_IS_FTR(fg_p[u])) {
+                    mPB_keep_item(mRmTp_FtrItemNo2Item1ItemNo(fg_p[u], TRUE));
+                } else if (ITEM_IS_ITEM1(fg_p[u])) {
+                    mPB_keep_item(fg_p[u]);
+                }
+                fg_p[u] = EMPTY_NO;
+                pc_dresser_town_clear(aMR_UT_X_NUM, u % aMR_UT_X_NUM, u / aMR_UT_X_NUM, u % aMR_UT_X_NUM + 1,
+                                      u / aMR_UT_X_NUM + 1);
+                if (layer == mCoBG_LAYER0) {
+                    pc_oftr_unit_released(u); /* the town's own map: our mark off the ground */
+                }
+            }
+        }
+        printf("[oftr] %04X at %d,%d no longer fits there: to the lost and found\n", item, ut % aMR_UT_X_NUM,
+               ut / aMR_UT_X_NUM);
+        evicted++;
+    }
+    /* Anything on top of furniture (or held by a piece on top) with no furniture under it any more */
+    {
+        mActor_name_t* fg1 = pc_oftr_fg(mCoBG_LAYER1);
+        mActor_name_t* fg2 = pc_oftr_fg(mCoBG_LAYER2);
+
+        for (ut = 0; ut < PC_OFTR_UT_TOTAL_NUM; ut++) {
+            int under1 = ITEM_IS_FTR(fg0[ut]) || fg0[ut] == RSV_FE1F;
+            int under2 = fg1 != NULL && (ITEM_IS_FTR(fg1[ut]) || fg1[ut] == RSV_FE1F);
+
+            if (fg2 != NULL && fg2[ut] != EMPTY_NO && !(under1 && under2)) {
+                if (ITEM_IS_ITEM1(fg2[ut])) {
+                    mPB_keep_item(fg2[ut]);
+                }
+                printf("[oftr] %04X floating at %d,%d (layer 2): to the lost and found\n", fg2[ut],
+                       ut % aMR_UT_X_NUM, ut / aMR_UT_X_NUM);
+                fg2[ut] = EMPTY_NO;
+                evicted++;
+            }
+            if (fg1 != NULL && fg1[ut] != EMPTY_NO && fg1[ut] != RSV_FE1F && !under1) {
+                if (ITEM_IS_FTR(fg1[ut])) {
+                    mPB_keep_item(mRmTp_FtrItemNo2Item1ItemNo(fg1[ut], TRUE));
+                } else if (ITEM_IS_ITEM1(fg1[ut])) {
+                    mPB_keep_item(fg1[ut]);
+                }
+                printf("[oftr] %04X floating at %d,%d: to the lost and found\n", fg1[ut], ut % aMR_UT_X_NUM,
+                       ut / aMR_UT_X_NUM);
+                fg1[ut] = EMPTY_NO;
+                evicted++;
+            }
+        }
+    }
+    if (evicted > 0) {
+        extern void pc_quick_save_show_message(const char* msg);
+
+        pc_quick_save_show_message(evicted == 1 ? "A piece of furniture outside was taken to the lost and found."
+                                                : "Some furniture outside was taken to the lost and found.");
+    }
+}
+
+static void aMR_pc_field_ct(void) {
+    if (Common_Get(clip).shop_goods_clip == NULL) {
+        aMR_pc_sg_clip.single_draw_proc = &aSG_pc_single_draw; /* shop goods' own drawing */
+        aMR_pc_sg_clip.player_drop_entry_proc = &aMR_pc_sg_drop_entry;
+        aMR_pc_sg_clip.single_get_angle_y_proc = &aMR_pc_sg_get_angle_y;
+        aMR_pc_sg_clip.single_set_angle_y_proc = &aMR_pc_sg_set_angle_y;
+        Common_Get(clip).shop_goods_clip = &aMR_pc_sg_clip;
+        aMR_pc_sg_owned = TRUE;
+    }
+    aMR_pc_evict_misplaced();
+    pc_oftr_mark_town();
+    OSReport("[My_Room] outdoors: up to %d pieces loaded, %u bytes free\n", l_aMR_work.list_size,
+             (unsigned)zelda_GetTotalFreeSize());
+}
+
+static int aMR_pc_loaded_unit(int ut) {
+    int bx = (ut % aMR_UT_X_NUM) / UT_X_NUM;
+    int bz = (ut / aMR_UT_X_NUM) / UT_Z_NUM;
+
+    return bx >= aMR_pc_acre_x - 1 && bx <= aMR_pc_acre_x + 1 && bz >= aMR_pc_acre_z - 1 && bz <= aMR_pc_acre_z + 1;
+}
+
+/* A piece pushed or pulled toward an acre that holds all it can: say so, rather than only not moving */
+static void aMR_pc_full_acre_notice(int from_ut, int to_ut) {
+    extern void pc_quick_save_show_message(const char* msg);
+    int from_acre = (from_ut % aMR_UT_X_NUM) / UT_X_NUM + ((from_ut / aMR_UT_X_NUM) / UT_Z_NUM) * BLOCK_X_NUM;
+    int to_acre = (to_ut % aMR_UT_X_NUM) / UT_X_NUM + ((to_ut / aMR_UT_X_NUM) / UT_Z_NUM) * BLOCK_X_NUM;
+
+    if (aMR_pc_field && from_acre != to_acre && pc_oftr_acre_full(to_ut)) {
+        pc_quick_save_show_message("That acre can't hold any more furniture.");
+    }
+}
+
+/* A piece leaves (its acre is no longer around the player); it stays on the grid */
+/* Outdoors a stereo or music box is heard around it, not over the whole town: its song (quieter with distance, as
+ * in a room) gives way to the hourly music past about 12 units and comes back on the way back */
+
+static void aMR_pc_md_range(MY_ROOM_ACTOR* my_room, FTR_ACTOR* md_ftr_actor, GAME* game) {
+    PLAYER_ACTOR* player = GET_PLAYER_ACTOR((GAME_PLAY*)game);
+    f32 dist;
+    int md_no = my_room->bgm_info.last_md_no;
+
+    if (player == NULL || md_no == -1 || md_no == BGM_SPORTSFAIR_AEROBICS) {
+        return;
+    }
+    dist = aMR_GetDistXZ(&player->actor_class.world.position, &md_ftr_actor->position);
+    if (!aMR_pc_md_far && dist > aMR_PC_MD_FAR) {
+        mBGMPsComp_delete_ps_room(md_no, 0);
+        mBGMPsComp_MDPlayerPos_delete();
+        aMR_pc_md_far = TRUE;
+    } else if (aMR_pc_md_far && dist < aMR_PC_MD_NEAR) {
+        mBGMPsComp_make_ps_room(md_no, 0);
+        mBGMPsComp_MDPlayerPos_make();
+        aMR_pc_md_far = FALSE;
+    }
+}
+
+/* What a piece holds (a stereo's disc...) waits in the layers above it while it isn't loaded (aMR_KeepItem2Fg, as
+ * a room keeps it); take it back as it loads, as aMR_MakeItemDataInFurniture does when a room is entered */
+static void aMR_pc_take_items(FTR_ACTOR* ftr_actor) {
+    int idx = 0;
+    int ut_x;
+    int ut_z;
+    int i;
+
+    if (!aMR_Wpos2PlaceNumber(&ut_x, &ut_z, ftr_actor->position, ftr_actor->shape_type)) {
+        return;
+    }
+    for (i = ftr_actor->layer + 1; i < mCoBG_LAYER_NUM; i++, idx++) {
+        mActor_name_t* fg_p = aMR_GetLayerTopFg(i);
+        mActor_name_t* item_p;
+
+        if (fg_p == NULL) {
+            continue;
+        }
+        item_p = &fg_p[ut_x + ut_z * aMR_UT_X_NUM];
+        if (*item_p != EMPTY_NO && *item_p != RSV_NO && *item_p != RSV_WALL_NO && !ITEM_IS_FTR(*item_p) &&
+            *item_p != RSV_FE1F) {
+            ftr_actor->items[idx] = *item_p;
+            *item_p = EMPTY_NO;
+        }
+    }
+}
+
+/* Saving (pc_oftr_write_chunk): what the loaded pieces hold goes into the grid for the write (on TRUE) and back out
+ * after (FALSE), so the save has it while the pieces keep it */
+/* Furniture mid-move (pushed, pulled, turned, appearing) or an item flying onto it outdoors: what's on top and
+ * the piece itself are in between places, so a save now would lose them (pc_quick_save.c waits) */
+int aMR_pc_busy(void) {
+    extern int aSG_pc_field_dropping(void);
+    MY_ROOM_ACTOR* my_room;
+    int i;
+
+    if (aMR_CLIP == NULL || (my_room = (MY_ROOM_ACTOR*)aMR_CLIP->my_room_actor_p) == NULL) {
+        return FALSE;
+    }
+    if (my_room->parent_ftr.ftrID != -1 || (aMR_pc_field && aSG_pc_field_dropping())) {
+        return TRUE;
+    }
+    for (i = 0; i < ARRAY_COUNT(my_room->rsv_ftr); i++) {
+        if (my_room->rsv_ftr[i].exist_flag) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+void aMR_pc_items_to_fg(int on) {
+    int i;
+
+    if (!aMR_pc_field || aMR_CLIP == NULL || l_aMR_work.ftr_actor_list == NULL || l_aMR_work.used_list == NULL) {
+        return;
+    }
+    for (i = 0; i < l_aMR_work.list_size; i++) {
+        FTR_ACTOR* ftr_actor = &l_aMR_work.ftr_actor_list[i];
+        int ut_x;
+        int ut_z;
+        int layer;
+        int idx = 0;
+
+        if (!l_aMR_work.used_list[i] ||
+            !aMR_Wpos2PlaceNumber(&ut_x, &ut_z, ftr_actor->position, ftr_actor->shape_type)) {
+            continue;
+        }
+        for (layer = ftr_actor->layer + 1; layer < mCoBG_LAYER_NUM; layer++, idx++) {
+            mActor_name_t* fg_p = aMR_GetLayerTopFg(layer);
+
+            if (fg_p != NULL && ftr_actor->items[idx] != EMPTY_NO) {
+                fg_p[ut_x + ut_z * aMR_UT_X_NUM] = on ? ftr_actor->items[idx] : EMPTY_NO;
+            }
+        }
+    }
+}
+
+static void aMR_pc_unload(ACTOR* actorx, FTR_ACTOR* ftr_actor) {
+    aFTR_PROFILE* profile = aMR_GetFurnitureProfile(ftr_actor->name);
+    int ut_x;
+    int ut_z;
+
+    mCoBG_CrossOffMoveBg(ftr_actor->move_bg_idx);
+    if (aMR_Wpos2PlaceNumber(&ut_x, &ut_z, ftr_actor->position, ftr_actor->shape_type)) {
+        aMR_SetInfoFurnitureTable(ftr_actor->shape_type, ut_x + ut_z * aMR_UT_X_NUM, aMR_NO_FTR_ID, ftr_actor->layer);
+    }
+    aMR_KeepItem2Fg(ftr_actor);
+    aMR_MiniDiskCommonDt(ftr_actor, actorx);
+    aMR_RadioCommonDt(ftr_actor, actorx);
+    aMR_MinusWeight(actorx, ftr_actor);
+    if (profile != NULL && profile->vtable != NULL && profile->vtable->dt_proc != NULL) {
+        profile->vtable->dt_proc(ftr_actor, aMR_FtrNo2BankAddress(ftr_actor->name));
+    }
+    l_aMR_work.used_list[ftr_actor->id] = FALSE;
+    aMR_DeleteFurnitureBank(ftr_actor->name);
+    aMR_ClearBitSwitch(ftr_actor);
+}
+
+/* Field mode, every frame: the furniture of the player's acre and the eight around it is loaded, the rest not.
+ * A piece still moving (pushed, rotated...) leaves a frame or more later. */
+static void aMR_pc_field_stream(ACTOR* actorx, GAME* game) {
+    static int pending = FALSE;
+    PLAYER_ACTOR* player = GET_PLAYER_ACTOR((GAME_PLAY*)game);
+    int bx;
+    int bz;
+    int i;
+    int layer;
+    int ut_x;
+    int ut_z;
+
+    if (player == NULL || l_aMR_work.ftr_actor_list == NULL || l_aMR_work.used_list == NULL) {
+        return;
+    }
+    bx = (int)(player->actor_class.world.position.x / mFI_BK_WORLDSIZE_X_F);
+    bz = (int)(player->actor_class.world.position.z / mFI_BK_WORLDSIZE_Z_F);
+    if (bx != aMR_pc_acre_x || bz != aMR_pc_acre_z) {
+        if (aMR_pc_acre_x >= 0) {
+            aMR_pc_dresser_flush(); /* the storage IDs of what is about to leave */
+        }
+        aMR_pc_acre_x = bx;
+        aMR_pc_acre_z = bz;
+        pending = TRUE;
+    }
+    if (!pending) {
+        return;
+    }
+    pending = FALSE;
+
+    for (i = 0; i < l_aMR_work.list_size; i++) {
+        FTR_ACTOR* ftr_actor = &l_aMR_work.ftr_actor_list[i];
+
+        if (l_aMR_work.used_list[i] && aMR_Wpos2PlaceNumber(&ut_x, &ut_z, ftr_actor->position, ftr_actor->shape_type) &&
+            !aMR_pc_loaded_unit(ut_x + ut_z * aMR_UT_X_NUM)) {
+            if (ftr_actor->state == aFTR_STATE_STOP) {
+                aMR_pc_unload(actorx, ftr_actor);
+            } else {
+                pending = TRUE;
+            }
+        }
+    }
+
+    for (layer = mCoBG_LAYER0; layer <= mCoBG_LAYER1; layer++) {
+        mActor_name_t* fg_p = aMR_GetLayerTopFg(layer);
+        aMR_place_t* place_p = aMR_GetLayerPlaceTable(layer);
+
+        for (ut_z = (bz - 1) * UT_Z_NUM; ut_z < (bz + 2) * UT_Z_NUM; ut_z++) {
+            for (ut_x = (bx - 1) * UT_X_NUM; ut_x < (bx + 2) * UT_X_NUM; ut_x++) {
+                int ut = ut_x + ut_z * aMR_UT_X_NUM;
+
+                if (ut_x < 0 || ut_z < 0 || ut_x >= aMR_UT_X_NUM || ut_z >= aMR_UT_Z_NUM || !ITEM_IS_FTR(fg_p[ut]) ||
+                    place_p[ut] != aMR_NO_FTR_ID) {
+                    continue;
+                }
+                aMR_MakeOneFurniture(actorx, fg_p[ut], game, ut_x, ut_z, layer);
+                if (place_p[ut] < l_aMR_work.list_size) {
+                    FTR_ACTOR* ftr_actor = &l_aMR_work.ftr_actor_list[place_p[ut]];
+
+                    aMR_SetFurniture2FG(ftr_actor, ftr_actor->position, TRUE); /* its other units too */
+                    if (aFTR_IS_STORAGE(aMR_GetFurnitureProfile(ftr_actor->name))) {
+                        ftr_actor->pc_dresser_id = pc_dresser_bound(PC_DRESSER_TOWN, 0, layer, ut);
+                        aMR_pc_take_items(ftr_actor); /* before layer 1 is looked at: a stereo's disc is there */
+                    }
+                }
+            }
+        }
+    }
+}
+#endif
+
+#ifdef TARGET_PC
+/* Dev (PC_CTL oftr): furniture item ftr outdoors with its first unit on (ut_x, ut_z), every unit it takes checked */
+int aMR_pc_dev_put(int ut_x, int ut_z, mActor_name_t ftr) {
+    static u8 rotate_angle_types[] = {
+        aFTR_SHAPE_TYPEB_0,
+        aFTR_SHAPE_TYPEB_90,
+        aFTR_SHAPE_TYPEB_180,
+        aFTR_SHAPE_TYPEB_270,
+    };
+    aFTR_PROFILE* profile;
+    int ut_info[4];
+    int count;
+    u8 shape;
+
+    if (!aMR_pc_field || !ITEM_IS_FTR(ftr) || ut_x < 0 || ut_z < 0 ||
+        (profile = aMR_GetFurnitureProfile(mRmTp_FtrItemNo2FtrIdx(ftr))) == NULL) {
+        return FALSE;
+    }
+    shape = profile->shape;
+    if (shape == aFTR_SHAPE_TYPEB_0) {
+        shape = rotate_angle_types[ftr & 3];
+    }
+    count = aMR_GetFurniturePoccessUnitNo(ut_info, ut_x, ut_z, shape);
+    return pc_oftr_put(ut_info, count, ftr);
+}
+
+/* Dev (PC_CTL oftrfill N): the player's acre and the eight around it get up to N one-unit pieces each, of as many
+ * kinds as there are, then load again. For stress tests; it writes to the town save like any placing. */
+void aMR_pc_dev_fill(int per_acre) {
+    int kind = 0;
+    int bx;
+    int bz;
+    int placed = 0;
+
+    if (!aMR_pc_field || aMR_pc_acre_x < 0) {
+        return;
+    }
+    for (bz = aMR_pc_acre_z - 1; bz <= aMR_pc_acre_z + 1; bz++) {
+        for (bx = aMR_pc_acre_x - 1; bx <= aMR_pc_acre_x + 1; bx++) {
+            int n = 0;
+            int u;
+
+            for (u = 0; u < UT_TOTAL_NUM && n < per_acre; u += 2) {
+                int ut_x = bx * UT_X_NUM + (u % UT_X_NUM) + ((u / UT_X_NUM) & 1);
+                int ut_z = bz * UT_Z_NUM + u / UT_X_NUM;
+                aFTR_PROFILE* profile;
+                int tries = 0;
+
+                do {
+                    kind = (kind + 37) % FTR_NUM;
+                    profile = aMR_GetFurnitureProfile(kind);
+                } while ((profile == NULL || profile->shape != aFTR_SHAPE_TYPEA) && ++tries < FTR_NUM);
+                if (pc_oftr_acre_full(ut_x + ut_z * aMR_UT_X_NUM)) {
+                    break;
+                }
+                if (aMR_pc_dev_put(ut_x, ut_z, mRmTp_FtrIdx2FtrItemNo(kind, mRmTp_DIRECT_SOUTH))) {
+                    n++;
+                }
+            }
+            placed += n;
+        }
+    }
+    printf("[oftr] filled %d pieces around acre %d,%d\n", placed, aMR_pc_acre_x, aMR_pc_acre_z);
+    aMR_pc_acre_x = -1; /* load again */
+}
+#endif

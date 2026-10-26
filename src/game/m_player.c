@@ -32,6 +32,7 @@
 #include "m_debug.h"
 #ifdef TARGET_PC
 #include "pc_cf_anim.h"
+#include "pc_outdoor_ftr.h"
 #endif
 
 static int l_skip_other_func_set_wade = FALSE;

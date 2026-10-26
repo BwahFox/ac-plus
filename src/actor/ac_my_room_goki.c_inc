@@ -54,7 +54,7 @@ static int aMR_RandomMakeIndoorGoki(s16 arg, GAME* game) {
             if (scene == goki_random_make_data[i].scene) {
                 for (ut_z = 1; ut_z <= goki_random_make_data[i].size; ut_z++) {
                     for (ut_x = 1; ut_x <= goki_random_make_data[i].size; ut_x++) {
-                        mActor_name_t item = fg_p[ut_x + ut_z * UT_X_NUM];
+                        mActor_name_t item = fg_p[ut_x + ut_z * aMR_UT_X_NUM];
 
                         if (!ITEM_IS_FTR(item) && item != RSV_FE1F && item != RSV_NO && item != RSV_WALL_NO &&
                             item != RSV_DOOR) {
@@ -70,7 +70,7 @@ static int aMR_RandomMakeIndoorGoki(s16 arg, GAME* game) {
                 sel_no = RANDOM(free_count0);
                 for (ut_z = 1; ut_z <= goki_random_make_data[i].size; ut_z++) {
                     for (ut_x = 1; ut_x <= goki_random_make_data[i].size; ut_x++) {
-                        mActor_name_t item = fg_p[ut_x + ut_z * UT_X_NUM];
+                        mActor_name_t item = fg_p[ut_x + ut_z * aMR_UT_X_NUM];
 
                         if (!ITEM_IS_FTR(item) && item != RSV_FE1F && item != RSV_NO && item != RSV_WALL_NO &&
                             item != RSV_DOOR) {

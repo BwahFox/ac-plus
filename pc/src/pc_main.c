@@ -42,6 +42,22 @@ int           g_pc_widescreen_stretch = 0;
 unsigned int pc_image_base = 0;
 unsigned int pc_image_end  = 0;
 
+/* The window or GL couldn't be made. The game has no console, so say so; under Wine, if our UseEGL=N
+ * (pc_wine_egl.c) could be why, it's taken back out for the next start. */
+static void pc_gl_failed(void) {
+    const char* msg = "Animal Crossing Plus couldn't start its graphics (OpenGL).";
+#ifdef _WIN32
+    extern int pc_wine_egl_undo(void);
+
+    if (pc_wine_egl_undo()) {
+        msg = "Animal Crossing Plus couldn't start its graphics. It changed a Wine graphics setting last time "
+              "and has put it back: please start the game again.";
+    }
+#endif
+    fprintf(stderr, "%s\n", msg);
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Animal Crossing Plus", msg, NULL);
+}
+
 void pc_platform_init(void) {
 #ifdef _WIN32
     SetProcessDPIAware();
@@ -78,14 +94,17 @@ void pc_platform_init(void) {
         } else if (g_pc_settings.fullscreen == 2) {
             flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
         }
+        /* Created as plain "Animal Crossing" and renamed once it exists: under Proton on the Steam Deck a window
+         * created with the title PC_WINDOW_TITLE hangs before its first frame (2026-10-26) */
         g_pc_window = SDL_CreateWindow(
-            PC_WINDOW_TITLE,
+            "Animal Crossing",
             SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
             win_w, win_h, flags
         );
     }
     if (!g_pc_window) {
         fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
+        pc_gl_failed();
         SDL_Quit();
         exit(1);
     }
@@ -93,6 +112,7 @@ void pc_platform_init(void) {
     g_pc_gl_context = SDL_GL_CreateContext(g_pc_window);
     if (!g_pc_gl_context) {
         fprintf(stderr, "SDL_GL_CreateContext failed: %s\n", SDL_GetError());
+        pc_gl_failed();
         SDL_DestroyWindow(g_pc_window);
         SDL_Quit();
         exit(1);
@@ -100,6 +120,7 @@ void pc_platform_init(void) {
 
     if (!gladLoadGL((GLADloadfunc)SDL_GL_GetProcAddress)) {
         fprintf(stderr, "gladLoadGL failed\n");
+        pc_gl_failed();
         SDL_GL_DeleteContext(g_pc_gl_context);
         SDL_DestroyWindow(g_pc_window);
         SDL_Quit();
@@ -107,6 +128,13 @@ void pc_platform_init(void) {
     }
 
     SDL_GL_SetSwapInterval(g_pc_settings.vsync);
+    SDL_SetWindowTitle(g_pc_window, PC_WINDOW_TITLE);
+#ifdef _WIN32
+    {
+        extern void pc_wine_egl_check(void); /* pc_wine_egl.c */
+        pc_wine_egl_check();
+    }
+#endif
 
     pc_platform_update_window_size();
 
@@ -131,7 +159,7 @@ extern void pc_inhibit_start(void); /* pc_inhibit.c */
 static void pc_speedhack_toggle(void) {
     g_pc_speedhack_enabled = !g_pc_speedhack_enabled;
     if (g_pc_window != NULL) {
-        SDL_SetWindowTitle(g_pc_window, g_pc_speedhack_enabled ? "Animal Crossing [5x]" : PC_WINDOW_TITLE);
+        SDL_SetWindowTitle(g_pc_window, g_pc_speedhack_enabled ? "Animal Crossing Plus [5x]" : PC_WINDOW_TITLE);
     }
 
     if (g_pc_verbose) {
@@ -372,6 +400,13 @@ int main(int argc, char* argv[]) {
         freopen("/dev/null", "w", stderr);
 #endif
     } else {
+        /* PC_LOG_FILE: the log into a file instead (where a launcher such as Proton's eats the console) */
+        const char* log_file = getenv("PC_LOG_FILE");
+
+        if (log_file != NULL && log_file[0] != '\0' && freopen(log_file, "w", stdout) != NULL) {
+            freopen(log_file, "a", stdout); /* both appending, so neither writes over the other */
+            freopen(log_file, "a", stderr);
+        }
         setvbuf(stdout, NULL, _IONBF, 0);
         setvbuf(stderr, NULL, _IONBF, 0);
     }
@@ -413,7 +448,6 @@ int main(int argc, char* argv[]) {
     pc_settings_load();
     pc_keybindings_load();
     pc_platform_init();
-    pc_inhibit_start();
     pc_disc_init();
     if (!pc_assets_init()) {
         const char* msg =
@@ -425,6 +459,22 @@ int main(int argc, char* argv[]) {
                                  "Animal Crossing - Missing ROM", msg, g_pc_window);
         pc_platform_shutdown();
         return 1;
+    }
+    {
+        /* ac-plus: a newer release, offered and installed (pc_updater.c); the player starts it again after */
+        extern int pc_updater_run(void);
+
+        if (pc_updater_run()) {
+            pc_platform_shutdown();
+            return 0;
+        }
+    }
+    pc_inhibit_start(); /* after the updater: a running ac-plus-inhibit couldn't be replaced */
+    {
+        /* ac-plus: a save from a newer ac-plus file format: warned about before anything reads it (pc_ext_save.c) */
+        extern void pc_ext_save_check_newer_format(void);
+
+        pc_ext_save_check_newer_format();
     }
     {
         /* ac-plus: the City Folk files, made from the player's own City Folk disc on the first start
@@ -439,6 +489,12 @@ int main(int argc, char* argv[]) {
 
     ac_entry();                         /* sets HotStartEntry = &entry */
     boot_main(argc, (const char**)argv); /* full init → HotStartEntry → game loop */
+    {
+        /* ac-plus: an upload of the last save still on its way gets a moment to finish (pc_sync.c) */
+        extern void pc_sync_finish(void);
+
+        pc_sync_finish();
+    }
 
     pc_disc_shutdown();
     pc_platform_shutdown();

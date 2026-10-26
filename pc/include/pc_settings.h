@@ -34,6 +34,12 @@ typedef struct {
     int server_sync;      /* 1 = ac-sync.sh downloads the save from server_sync_host before playing, uploads after */
     char server_sync_host[128]; /* ssh destination, e.g. user@myserver */
     char server_sync_dir[128];  /* folder on the server, relative to its home */
+    int sync_enabled;     /* 1 = the game syncs the town with an ac-plus-server itself (pc_sync.c) */
+    char sync_url[256];   /* the server, e.g. https://saves.example.org or http://192.168.1.5:8086 */
+    char sync_token[96];  /* from the server's add-token */
+    int update_check;     /* 1 = at startup, look for a newer ac-plus release and offer it (pc_updater.c, default) */
+    char update_repo[128]; /* the GitHub repository releases come from, owner/name (default BwahFox/ac-plus) */
+    char update_skip[32];  /* a release the player chose to skip ("Skip this version"), e.g. alpha-6 */
     int stick_deadzone;   /* Gamepad main stick deadzone, percent 0-40 (default 12) */
     int cstick_deadzone;  /* Gamepad C-stick deadzone, percent 0-40 (default 12) */
     int mouse_mode;       /* 0 = off, 1 = menus and designer (pc_mouse.c, default), 2 = ac-plus designer only (pc_designer_mouse.c_inc) */

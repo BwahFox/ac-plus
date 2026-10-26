@@ -815,6 +815,13 @@ static void aAL_pc_menu_draw(ANIMAL_LOGO_ACTOR* actor, GAME* game) {
     }
   }
 
+  /* ac-plus: which version this is, small in the bottom-right corner (pc_updater.c) */
+  if (!actor->pc_options_open) {
+    extern const char* pc_updater_version_label(void);
+
+    pc_menu_draw_left(game, pc_updater_version_label(), 236.0f, 222.0f, 245, 245, 235, 230, 0.6f);
+  }
+
   /* Options sub-menu, shared with the in-game pause menu. */
   if (actor->pc_options_open) {
     pc_settings_menu_tick();

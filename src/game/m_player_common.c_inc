@@ -2293,6 +2293,18 @@ static void Player_actor_putin_item_layer2(int slot, mActor_name_t item, xyz_t* 
     Player_actor_putin(slot, item);
 
     if (pos_p != NULL) {
+#ifdef TARGET_PC
+        /* ac-plus: off furniture outdoors, it lay in the outdoor furniture grid (pc_outdoor_ftr.c) */
+        int ut_x;
+        int ut_z;
+
+        if (pc_oftr_here()) {
+            if (mFI_Wpos2UtNum(&ut_x, &ut_z, *pos_p)) {
+                pc_oftr_fg(mCoBG_LAYER1)[ut_x + ut_z * PC_OFTR_UT_X_NUM] = EMPTY_NO;
+            }
+            return;
+        }
+#endif
         mFI_SetFG2(EMPTY_NO, *pos_p);
     }
 }
@@ -7523,6 +7535,11 @@ static int Player_actor_CheckAndRequest_main_pickup_all(GAME* game) {
             if (Common_Get(clip).my_room_clip != NULL) {
                 mActor_name_t item = Common_Get(clip).my_room_clip->search_pickup_ftr_proc(game);
                 int item_slot = mPlib_Get_space_putin_item_forTICKET(&item);
+#ifdef TARGET_PC
+                /* ac-plus: furniture outdoors (outdoor furniture) needs a free pocket as in a room; the town's
+                 * swap-with-a-pocket pickup would take it with stale pickup info and leave it standing */
+                int can_exchange = FALSE;
+#endif
 
                 if (ITEM_NAME_GET_TYPE(item) == NAME_TYPE_ITEM1) {
                     xyz_t item_pos;

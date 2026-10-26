@@ -22,6 +22,14 @@ extern mNpc_Default_Data_c npc_def_list[];
 extern s8 npc_grow_list[];
 extern mNpc_NpcHouseData_c npc_house_list[];
 
+#ifdef TARGET_PC
+#include "pc_outdoor_ftr.h"
+/* ac-plus: a house spot with outdoor furniture around it isn't offered (pc_outdoor_ftr.c) */
+#define mNpc_PC_HOUSE_SPOT_FREE(bx, bz, ut_x, ut_z) (!pc_oftr_house_spot_taken(bx, bz, ut_x, ut_z))
+#else
+#define mNpc_PC_HOUSE_SPOT_FREE(bx, bz, ut_x, ut_z) TRUE
+#endif
+
 typedef struct sp_actor_name_data_s {
     mActor_name_t sp_npc_id;
     u16 sex;
@@ -2579,7 +2587,7 @@ extern void mNpc_MakeReservedListBeforeFieldct(Anmhome_c* reserved, int reserved
 
             for (k = 0; k < UT_Z_NUM; k++) {
                 for (l = 0; l < UT_X_NUM; l++) {
-                    if (mNT_IS_RESERVE(*item)) {
+                    if (mNT_IS_RESERVE(*item) && mNpc_PC_HOUSE_SPOT_FREE(j + 1, i + 1, l, k)) {
                         num++;
                         reserved->block_x = j + 1;
                         reserved->block_z = i + 1;
@@ -2629,7 +2637,7 @@ extern void mNpc_MakeReservedListAfterFieldct(Anmhome_c* reserved, int reserved_
 
             for (k = 0; k < UT_Z_NUM; k++) {
                 for (l = 0; l < UT_X_NUM; l++) {
-                    if (mNT_IS_RESERVE(*item)) {
+                    if (mNT_IS_RESERVE(*item) && mNpc_PC_HOUSE_SPOT_FREE(j, i, l, k)) {
                         num++;
                         reserved->block_x = j;
                         reserved->block_z = i;
@@ -3758,7 +3766,7 @@ static int mNpc_CheckBuildHouse(int bx, int bz, u8 ut_x, u8 ut_z) {
     if (bx >= 0 && bx < FG_BLOCK_X_NUM && bz >= 0 && bz < FG_BLOCK_Z_NUM && ut_x < UT_X_NUM && ut_z < UT_Z_NUM) {
         mActor_name_t item = Save_Get(fg[bz][bx]).items[ut_z][ut_x];
 
-        if (mNT_IS_RESERVE(item)) {
+        if (mNT_IS_RESERVE(item) && mNpc_PC_HOUSE_SPOT_FREE(bx + 1, bz + 1, ut_x, ut_z)) {
             res = TRUE;
         }
     }

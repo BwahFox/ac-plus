@@ -1,7 +1,7 @@
 /* pc_dresser.c - a storage for each dresser (see pc_dresser.h).
  *
  * Chunks: DRSR the storages in use ({ u8 id; u8 pad[3]; items[PC_EXT_STORAGE_COUNT] } each), DRBD which
- * furniture holds which ({ u8 house, floor, layer, ut, id, pad[3] } each), DRTG the IDs riding along in
+ * furniture holds which ({ u8 house, floor, layer, ut, id, ut_hi, pad[2] } each; ut_hi only outdoors), DRTG the IDs riding along in
  * pockets ({ u16 item; u8 id; u8 pad } for each player's 15 slots). */
 #include "pc_dresser.h"
 
@@ -20,7 +20,7 @@ typedef struct {
 } DresserStore;
 
 typedef struct {
-    u8 house, floor, layer, ut, id, pad[3];
+    u8 house, floor, layer, ut, id, ut_hi, pad[2];
 } DresserBind;
 
 typedef struct {
@@ -29,7 +29,7 @@ typedef struct {
     u8 pad;
 } DresserTag;
 
-#define BIND_MAX 256 /* more than the furniture all the houses' rooms can hold */
+#define BIND_MAX 320 /* more than the furniture all the houses' rooms and the town can hold */
 
 static u8 l_used[PC_DRESSER_MAX];
 static PCExtStoredItem l_items[PC_DRESSER_MAX][PC_EXT_STORAGE_COUNT];
@@ -240,7 +240,8 @@ int pc_dresser_bound(int house, int floor, int layer, int ut) {
     int i;
 
     for (i = 0; i < l_bind_num; i++) {
-        if (l_bind[i].house == house && l_bind[i].floor == floor && l_bind[i].layer == layer && l_bind[i].ut == ut) {
+        if (l_bind[i].house == house && l_bind[i].floor == floor && l_bind[i].layer == layer &&
+            (l_bind[i].ut | (l_bind[i].ut_hi << 8)) == ut) {
             return l_bind[i].id;
         }
     }
@@ -258,10 +259,37 @@ void pc_dresser_room_clear(int house, int floor) {
     l_bind_num = n;
 }
 
+void pc_dresser_town_clear(int w, int x0, int z0, int x1, int z1) {
+    int i, n = 0;
+
+    for (i = 0; i < l_bind_num; i++) {
+        int ut = l_bind[i].ut | (l_bind[i].ut_hi << 8);
+        int x = ut % w;
+        int z = ut / w;
+
+        if (l_bind[i].house != PC_DRESSER_TOWN || x < x0 || x >= x1 || z < z0 || z >= z1) {
+            l_bind[n++] = l_bind[i];
+        }
+    }
+    l_bind_num = n;
+}
+
 void pc_dresser_room_bind(int house, int floor, int layer, int ut, int id) {
     DresserBind* b;
+    int i, n = 0;
 
-    if (id < 1 || id > PC_DRESSER_MAX || l_bind_num >= BIND_MAX) {
+    if (id < 1 || id > PC_DRESSER_MAX) {
+        return;
+    }
+    /* one storage stands in one place: an older record of it goes (outdoors, a piece still moving as the loaded
+     * acres changed was outside the ones cleared before this) */
+    for (i = 0; i < l_bind_num; i++) {
+        if (l_bind[i].id != id) {
+            l_bind[n++] = l_bind[i];
+        }
+    }
+    l_bind_num = n;
+    if (l_bind_num >= BIND_MAX) {
         return;
     }
     b = &l_bind[l_bind_num++];
@@ -270,6 +298,7 @@ void pc_dresser_room_bind(int house, int floor, int layer, int ut, int id) {
     b->floor = (u8)floor;
     b->layer = (u8)layer;
     b->ut = (u8)ut;
+    b->ut_hi = (u8)(ut >> 8); /* the town's grid (pc_outdoor_ftr.c) is bigger than a room's */
     b->id = (u8)id;
 }
 

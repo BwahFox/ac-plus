@@ -36,6 +36,26 @@ ACTOR_PROFILE Shop_Goods_Profile = {
 
 static s16 SG_angle_y[UT_Z_NUM][UT_X_NUM];
 static SHOP_GOODS_ACTOR* Glb_shop_goods_actor;
+#ifdef TARGET_PC
+#include "pc_outdoor_ftr.h"
+/* ac-plus: the toss onto furniture outdoors (outdoor furniture): no shop goods actor in the town, so this stands in
+ * for one, landing items in the outdoor furniture grid (pc_outdoor_ftr.c) instead of the room's fg */
+static SHOP_GOODS_ACTOR l_pc_field;
+
+static int aSG_pc_land(SHOP_GOODS_ACTOR* shop_goods, aSG_single_draw_c* single_draw_p) {
+    int ut_x;
+    int ut_z;
+
+    if (shop_goods != &l_pc_field) {
+        return FALSE;
+    }
+    /* the home grid: this also runs as the town is left (aSG_pc_field_flush) */
+    if (mFI_Wpos2UtNum(&ut_x, &ut_z, single_draw_p->target_pos) && pc_oftr_home_fg(mCoBG_LAYER1) != NULL) {
+        pc_oftr_home_fg(mCoBG_LAYER1)[ut_x + ut_z * PC_OFTR_UT_X_NUM] = single_draw_p->item;
+    }
+    return TRUE;
+}
+#endif
 static int picture_count;
 static s16 mode;
 
@@ -180,6 +200,11 @@ static void Shop_Goods_Actor_drop_destruct(SHOP_GOODS_ACTOR* shop_goods) {
 
     for (i = 0; i < aSG_SINGLE_DRAW_NUM; i++) {
         if (single_draw_p->counter != 0) {
+#ifdef TARGET_PC
+            if (aSG_pc_land(shop_goods, single_draw_p)) {
+                single_draw_p->counter = 0.0f;
+            } else
+#endif
             if (single_draw_p->layer == mCoBG_LAYER0) {
                 mFI_SetFG_common(single_draw_p->item, single_draw_p->target_pos, FALSE);
             } else {
@@ -254,6 +279,10 @@ static void Shop_Goods_Actor_drop_move(SHOP_GOODS_ACTOR* shop_goods) {
                         single_draw_p->velocity_y = 3.0f;
                     }
                 } else {
+#ifdef TARGET_PC
+                    if (aSG_pc_land(shop_goods, single_draw_p)) {
+                    } else
+#endif
                     if (single_draw_p->layer == mCoBG_LAYER0) {
                         mFI_SetFG_common(single_draw_p->item, single_draw_p->target_pos, FALSE);
                     } else {
@@ -270,6 +299,10 @@ static void Shop_Goods_Actor_drop_move(SHOP_GOODS_ACTOR* shop_goods) {
     }
 }
 
+static int aSG_CountPictureKind(void);
+static void Shop_Goods_Actor_drop_move(SHOP_GOODS_ACTOR* shop_goods);
+static void Shop_Goods_Actor_drop_destruct(SHOP_GOODS_ACTOR* shop_goods);
+static void Shop_Goods_Actor_drop_draw(ACTOR* actorx, GAME* game);
 static void Shop_Goods_Actor_single_drawR(GAME* game, mActor_name_t item, xyz_t* pos, xyz_t* scale, s16 angle_y,
                                           int layer) {
     GAME_PLAY* play = (GAME_PLAY*)game;
@@ -340,6 +373,79 @@ static void Shop_Goods_Actor_single_draw(GAME* game, mActor_name_t item, xyz_t* 
     Shop_Goods_draw_ta_clr(game);
 }
 
+#ifdef TARGET_PC
+/* ac-plus: items lying on furniture outdoors (outdoor furniture, ac_my_room.c field mode), drawn as in a house
+ * without a shop goods actor in the scene */
+void aSG_pc_single_draw(GAME* game, mActor_name_t item, xyz_t* pos, f32 scale, s16 angle_y, int layer) {
+    s16 last_mode = mode;
+
+    if (picture_count == 0) {
+        picture_count = aSG_CountPictureKind();
+    }
+    mode = 1; /* as in a house */
+    Shop_Goods_Actor_single_draw(game, item, pos, scale, angle_y, layer);
+    mode = last_mode;
+}
+#endif
+
+#ifdef TARGET_PC
+/* Toss item from the player onto the furniture at grid unit (ut_x, ut_z), as a house's shop goods actor does */
+int aSG_pc_field_drop(GAME* game, mActor_name_t item, int ut_x, int ut_z) {
+    ACTOR* player_actor = GET_PLAYER_ACTOR_GAME_ACTOR(game);
+    mActor_name_t* fg_p = pc_oftr_fg(mCoBG_LAYER1);
+    xyz_t now_pos;
+    xyz_t target_pos;
+    int ut = ut_x + ut_z * PC_OFTR_UT_X_NUM;
+
+    if (fg_p == NULL || fg_p[ut] != EMPTY_NO) {
+        return FALSE;
+    }
+    mFI_UtNum2CenterWpos(&target_pos, ut_x, ut_z);
+    target_pos.y = mCoBG_GetBgY_AngleS_FromWpos(NULL, target_pos, -1.0f);
+    xyz_t_move(&now_pos, &player_actor->world.position);
+    now_pos.y += 50.0f;
+    if (!Shop_Goods_Actor_drop_entry(&l_pc_field, item, &now_pos, &target_pos, mCoBG_LAYER1, 0, 1)) {
+        return FALSE;
+    }
+    fg_p[ut] = RSV_NO; /* taken while it flies */
+    pc_oftr_set_angle(ut, 0);
+    aMR_ThrowItem_FurnitureLock();
+    return TRUE;
+}
+
+void aSG_pc_field_move(void) {
+    Shop_Goods_Actor_drop_move(&l_pc_field);
+}
+
+void aSG_pc_field_draw(GAME* game) {
+    s16 last_mode = mode;
+
+    if (picture_count == 0) {
+        picture_count = aSG_CountPictureKind();
+    }
+    mode = 1;
+    Shop_Goods_Actor_drop_draw(&l_pc_field.actor_class, game);
+    mode = last_mode;
+}
+
+/* Leaving the town: what is still in the air lands at once */
+void aSG_pc_field_flush(void) {
+    Shop_Goods_Actor_drop_destruct(&l_pc_field);
+}
+
+/* Something is on its way onto outdoor furniture (out of the pocket, not on the table yet) */
+int aSG_pc_field_dropping(void) {
+    int i;
+
+    for (i = 0; i < aSG_SINGLE_DRAW_NUM; i++) {
+        if (l_pc_field.single_draw[i].counter != 0) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+#endif
+
 static void Shop_Goods_Actor_drop_draw(ACTOR* actorx, GAME* game) {
     SHOP_GOODS_ACTOR* shop_goods = (SHOP_GOODS_ACTOR*)actorx;
     int i;
@@ -352,6 +458,11 @@ static void Shop_Goods_Actor_drop_draw(ACTOR* actorx, GAME* game) {
             s16 angle_y;
 
             if (mFI_Wpos2UtNum(&ut_x, &ut_z, single_draw_p->target_pos)) {
+#ifdef TARGET_PC
+                if (shop_goods == &l_pc_field) {
+                    angle_y = pc_oftr_angle(ut_x + ut_z * PC_OFTR_UT_X_NUM); /* the town grid, not a room */
+                } else
+#endif
                 angle_y = SG_angle_y[ut_z][ut_x];
             } else {
                 angle_y = 0;

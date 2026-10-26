@@ -16,8 +16,16 @@ extern "C" {
 #define aMR_FIT_FTR_MAX 4
 #define aMR_RSV_FTR_NUM 3
 
+#ifdef TARGET_PC
+/* The furniture ids a place table holds: outdoors there are more pieces than a room's 200 (pc_outdoor_ftr.c) */
+typedef u16 aMR_place_t;
+#define aMR_NO_FTR_ID 0xFFFE
+#define aMR_NO_FTR_ID2 0xFFFF
+#else
+typedef u8 aMR_place_t;
 #define aMR_NO_FTR_ID 200
 #define aMR_NO_FTR_ID2 201
+#endif
 
 #define aMR_JUDGE_MAX_FTR -1
 #define aMR_JUDGE_CANT_PLACE_FTR -2

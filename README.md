@@ -145,6 +145,16 @@ mouse, controllers), ac-plus adds:
 - The town's clock keeps up with your computer's: putting a PC or Steam Deck to sleep with the game
   open no longer leaves the town behind.
 
+**Furniture outdoors**
+- **Put furniture down in town**, New Horizons style: anywhere that takes a ground pattern, on
+  level ground. Push, pull, turn and pick it up as at home. Pieces bigger than one square work too.
+- Tables outdoors hold items and small furniture, so an NES or a radio can sit on one.
+- Stereos play their K.K. song to anyone nearby; walk away and the hourly music comes back.
+  Instruments and gyroids follow the K.K. song, not the hourly music.
+- Fish and insects can be placed straight from your pockets.
+- Spots kept for a villager's house stay clear. If a house is later built where furniture
+  stood, the furniture (and what's on it) waits for you at the police station's lost and found.
+
 **You**
 - **Skin tones**, as Animal Crossing Deluxe has them: eight to choose from. Rover asks a new
   resident on the train, and checking a mirror at home changes it any time. Works with the HD
@@ -191,14 +201,33 @@ mouse, controllers), ac-plus adds:
   Mario Bros., Super Mario Bros. and The Legend of Zelda) turn up like the others. They're in the
   same prize pools, and Tom Nook's codes work for them.
 
+**Updates**
+- **Updates itself:** at startup, ac-plus looks for a newer release and offers it, with its notes:
+  Update now, Later or Skip this version. Updating keeps your saves, settings, music and texture
+  packs. The files it replaces are kept in `update/previous/`. Turn it off with `update_check = 0`;
+  a fork can point `update_repo` at its own releases.
+- Only releases signed with the ac-plus release key are installed, so a tampered or fake download
+  is refused before anything is changed.
+- The title screen shows which version you have.
+- **Saves from a newer version:** if your town was last saved by a newer ac-plus, the game warns you
+  before you play it, and offers to quit so you can update first.
+
 **Saving and music**
 - Save anywhere with **Z + Start** (where the game allows it).
 - Save on quit, and an optional autosave every few minutes.
 - The `.acplus` file carries a checksum, and the last three copies are kept. A damaged one is set
   aside and the newest good copy is loaded instead.
 - Quick load: returning players start straight in town.
-- Optional save syncing: through a synced folder (Syncthing, Nextcloud…), or with your own server
-  over ssh (`ac-sync.sh`, see [Saves](#saves)).
+- **Save syncing built in:** with your own small ac-plus-server (one Python file, see
+  [Saves](#saves)), the game downloads your town at startup when another machine saved it last, and
+  uploads after every save with **Save Upload Complete** on screen. If two machines both have new
+  progress, it asks which one to keep. Also possible: a synced folder (Syncthing, Nextcloud…), or
+  ssh (`ac-sync.sh`).
+
+**Fixes**
+- Opening the map indoors could crash the game; it now shows your house's acre.
+- On Linux with an NVIDIA card, the game's memory no longer creeps up while it runs (from the
+  second start: the first one switches Wine to the steadier way of drawing for this game).
 - **Custom hourly music:** replace the 24 hourly tracks with your own files (see
   [the music guide](docs/MUSIC.md)).
 
@@ -247,13 +276,22 @@ default back.
     are kept as `.acplus.bak1` to `.bak3`.
 
   **Always copy or back up the two files together.**
+- **Saves and older versions:** a town saved by a newer ac-plus warns you before an older one plays
+  it. If you play on anyway, what the older version doesn't know is kept, not thrown away. (This
+  works from Alpha 6 on: older releases don't warn.)
 - **Bringing a Dolphin save:** export it from Dolphin's Memory Card Manager as a `.gci` and put it
   in `save/card_a/`. The `.acplus` file is created the next time you save.
 - **Syncing through a folder:** set `cloud_save = 1` and `cloud_save_folder` to a folder that
   Syncthing, Nextcloud or similar keeps in sync. Any save that gets replaced is kept as a
   `.cloudbak` file.
+- **Syncing with an ac-plus-server (built in):** run the small server in `server/` (see
+  [its guide](server/README.md)), then in Settings → Saving turn on In-game sync and enter the
+  Sync server (`host:port`, or a full `https://` address) and the Sync token (Ctrl+V pastes). The
+  game downloads a newer save at startup, asks if two machines both have new progress, and uploads
+  after every save, showing **Save Upload Complete** when it's safe to close. Every save is uploaded
+  as it happens, so Steam's "Exit Game" leaves nothing behind.
 - **Syncing with your own server (ssh):**
-  - Turn on Server sync in Settings → Saving and enter your server's address.
+  - Turn on SSH sync in Settings → Saving and enter your server's address (SSH server).
   - Start the game through `ac-sync.sh`: `./ac-sync.sh wine AnimalCrossing.exe`, or on a Steam Deck,
     launch options `<game folder>/ac-sync.sh %command%`.
   - It downloads your town before playing and uploads it afterwards, keeping older copies on both
@@ -273,6 +311,8 @@ default back.
 
 **Saving and patterns**
 - **Quick load** only works for the town's first resident.
+- **Outdoor furniture:** up to 128 pieces per acre. A town saved by Alpha 5 or older loses its
+  outdoor furniture, so update every machine you sync between.
 - **Skin tones:** on a train trip to another town, your character shows the default skin there.
 
 **Sky**

@@ -11,6 +11,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 # Options
 option(PC_CONSOLE "Show console window (disables -mwindows, useful for debugging)" OFF)
+option(PC_MEMTRACK "Dev build: track host heap blocks by call stack (pc_memtrack.c)" OFF)
 
 # =============================================================================
 # 32-bit enforcement (required: JSystem casts pointers to u32)
@@ -269,6 +270,7 @@ list(FILTER GAME_CXX_SOURCES EXCLUDE REGEX ".*/jsyswrapper_main\\.cpp$")
 set(PC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_main.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_gx.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_memtrack.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_gx_tev.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_gx_texture.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_gbi_runtime.c
@@ -320,10 +322,15 @@ set(PC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_cf_anim.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_sfx.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_inhibit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_wine_egl.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_cf_setup.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_brewster.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_basement.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_money_tree.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_outdoor_ftr.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_updater.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_http.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_sync.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_skin.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_museum_rooms.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_settings.c
@@ -474,7 +481,16 @@ else()
 endif()
 
 if(WIN32)
-    target_link_libraries(ac_pc opengl32 winmm imm32 version setupapi)
+    target_link_libraries(ac_pc opengl32 winmm imm32 version setupapi winhttp bcrypt)
+    # Hardening for the PC layer, where outside data comes in (saves, downloads, the network): a smashed stack
+    # stops the game instead of running what overwrote it. libssp linked statically (no extra DLL to ship).
+    if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+        set(PC_HARDENED_SOURCES ${PC_SOURCES})
+        list(FILTER PC_HARDENED_SOURCES INCLUDE REGEX "\\.c$") # the C++ stubs' stdio macros clash with FORTIFY
+        set_source_files_properties(${PC_HARDENED_SOURCES} PROPERTIES COMPILE_OPTIONS
+            "-fstack-protector-strong;-D_FORTIFY_SOURCE=2")
+        target_link_libraries(ac_pc -l:libssp.a)
+    endif()
 else()
     find_package(OpenGL REQUIRED)
     target_link_libraries(ac_pc OpenGL::GL dl pthread m)
@@ -526,6 +542,12 @@ if(MINGW)
         message(STATUS "Stripped version.o from winpthread: ${WINPTHREAD_STRIPPED}")
     endif()
     target_link_options(ac_pc PRIVATE -static-libgcc -static-libstdc++ -Wl,-Bstatic,--whole-archive "${WINPTHREAD_STRIPPED}" -Wl,-Bdynamic,--no-whole-archive)
+endif()
+
+if(PC_MEMTRACK)
+    target_compile_definitions(ac_pc PRIVATE PC_MEMTRACK)
+    target_compile_options(ac_pc PRIVATE -g -fno-omit-frame-pointer)
+    target_link_options(ac_pc PRIVATE -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=free)
 endif()
 
 # Hide console window on Windows (GUI subsystem)

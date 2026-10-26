@@ -288,6 +288,18 @@ static int graph_draw_finish(GRAPH* this) {
     if (THA_GA_isCrash(&this->bg_translucent_thaga)) {
         err = TRUE;
     }
+#ifdef TARGET_PC
+    if (err) {
+        static int reported = 0;
+
+        /* The frame isn't shown: one of the display lists ran out (say, too many things drawn at once) */
+        if (reported++ < 5) {
+            OSReport("[graph] display list overflow: frame not shown (opa %d xlu %d shadow %d)\n",
+                     THA_GA_isCrash(&this->polygon_opaque_thaga), THA_GA_isCrash(&this->polygon_translucent_thaga),
+                     THA_GA_isCrash(&this->shadow_thaga));
+        }
+    }
+#endif
 
     return err;
 }

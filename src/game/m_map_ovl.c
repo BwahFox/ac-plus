@@ -866,6 +866,19 @@ static void mMP_set_init_data(mMP_Ovl_c* map_ovl, mSM_MenuInfo_c* menu_info) {
 
     map_ovl->player_bx = block_x - 1;
     map_ovl->player_bz = block_z - 1;
+#ifdef TARGET_PC
+    /* Indoors with no door to go by, the room's own position was taken for a town one, which is off the map
+     * (the original crashed on it): show the acre of the player's house. And never off the map whatever comes
+     * in (a position in the border ring): the acre tables have no entry for it */
+    if ((map_ovl->player_bx < 0 || map_ovl->player_bx >= FG_BLOCK_X_NUM || map_ovl->player_bz < 0 ||
+         map_ovl->player_bz >= FG_BLOCK_Z_NUM) &&
+        mFI_BlockKind2BkNum(&block_x, &block_z, mRF_BLOCKKIND_PLAYER)) {
+        map_ovl->player_bx = block_x - 1;
+        map_ovl->player_bz = block_z - 1;
+    }
+    map_ovl->player_bx = CLAMP(map_ovl->player_bx, 0, FG_BLOCK_X_NUM - 1);
+    map_ovl->player_bz = CLAMP(map_ovl->player_bz, 0, FG_BLOCK_Z_NUM - 1);
+#endif
 
     map_ovl->sel_bx = map_ovl->player_bx;
     map_ovl->sel_bz = map_ovl->player_bz;

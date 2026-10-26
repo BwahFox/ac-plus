@@ -2,6 +2,9 @@
 #include "jaudio_NES/sub_sys.h"
 #include "jaudio_NES/game64.h"
 #include "jaudio_NES/audiowork.h"
+#ifdef TARGET_PC
+#include "audio_defs.h" /* BGM_MD0..BGM_MD54 */
+#endif
 
 typedef struct NA_RHYTHM_BUFFER {
     /* 0x0 */ u8 state;
@@ -136,8 +139,25 @@ extern void Na_RhythmAllStop() {
     }
 }
 
+#ifdef TARGET_PC
+extern u8 sou_scene_mode;
+extern u8 sou_now_bgm_num;
+
+/* ac-plus: do instruments and gyroids keep time with the background music? Outdoors (outdoor furniture) only a
+ * K.K. song from a stereo or music box counts, not the hourly town music; anywhere else as before */
+static int na_rhythm_follow_bgm(void) {
+    if (AG.groups[sou_now_bgm_handle].flags.enabled == 0) {
+        return FALSE;
+    }
+    return sou_scene_mode != 1 || (sou_now_bgm_num >= BGM_MD0 && sou_now_bgm_num <= BGM_MD54);
+}
+#define NA_RHYTHM_FOLLOW_BGM() na_rhythm_follow_bgm()
+#else
+#define NA_RHYTHM_FOLLOW_BGM() (AG.groups[sou_now_bgm_handle].flags.enabled != 0)
+#endif
+
 static s16 Na_GetRhythmBeatType(void) {
-    if (AG.groups[sou_now_bgm_handle].flags.enabled != 0) {
+    if (NA_RHYTHM_FOLLOW_BGM()) {
         rhythm_beat_type = Nap_ReadGrpPort(sou_now_bgm_handle, 1);
     }
     return rhythm_beat_type;
@@ -350,7 +370,7 @@ extern void Na_SetRhythmInfo(TempoBeat_c* tempo) {
 static void tempo_adjust(group* group) {
     int tempo = (AG.groups[2].tempo / AUDIO_TATUMS_PER_BEAT);
     int newTempo;
-    if (AG.groups[sou_now_bgm_handle].flags.enabled != 0) {
+    if (NA_RHYTHM_FOLLOW_BGM()) {
         newTempo = (AG.groups[sou_now_bgm_handle].tempo / AUDIO_TATUMS_PER_BEAT);
 
         if (tempo > newTempo) {
@@ -359,6 +379,17 @@ static void tempo_adjust(group* group) {
             tempo++;
         }
     }
+#ifdef TARGET_PC
+    else if (sou_scene_mode == 1) {
+        /* back to the steady default tempo (Na_SetRhythmInfo), as when nothing plays */
+        if (tempo > 120) {
+            tempo--;
+        } else if (tempo < 120) {
+            tempo++;
+        }
+        rhythm_beat_type = -1;
+    }
+#endif
     group->tempo = tempo * AUDIO_TATUMS_PER_BEAT;
 }
 
@@ -403,7 +434,7 @@ static s8 Na_RhythmGrpProcess(s8 arg0, group* group) {
     }
     pre_frame_per_step = r29;
 
-    if (AG.groups[sou_now_bgm_handle].flags.enabled != 0) {
+    if (NA_RHYTHM_FOLLOW_BGM()) {
         int r25 = Nap_ReadGrpPort(sou_now_bgm_handle, 0);
         r30 = r25 - r27;
     } else {
