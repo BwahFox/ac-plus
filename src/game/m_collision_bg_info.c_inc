@@ -43,6 +43,18 @@ extern f32 mCoBG_GetBgY_AngleS_FromWpos(s_xyz* ground_angle, xyz_t pos, f32 grou
     return MAX(MAX(normal_y, column_y), MAX(normal_y, move_y)) - ground_dist;
 }
 
+#ifdef TARGET_PC
+/* The ground's own height, leaving out what stands on it (moving collision and columns, which furniture outdoors
+ * uses, pc_outdoor_ftr.c): ground patterns lie under furniture, not on top of it (pc_ground_pattern.c). */
+extern f32 mCoBG_GetBgY_NoMoveBg_FromWpos(xyz_t pos, f32 ground_dist) {
+    mCoBG_UnitInfo_c ut_info;
+    s_xyz angle;
+
+    mCoBG_Wpos2UnitInfo(&ut_info, pos);
+    return mCoBG_GetBGHeight_Normal(&angle, &ut_info) - ground_dist;
+}
+#endif
+
 extern f32 mCoBG_GetBgY_OnlyCenter_FromWpos(xyz_t pos, f32 ground_dist) {
     f32 y;
     mCoBG_Collision_u* collision;

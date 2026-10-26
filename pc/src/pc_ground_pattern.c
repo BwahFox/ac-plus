@@ -213,14 +213,14 @@ static Gfx l_ground_pattern_setup[] = {
     gsSPEndDisplayList(),
 };
 
+/* furniture standing on a pattern doesn't lift it */
 static f32 ground_y(f32 x, f32 z) {
-    s_xyz angle;
     xyz_t pos;
 
     pos.x = x;
     pos.y = 0.0f;
     pos.z = z;
-    return mCoBG_GetBgY_AngleS_FromWpos(&angle, pos, 0.0f) + GROUND_LIFT;
+    return mCoBG_GetBgY_NoMoveBg_FromWpos(pos, 0.0f) + GROUND_LIFT;
 }
 
 static void set_vtx(Vtx* v, f32 x, f32 y, f32 z, int s, int t) {

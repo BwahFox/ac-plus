@@ -436,6 +436,9 @@ extern void mCoBG_DeleteBoatCollision(ACTOR* actor);
 
 extern void mCoBG_GetSlopeSlideVector(xyz_t* vec, xyz_t pos);
 extern f32 mCoBG_GetBgY_AngleS_FromWpos(s_xyz* ground_angle, xyz_t pos, f32 ground_dist);
+#ifdef TARGET_PC
+extern f32 mCoBG_GetBgY_NoMoveBg_FromWpos(xyz_t pos, f32 ground_dist);
+#endif
 extern f32 mCoBG_GetBgY_OnlyCenter_FromWpos(xyz_t pos, f32 ground_dist);
 extern f32 mCoBG_Wpos2BgUtCenterHeight_AddColumn(xyz_t pos);
 extern f32 mCoBG_GetBgY_OnlyCenter_FromWpos2(xyz_t pos, f32 ground_dist);
