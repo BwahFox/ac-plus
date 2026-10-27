@@ -545,6 +545,100 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
     } else if (strcmp(cmd, "open") == 0) {
         extern void pc_dev_open_trees(void);
         pc_dev_open_trees();
+    } else if (strcmp(cmd, "equip") == 0 && sscanf(line, "%*s %x", &n) == 1) {
+        extern void pc_dev_equip(void* game, unsigned short item);
+        extern void* gamePT;
+        pc_dev_equip(gamePT, (unsigned short)n);
+    } else if (strcmp(cmd, "shopbuy") == 0 && sscanf(line, "%*s %d", &n) == 1) {
+        extern void pc_dev_shop_buy(int slot);
+        pc_dev_shop_buy(n);
+    } else if (strcmp(cmd, "shopfake") == 0 && sscanf(line, "%*s %d %x", &x, &n) == 2) {
+        /* shopfake SLOT ITEM: this game's shop slot only, unreported (tests a purchase the host refuses) */
+        extern int pc_mp_world_apply(int kind, int a, int b, unsigned short value);
+        pc_mp_world_apply(3, x, 0, (unsigned short)n);
+    } else if (strcmp(cmd, "museumfish") == 0 && sscanf(line, "%*s %d", &n) == 1) {
+        extern void mMmd_SetFish(int fish_no);
+        mMmd_SetFish(n);
+    } else if (strcmp(cmd, "museumlog") == 0) {
+        extern void pc_dev_museum_log(void);
+        pc_dev_museum_log();
+    } else if (strcmp(cmd, "roomset") == 0) {
+        extern void pc_dev_room(int home, int floor, int unit, int item);
+        int h, f, u, v;
+        if (sscanf(line, "%*s %d %d %d %x", &h, &f, &u, &v) == 4) {
+            pc_dev_room(h, f, u, v);
+        }
+    } else if (strcmp(cmd, "roomlog") == 0) {
+        extern void pc_dev_room(int home, int floor, int unit, int item);
+        int h, f, u;
+        if (sscanf(line, "%*s %d %d %d", &h, &f, &u) == 3) {
+            pc_dev_room(h, f, u, -1);
+        }
+    } else if (strcmp(cmd, "say") == 0 && strlen(line) > 4) {
+        extern int pc_mp_say(const char* text);
+        pc_mp_say(line + 4);
+    } else if (strcmp(cmd, "wear") == 0 && sscanf(line, "%*s %x", &n) == 1) {
+        /* wear CLOTH(hex item, e.g. 2400): put a shirt on, as changing in the pockets does */
+        extern void pc_dev_wear(int item);
+        pc_dev_wear(n);
+    } else if (strcmp(cmd, "npcgone") == 0 && sscanf(line, "%*s %d", &n) == 1) {
+        /* npcgone IDX: villager IDX goes home in this game only (their actor removed): another game's town drifting */
+        extern void pc_dev_npc_gone(int idx);
+        pc_dev_npc_gone(n);
+    } else if (strcmp(cmd, "talkto") == 0 && sscanf(line, "%*s %d", &n) == 1) {
+        /* talkto IDX: stand just south of villager IDX, facing them (then "tap A" talks) */
+        extern void pc_dev_talkto(int idx);
+        pc_dev_talkto(n);
+    } else if (strcmp(cmd, "neartree") == 0) {
+        /* neartree: stand just south of the nearest full-grown tree, facing it (then "tap A" with an axe) */
+        extern void pc_dev_near_tree(void);
+        pc_dev_near_tree();
+    } else if (strcmp(cmd, "switchnear") == 0) {
+        /* switchnear: flip the on/off switch of the furniture nearest the player (as switching it on does) */
+        extern void pc_dev_switch_near(int name);
+        pc_dev_switch_near(sscanf(line, "%*s %d", &n) == 1 ? n : -1); /* switchnear [FTR]: only that furniture */
+    } else if (strcmp(cmd, "showfish") == 0 && sscanf(line, "%*s %x", &n) == 1) {
+        /* showfish ITEM: online, the others see this player holding up that fish for five seconds */
+        extern int pc_mp_test_catch, pc_mp_test_catch_frames;
+        pc_mp_test_catch = n;
+        pc_mp_test_catch_frames = 300;
+    } else if (strcmp(cmd, "talkprof") == 0 && sscanf(line, "%*s %d", &n) == 1) {
+        /* talkprof PROFILE: stand in front of the first actor of that profile (e.g. Porter), facing them */
+        extern void pc_dev_talk_profile(int profile);
+        pc_dev_talk_profile(n);
+    } else if (strcmp(cmd, "nearwater") == 0) {
+        /* nearwater: stand on the dry unit next to the nearest river or pond water */
+        extern void pc_dev_near_water(void);
+        pc_dev_near_water();
+    } else if (strcmp(cmd, "fakecatch") == 0) {
+        /* fakecatch: online visitor - the host's fish here is caught (as a catch ends: gone while on the line) */
+        extern void pc_mp_fish_dev_catch(void);
+        extern void pc_mp_bugs_dev_catch(void);
+        if (strstr(line, "bug") != NULL) {
+            pc_mp_bugs_dev_catch(); /* fakecatch bug */
+        } else {
+            pc_mp_fish_dev_catch();
+        }
+    } else if (strcmp(cmd, "npcaway") == 0 && sscanf(line, "%*s %d", &n) == 1) {
+        /* npcaway IDX: this game loses track of villager IDX: out in the town, but somewhere else (by their house) */
+        extern void pc_dev_npc_away(int idx);
+        pc_dev_npc_away(n);
+    } else if (strcmp(cmd, "memtest") == 0 && sscanf(line, "%*s %d", &n) == 1) {
+        /* memtest IDX: villager IDX gets to know this player, as a first talk does */
+        extern void pc_mp_memory_dev_meet(int v);
+        pc_mp_memory_dev_meet(n);
+    } else if (strcmp(cmd, "wallet") == 0 && sscanf(line, "%*s %d", &n) == 1) {
+        /* wallet BELLS: the player's wallet */
+        extern void pc_dev_wallet(int bells);
+        pc_dev_wallet(n);
+    } else if (strcmp(cmd, "nes") == 0 && sscanf(line, "%*s %d", &n) == 1) {
+        /* nes N: start NES game N where the player stands, as the furniture does (m_scene.c goto_emu_game) */
+        extern int goto_emu_game(void* game, s16 famicom_rom_id);
+        extern void* gamePT;
+        goto_emu_game(gamePT, (s16)n);
+    } else if (strcmp(cmd, "shoplog") == 0) {
+        extern void pc_dev_shop_log(void);
+        pc_dev_shop_log();
     } else if (strcmp(cmd, "fgfind") == 0 && sscanf(line, "%*s %x", &n) == 1) {
         extern void pc_dev_fg_find(int item);
         pc_dev_fg_find(n);

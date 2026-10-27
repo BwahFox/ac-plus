@@ -31,6 +31,8 @@ enum {
     ITEM_CF_TV,
     ITEM_TANNING,
     ITEM_MASTER_VOLUME,
+    ITEM_MUSIC_CUSTOM,
+    ITEM_RAIN_SPRING,
     ITEM_STICK_DEADZONE,
     ITEM_CSTICK_DEADZONE,
     ITEM_BINDINGS,
@@ -42,6 +44,8 @@ enum {
     ITEM_SYNC,
     ITEM_SYNC_URL,
     ITEM_SYNC_TOKEN,
+    ITEM_MP_SERVER,
+    ITEM_MP_PUBLIC,
     ITEM_MOUSE,
 };
 
@@ -85,8 +89,15 @@ static const Item tab_saving_items[] = {
     { "Sync token",   ITEM_SYNC_TOKEN,   0 },
 };
 
+static const Item tab_online_items[] = {
+    { "Invite code server", ITEM_MP_SERVER, 0 },
+    { "Open to everyone",   ITEM_MP_PUBLIC, 0 },
+};
+
 static const Item tab_audio_items[] = {
     { "Master volume", ITEM_MASTER_VOLUME, 0 },
+    { "Custom music",  ITEM_MUSIC_CUSTOM,  0 },
+    { "Rain music",    ITEM_RAIN_SPRING,   0 },
 };
 
 static const Item tab_controls_items[] = {
@@ -109,6 +120,7 @@ static const Tab s_tabs[] = {
     { "Controls", TAB_ITEMS(tab_controls_items) },
     { "Gameplay", TAB_ITEMS(tab_gameplay_items) },
     { "Saving",   TAB_ITEMS(tab_saving_items) },
+    { "Online",   TAB_ITEMS(tab_online_items) },
 };
 #define TAB_COUNT ((int)(sizeof(s_tabs) / sizeof(s_tabs[0])))
 
@@ -182,7 +194,7 @@ static int s_bind_col = 0;      /* 0 = keyboard, 1 = gamepad */
 static int s_bind_scroll = 0;
 static int s_capture = 0;       /* waiting for the next key/button press */
 static int s_text_edit = 0;     /* typing one of the text items (s_text_id) */
-static int s_text_id = 0;       /* ITEM_SERVER_HOST, ITEM_SYNC_URL or ITEM_SYNC_TOKEN */
+static int s_text_id = 0;       /* ITEM_SERVER_HOST, ITEM_SYNC_URL, ITEM_SYNC_TOKEN or ITEM_MP_SERVER */
 static char s_text_before[256]; /* restored if the typing is cancelled */
 static void text_edit_begin(int id);
 static char* text_field(int id, size_t* size);
@@ -295,6 +307,8 @@ static void recompute_dirty(void) {
         (s_pending.cf_tv            != g_pc_settings.cf_tv) ||
         (s_pending.tanning          != g_pc_settings.tanning) ||
         (s_pending.master_volume    != g_pc_settings.master_volume) ||
+        (s_pending.music_custom     != g_pc_settings.music_custom) ||
+        (s_pending.rain_spring      != g_pc_settings.rain_spring) ||
         (s_pending.stick_deadzone   != g_pc_settings.stick_deadzone) ||
         (s_pending.cstick_deadzone  != g_pc_settings.cstick_deadzone) ||
         (s_pending.autosave_minutes != g_pc_settings.autosave_minutes) ||
@@ -305,6 +319,8 @@ static void recompute_dirty(void) {
         (s_pending.sync_enabled     != g_pc_settings.sync_enabled) ||
         strcmp(s_pending.sync_url, g_pc_settings.sync_url) != 0 ||
         strcmp(s_pending.sync_token, g_pc_settings.sync_token) != 0 ||
+        strcmp(s_pending.mp_server, g_pc_settings.mp_server) != 0 ||
+        (s_pending.mp_public        != g_pc_settings.mp_public) ||
         (s_pending.mouse_mode       != g_pc_settings.mouse_mode);
 }
 
@@ -408,6 +424,12 @@ static void item_cycle(int id, int dir) {
         case ITEM_TANNING:
             s_pending.tanning = !s_pending.tanning;
             break;
+        case ITEM_MUSIC_CUSTOM:
+            s_pending.music_custom = !s_pending.music_custom;
+            break;
+        case ITEM_RAIN_SPRING:
+            s_pending.rain_spring = !s_pending.rain_spring;
+            break;
         case ITEM_QUICK_LOAD:
             s_pending.quick_load = !s_pending.quick_load;
             break;
@@ -417,9 +439,13 @@ static void item_cycle(int id, int dir) {
         case ITEM_SYNC:
             s_pending.sync_enabled = !s_pending.sync_enabled;
             break;
+        case ITEM_MP_PUBLIC:
+            s_pending.mp_public = !s_pending.mp_public;
+            break;
         case ITEM_SERVER_HOST:
         case ITEM_SYNC_URL:
         case ITEM_SYNC_TOKEN:
+        case ITEM_MP_SERVER:
             /* typed in: confirm starts editing (text_edit_begin) */
             break;
         case ITEM_MOUSE:
@@ -506,6 +532,16 @@ static void item_format(int id, char* buf, size_t n) {
         case ITEM_CF_TV:
             snprintf(buf, n, "%s", s_pending.cf_tv ? "< City Folk >" : "< Original >");
             break;
+        case ITEM_MUSIC_CUSTOM:
+            if (s_pending.music_pack[0] == '\0') {
+                snprintf(buf, n, "No music pack");
+            } else {
+                snprintf(buf, n, "< %s: %.20s >", s_pending.music_custom ? "On" : "Off", s_pending.music_pack);
+            }
+            break;
+        case ITEM_RAIN_SPRING:
+            snprintf(buf, n, "%s", s_pending.rain_spring ? "< Spring melody >" : "< Rain song >");
+            break;
         case ITEM_TANNING:
             snprintf(buf, n, "%s", s_pending.tanning ? "< On >" : "< Off >");
             break;
@@ -518,9 +554,13 @@ static void item_format(int id, char* buf, size_t n) {
         case ITEM_SYNC:
             snprintf(buf, n, "%s", s_pending.sync_enabled ? "< On >" : "< Off >");
             break;
+        case ITEM_MP_PUBLIC:
+            snprintf(buf, n, "%s", s_pending.mp_public ? "< On >" : "< Off >");
+            break;
         case ITEM_SERVER_HOST:
         case ITEM_SYNC_URL:
-        case ITEM_SYNC_TOKEN: {
+        case ITEM_SYNC_TOKEN:
+        case ITEM_MP_SERVER: {
             size_t size;
             const char* text = text_field(id, &size);
 
@@ -539,6 +579,8 @@ static void item_format(int id, char* buf, size_t n) {
             } else if (text[0] != '\0') {
                 snprintf(buf, n, "%.24s", text);
                 sanitize_glyphs(buf);
+            } else if (id == ITEM_MP_SERVER) {
+                snprintf(buf, n, "None (visit by address)");
             } else {
                 snprintf(buf, n, "Press A to type");
             }
@@ -579,6 +621,8 @@ static int item_changed(int id) {
         case ITEM_CF_TV:         return s_pending.cf_tv         != g_pc_settings.cf_tv;
         case ITEM_TANNING:       return s_pending.tanning       != g_pc_settings.tanning;
         case ITEM_MASTER_VOLUME: return s_pending.master_volume != g_pc_settings.master_volume;
+        case ITEM_MUSIC_CUSTOM:  return s_pending.music_custom  != g_pc_settings.music_custom;
+        case ITEM_RAIN_SPRING:   return s_pending.rain_spring   != g_pc_settings.rain_spring;
         case ITEM_STICK_DEADZONE:  return s_pending.stick_deadzone  != g_pc_settings.stick_deadzone;
         case ITEM_CSTICK_DEADZONE: return s_pending.cstick_deadzone != g_pc_settings.cstick_deadzone;
         case ITEM_AUTOSAVE:      return s_pending.autosave_minutes != g_pc_settings.autosave_minutes;
@@ -589,6 +633,8 @@ static int item_changed(int id) {
         case ITEM_SYNC:          return s_pending.sync_enabled  != g_pc_settings.sync_enabled;
         case ITEM_SYNC_URL:      return strcmp(s_pending.sync_url, g_pc_settings.sync_url) != 0;
         case ITEM_SYNC_TOKEN:    return strcmp(s_pending.sync_token, g_pc_settings.sync_token) != 0;
+        case ITEM_MP_SERVER:     return strcmp(s_pending.mp_server, g_pc_settings.mp_server) != 0;
+        case ITEM_MP_PUBLIC:     return s_pending.mp_public     != g_pc_settings.mp_public;
         case ITEM_MOUSE:         return s_pending.mouse_mode    != g_pc_settings.mouse_mode;
         case ITEM_BINDINGS:      return 0; /* bindings save themselves */
     }
@@ -802,7 +848,8 @@ int pc_settings_menu_confirm(void) {
     } else if (s_sel < cur_item_count()) {
         int id = s_tabs[s_tab].items[s_sel].id;
         if (id == ITEM_BINDINGS)         bind_enter_page();
-        else if (id == ITEM_SERVER_HOST || id == ITEM_SYNC_URL || id == ITEM_SYNC_TOKEN) text_edit_begin(id);
+        else if (id == ITEM_SERVER_HOST || id == ITEM_SYNC_URL || id == ITEM_SYNC_TOKEN || id == ITEM_MP_SERVER)
+            text_edit_begin(id);
         else                             item_cycle(id, +1);
     } else if (s_sel == idx_apply()) {
         apply_pending();
@@ -861,6 +908,7 @@ static char* text_field(int id, size_t* size) {
     switch (id) {
         case ITEM_SYNC_URL:   *size = sizeof(s_pending.sync_url);   return s_pending.sync_url;
         case ITEM_SYNC_TOKEN: *size = sizeof(s_pending.sync_token); return s_pending.sync_token;
+        case ITEM_MP_SERVER:  *size = sizeof(s_pending.mp_server);  return s_pending.mp_server;
         default:              *size = sizeof(s_pending.server_sync_host); return s_pending.server_sync_host;
     }
 }

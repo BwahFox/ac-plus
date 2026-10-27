@@ -33,11 +33,17 @@ PCSettings g_pc_settings = {
     .sync_enabled = 0,
     .sync_url = "",
     .sync_token = "",
+    .mp_port = 41330,
+    .mp_last_visit = "",
+    .mp_server = PC_MP_DEFAULT_SERVER,
+    .mp_public = 0,
     .update_check = 1,
     .update_repo = "BwahFox/ac-plus",
     .update_skip = "",
     .music_pack = "",
     .music_volume = 100,
+    .music_custom = 1,
+    .rain_spring = 0,
     .stick_deadzone = 12,
     .cstick_deadzone = 12,
     .mouse_mode = 1,
@@ -129,6 +135,18 @@ static const char* DEFAULT_SETTINGS =
     "sync_url =\n"
     "sync_token =\n"
     "\n"
+    "[Online]\n"
+    "# Online visits (pause menu > Online Play): mp_port is the UDP port your town is hosted on (forward it on\n"
+    "# your router for visitors from outside your network); mp_last_visit is the last town you visited.\n"
+    "# mp_server is an ac-plus-server for invite codes (host[:port], UDP 41331 by default; see server/README.md):\n"
+    "# with one, hosting gets a code to give your visitors, and no router setup is needed for most networks.\n"
+    "# The default is the ac-plus project's server; empty = none (visit by address only).\n"
+    "# mp_public = 1 also lists your town on that server while you host.\n"
+    "mp_port = 41330\n"
+    "mp_last_visit =\n"
+    "mp_server = " PC_MP_DEFAULT_SERVER "\n"
+    "mp_public = 0\n"
+    "\n"
     "[Updates]\n"
     "# Update check: 1 = at startup, look for a newer ac-plus release and offer to install it (saves, settings,\n"
     "# music and texture packs are kept). update_repo is the GitHub repository it comes from (owner/name), so a\n"
@@ -147,6 +165,12 @@ static const char* DEFAULT_SETTINGS =
     "\n"
     "# Custom music volume as a percentage (0-100)\n"
     "music_volume = 100\n"
+    "\n"
+    "# Custom music: 1 = play the music pack above, 0 = the game's own music (keeps the pack's name)\n"
+    "music_custom = 1\n"
+    "\n"
+    "# Rain music (the game's own music): 0 = the rain song, 1 = the hour's spring (cherry blossom) arrangement\n"
+    "rain_spring = 0\n"
     "\n"
     "[Input]\n"
     "# Gamepad stick deadzones as a percentage (0-40)\n"
@@ -217,6 +241,10 @@ static void apply_setting(const char* key, const char* value) {
         snprintf(g_pc_settings.music_pack, sizeof(g_pc_settings.music_pack), "%s", value);
     } else if (strcmp(key, "music_volume") == 0) {
         if (val >= 0 && val <= 100) g_pc_settings.music_volume = val;
+    } else if (strcmp(key, "music_custom") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.music_custom = val;
+    } else if (strcmp(key, "rain_spring") == 0) {
+        if (val == 0 || val == 1) g_pc_settings.rain_spring = val;
     } else if (strcmp(key, "autosave_minutes") == 0) {
         if (val >= 0 && val <= 600) g_pc_settings.autosave_minutes = val;
     } else if (strcmp(key, "save_on_quit") == 0) {
@@ -236,6 +264,15 @@ static void apply_setting(const char* key, const char* value) {
         snprintf(g_pc_settings.server_sync_dir, sizeof(g_pc_settings.server_sync_dir), "%s", value);
     } else if (strcmp(key, "sync_enabled") == 0) {
         if (val == 0 || val == 1) g_pc_settings.sync_enabled = val;
+    } else if (strcmp(key, "mp_port") == 0) {
+        int v = atoi(value);
+        g_pc_settings.mp_port = (v >= 1024 && v <= 65535) ? v : 41330;
+    } else if (strcmp(key, "mp_server") == 0) {
+        snprintf(g_pc_settings.mp_server, sizeof(g_pc_settings.mp_server), "%s", value);
+    } else if (strcmp(key, "mp_public") == 0) {
+        g_pc_settings.mp_public = atoi(value) != 0;
+    } else if (strcmp(key, "mp_last_visit") == 0) {
+        snprintf(g_pc_settings.mp_last_visit, sizeof(g_pc_settings.mp_last_visit), "%s", value);
     } else if (strcmp(key, "sync_url") == 0) {
         snprintf(g_pc_settings.sync_url, sizeof(g_pc_settings.sync_url), "%s", value);
     } else if (strcmp(key, "sync_token") == 0) {
@@ -378,6 +415,18 @@ void pc_settings_save(void) {
     fprintf(f, "sync_url = %s\n", g_pc_settings.sync_url);
     fprintf(f, "sync_token = %s\n", g_pc_settings.sync_token);
     fprintf(f, "\n");
+    fprintf(f, "[Online]\n");
+    fprintf(f, "# Online visits (pause menu > Online Play): mp_port is the UDP port your town is hosted on (forward it on\n");
+    fprintf(f, "# your router for visitors from outside your network); mp_last_visit is the last town you visited.\n");
+    fprintf(f, "# mp_server is an ac-plus-server for invite codes (host[:port], UDP 41331 by default; see server/README.md):\n");
+    fprintf(f, "# with one, hosting gets a code to give your visitors, and no router setup is needed for most networks.\n");
+    fprintf(f, "# The default is the ac-plus project's server; empty = none (visit by address only).\n");
+    fprintf(f, "# mp_public = 1 also lists your town on that server while you host.\n");
+    fprintf(f, "mp_port = %d\n", g_pc_settings.mp_port);
+    fprintf(f, "mp_last_visit = %s\n", g_pc_settings.mp_last_visit);
+    fprintf(f, "mp_server = %s\n", g_pc_settings.mp_server);
+    fprintf(f, "mp_public = %d\n", g_pc_settings.mp_public);
+    fprintf(f, "\n");
     fprintf(f, "[Updates]\n");
     fprintf(f, "# Update check: 1 = at startup, look for a newer ac-plus release and offer to install it (saves, settings,\n");
     fprintf(f, "# music and texture packs are kept). update_repo is the GitHub repository it comes from (owner/name), so a\n");
@@ -396,6 +445,12 @@ void pc_settings_save(void) {
     fprintf(f, "\n");
     fprintf(f, "# Custom music volume as a percentage (0-100)\n");
     fprintf(f, "music_volume = %d\n", g_pc_settings.music_volume);
+    fprintf(f, "\n");
+    fprintf(f, "# Custom music: 1 = play the music pack above, 0 = the game's own music (keeps the pack's name)\n");
+    fprintf(f, "music_custom = %d\n", g_pc_settings.music_custom);
+    fprintf(f, "\n");
+    fprintf(f, "# Rain music (the game's own music): 0 = the rain song, 1 = the hour's spring (cherry blossom) arrangement\n");
+    fprintf(f, "rain_spring = %d\n", g_pc_settings.rain_spring);
     fprintf(f, "\n");
     fprintf(f, "[Input]\n");
     fprintf(f, "# Gamepad stick deadzones as a percentage (0-40)\n");
@@ -617,4 +672,9 @@ void pc_settings_load(void) {
            SETTINGS_FILE, g_pc_settings.window_width, g_pc_settings.window_height,
            g_pc_settings.fullscreen, g_pc_settings.vsync, g_pc_settings.max_fps, g_pc_settings.msaa,
            g_pc_settings.preload_textures, g_pc_settings.borderless_acres);
+}
+
+/* jaudio (game64.c_inc), which doesn't see pc_settings.h */
+int pc_settings_rain_spring(void) {
+    return g_pc_settings.rain_spring;
 }

@@ -3555,6 +3555,12 @@ static int Player_actor_CheckAndRequest_main_axe_all(GAME* game, int prio) {
         int result =
             Player_actor_Check_axe_after(GET_PLAYER_ACTOR_GAME_ACTOR(game), &target_pos, &item, &reflect_actor_p);
 
+#ifdef TARGET_PC
+        if (result == mPlayer_AXE_HIT_TREE && !pc_mp_trusted()) {
+            result = mPlayer_AXE_HIT_REFLECT; /* a guest doesn't chop the owner's trees */
+            reflect_actor_p = NULL;
+        }
+#endif
         if (result == mPlayer_AXE_HIT_TREE) {
             int tree_ut_x;
             int tree_ut_z;
@@ -4390,6 +4396,16 @@ static int Player_actor_CheckAndRequest_main_scoop_all(GAME* game, int priority)
         int gold_shovel = player->item_kind == mPlayer_ITEM_KIND_GOLD_SHOVEL;
         int scoop_request_index =
             Player_actor_Check_scoop_after(game, &target_pos, &item, &reflect_actor_p, gold_shovel);
+
+#ifdef TARGET_PC
+        if (!pc_mp_trusted() && (scoop_request_index == mPlayer_INDEX_DIG_SCOOP ||
+                                 scoop_request_index == mPlayer_INDEX_FILL_SCOOP ||
+                                 scoop_request_index == mPlayer_INDEX_GET_SCOOP)) {
+            /* a guest in someone's town doesn't dig: the shovel bounces off */
+            scoop_request_index = mPlayer_INDEX_REFLECT_SCOOP;
+            reflect_actor_p = NULL;
+        }
+#endif
 
         if (scoop_request_index == mPlayer_INDEX_DIG_SCOOP) {
             if (Player_actor_request_main_dig_scoop_all(game, &target_pos, item, priority)) {
@@ -6179,6 +6195,13 @@ static void Player_actor_Set_EffectBgTree(GAME* game, mActor_name_t item, s16 bg
         }
     }
 }
+
+#ifdef TARGET_PC
+/* online (pc_mp.c): a tree another player cut or shook falls or shakes here too */
+void pc_mp_effect_bg_tree(GAME* game, mActor_name_t item, s16 bg_ef_type, int ut_x, int ut_z) {
+    Player_actor_Set_EffectBgTree(game, item, bg_ef_type, ut_x, ut_z);
+}
+#endif
 
 static mActor_name_t Player_actor_Get_shake_tree_position_and_itemNo(ACTOR* actorx, xyz_t* pos_p) {
     xyz_t* player_pos_p = &actorx->world.position;

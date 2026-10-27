@@ -38,6 +38,7 @@ typedef struct {
     int active;
     int track;     /* index into s_tracks */
     int seq_id;    /* the sequence this slot stands in for */
+    int pack;      /* an hourly track from the music pack (not a scene's own): goes when the pack is turned off */
     int seen;      /* that sequence has been observed running */
     int grace;     /* frames left to wait for it to start */
     u32 pos;
@@ -260,6 +261,9 @@ void pc_music_seq_started(int group_id, int bgm_num, int tenki, int seq_id) {
 
     music_lock();
     slot_clear(group_id);
+    if (getenv("PC_MUSIC_LOG") != NULL) {
+        printf("[MUSIC] start: group %d bgm %d weather %d sequence %d\n", group_id, bgm_num, tenki, seq_id);
+    }
 
     if (s_scene_path[0] != '\0' && is_bgm_group(group_id)) {
         scene_attach(group_id, seq_id, FALSE);
@@ -268,7 +272,7 @@ void pc_music_seq_started(int group_id, int bgm_num, int tenki, int seq_id) {
         return;
     }
 
-    if (g_pc_settings.music_pack[0] != '\0' && bgm_num >= 1 && bgm_num <= MUSIC_HOURS) {
+    if (g_pc_settings.music_pack[0] != '\0' && g_pc_settings.music_custom && bgm_num >= 1 && bgm_num <= MUSIC_HOURS) {
         int hour = bgm_num - 1;
 
         if (resolve_track(path, hour, tenki)) {
@@ -279,6 +283,7 @@ void pc_music_seq_started(int group_id, int bgm_num, int tenki, int seq_id) {
                 s->active = TRUE;
                 s->track = idx;
                 s->seq_id = seq_id;
+                s->pack = TRUE;
                 s->grace = START_GRACE_FRAMES;
                 s_tracks[idx].refs++;
                 s_silenced[group_id] = TRUE;
@@ -330,6 +335,12 @@ void pc_music_mix(short* buf, unsigned int n_samples) {
         int running;
 
         if (!s->active) continue;
+        if (s->pack && !g_pc_settings.music_custom) {
+            /* the pack was turned off (Settings > Audio): the game's own song, running underneath, is heard now */
+            slot_clear(g);
+            changed = TRUE;
+            continue;
+        }
 
         running = grp->flags.enabled && grp->seq_id == s->seq_id;
         if (!s->seen) {

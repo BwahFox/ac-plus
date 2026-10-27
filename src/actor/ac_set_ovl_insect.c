@@ -2117,6 +2117,16 @@ extern int aSOI_insect_set(SET_MANAGER* set_manager, GAME_PLAY* play) {
   aSOI_insect_keep_c* keep = &set_manager->keep.insect_keep;
   int res = FALSE;
 
+#ifdef TARGET_PC
+  {
+    /* online, in the host's acre: the host's insects are the insects here (pc_mp_bugs.c) */
+    extern int pc_mp_bugs_shared(void);
+    if (pc_mp_bugs_shared()) {
+      return FALSE;
+    }
+  }
+#endif
+
   if (aSOI_ins_block_check(set_manager, play) == FALSE) {
     aSOI_ins_clear_set_data(&set_data);
     aSOI_ins_make_range_data(set_manager);

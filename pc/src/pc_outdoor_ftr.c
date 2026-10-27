@@ -389,3 +389,61 @@ int pc_oftr_put(const int* uts, int count, mActor_name_t ftr) {
     }
     return TRUE;
 }
+
+/* Online visits (pc_mp_town.c). The host: every unit of its outdoor furniture, as the save has it */
+void pc_oftr_export(void (*fn)(void* user, int ut, int layer, mActor_name_t item), void* user) {
+    extern void aMR_pc_items_to_fg(int on);
+    int layer, ut;
+
+    aMR_pc_items_to_fg(TRUE); /* what the loaded pieces hold (a stereo's disc) */
+    for (layer = 0; layer < PC_OFTR_LAYER_NUM; layer++) {
+        for (ut = 0; ut < PC_OFTR_UT_TOTAL_NUM; ut++) {
+            if (l_fg[layer][ut] != EMPTY_NO && l_fg[layer][ut] != RSV_NO) {
+                fn(user, ut, layer, l_fg[layer][ut]);
+            }
+        }
+    }
+    aMR_pc_items_to_fg(FALSE);
+}
+
+/* The visitor: the host's furniture goes in the grid another town's furniture actor uses */
+void pc_oftr_visit_clear(void) {
+    memset(l_none, 0, sizeof(l_none));
+}
+
+int pc_oftr_visit_set(int ut, int layer, mActor_name_t item) {
+    if (ut < 0 || ut >= PC_OFTR_UT_TOTAL_NUM || layer < 0 || layer >= PC_OFTR_LAYER_NUM ||
+        (item != EMPTY_NO && !oftr_item_ok(item))) {
+        return FALSE;
+    }
+    l_none[layer][ut] = item;
+    return TRUE;
+}
+
+/* online host: what changed in the town's outdoor furniture since the last look (placed, moved, taken away, put in
+ * or taken out of a piece); the first look only takes note. A piece's other units (RSV_NO) count as empty. */
+static mActor_name_t l_seen[PC_OFTR_LAYER_NUM][PC_OFTR_UT_TOTAL_NUM];
+static int l_seen_valid;
+
+void pc_oftr_changes(void (*fn)(void* user, int ut, int layer, mActor_name_t old_item, mActor_name_t new_item),
+                     void* user) {
+    extern void aMR_pc_items_to_fg(int on);
+    int layer, ut;
+
+    aMR_pc_items_to_fg(TRUE); /* what the loaded pieces hold (a stereo's disc) is still the town's: not a change */
+    for (layer = 0; layer < PC_OFTR_LAYER_NUM; layer++) {
+        for (ut = 0; ut < PC_OFTR_UT_TOTAL_NUM; ut++) {
+            mActor_name_t now = l_fg[layer][ut] == RSV_NO ? EMPTY_NO : l_fg[layer][ut];
+            if (l_seen_valid && now != l_seen[layer][ut]) {
+                fn(user, ut, layer, l_seen[layer][ut], now);
+            }
+            l_seen[layer][ut] = now;
+        }
+    }
+    aMR_pc_items_to_fg(FALSE);
+    l_seen_valid = TRUE;
+}
+
+void pc_oftr_changes_reset(void) {
+    l_seen_valid = FALSE;
+}

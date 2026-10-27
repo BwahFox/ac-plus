@@ -134,6 +134,32 @@ disc-preservation database.
 Besides everything ACGC-PC-Port adds (widescreen, high resolutions, texture packs, keyboard and
 mouse, controllers), ac-plus adds:
 
+**Online visits (experimental)**
+- **Visit a friend's town, or host yours**, for up to four players: pause menu → Online Play, or
+  talk to Porter at the train station. Hosting gives you an **invite code** for your friends to
+  type in. No router setup is needed for most networks: the ac-plus server introduces the two
+  games, and relays the visit when they can't reach each other directly.
+- Settings → Online → **Invite code server** chooses that server: the ac-plus project's by default,
+  your own (it's the same one-file server, see [its guide](server/README.md)), or none. Without
+  one, visit by address instead (`192.168.1.20:41330` on your own network; from outside, the host
+  forwards UDP port 41330 on their router).
+- **Open to everyone** (off by default) lists your town in Browse open towns while you host.
+  Otherwise only people you give the code to can find it.
+- The host's town is the real one: what visitors pick up, buy, plant or donate goes through the
+  host's game, and only the host's save changes. Visitors are guests (no digging, chopping or
+  picking flowers) until the host trusts them in Online Play, and the host can send anyone home.
+- Shared with everyone in the town: items on the ground, trees, holes, flowers, the shop's stock,
+  the museum, furniture indoors and out, switches (TVs, lamps, stereos, instruments), the town's
+  time and weather, where villagers are, fish and insects, and each player's clothes and face.
+  Two players can't talk to the same villager or sit on the same seat at once.
+- Villagers remember a visitor from one visit to the next.
+- Chat from the Online Play menu (Say).
+- Connections are encrypted, and each game has its own key (shown in Online Play). Your town is
+  only open while you host.
+- **Nothing is lost if a visit drops:** during a visit your character (pockets, Bells, clothes and
+  all) is kept in `save/online_passport.bin`. If the game closes or the connection is lost, the
+  next start brings you home with everything you had.
+
 **Town and world**
 - City Folk style curved world and sky outdoors (`world_curve` setting; 0 turns it off).
 - City Folk weather: the weather can change during the day, with overcast spells and rainbows
@@ -218,6 +244,8 @@ mouse, controllers), ac-plus adds:
 - The `.acplus` file carries a checksum, and the last three copies are kept. A damaged one is set
   aside and the newest good copy is loaded instead.
 - Quick load: returning players start straight in town.
+- **Custom music** (Settings → Audio) switches between your music pack and the game's own music,
+  and **Rain music** picks the rain song or the hour's spring arrangement in the rain.
 - **Save syncing built in:** with your own small ac-plus-server (one Python file, see
   [Saves](#saves)), the game downloads your town at startup when another machine saved it last, and
   uploads after every save with **Save Upload Complete** on screen. If two machines both have new
@@ -226,6 +254,10 @@ mouse, controllers), ac-plus adds:
 
 **Fixes**
 - Opening the map indoors could crash the game; it now shows your house's acre.
+- Picking up a 90,000 Bells bag only gave 200 Bells when it fit in the wallet. It now gives
+  90,000, or goes into your pockets as a bag when the wallet is too full.
+- Returning home from a town on memory card B could crash the game.
+- At the Roost, getting up just as Brewster started talking left you free to walk during the talk.
 - On Linux with an NVIDIA card, the game's memory no longer creeps up while it runs (from the
   second start: the first one switches Wine to the steadier way of drawing for this game).
 - **Custom hourly music:** replace the 24 hourly tracks with your own files (see
@@ -319,6 +351,16 @@ default back.
 - **The curved world** makes far-off acres look emptier: like the original game, it only shows
   trees in the acres around you.
 - **Sky events:** the UFO and balloons haven't been checked against the City Folk sky yet.
+
+**Online visits**
+- **Experimental:** expect rough edges, and back up both save files before hosting.
+- Every player needs the same ac-plus version.
+- Some things aren't shown to the other players yet: their footsteps and tool sounds, trees
+  falling, and the dust of digging. A visitor can't take the train with Porter's ride; visits
+  start from his menu instead.
+- **Over the internet it's new:** most testing so far was on one home network. If a visit won't
+  connect, a VPN such as Tailscale or ZeroTier puts everyone on one network: then visit by the
+  host's VPN address.
 
 **Museum and Roost**
 - **Celeste:** she has no bow, and villagers don't mention constellations yet.

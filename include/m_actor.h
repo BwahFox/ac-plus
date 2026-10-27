@@ -1039,6 +1039,7 @@ enum actor_profile_table {
     mAc_PROFILE_NPC_BREWSTER,
     mAc_PROFILE_NPC_KK_ROOST,
     mAc_PROFILE_ROOST_GUEST,
+    mAc_PROFILE_MP_PUPPET,
 #endif
 
     mAc_PROFILE_NUM

@@ -2338,6 +2338,15 @@ extern void mNpc_SetDefAnimal(Animal_c* animal, mActor_name_t npc_id, mNpc_Defau
     }
 }
 
+#ifdef TARGET_PC
+/* Multiplayer (pc_mp_town.c): a villager of the host's town made from its id alone, with the game's defaults */
+extern void mNpc_pc_SetDefAnimal(Animal_c* animal, mActor_name_t npc_id) {
+    if (ITEM_NAME_GET_TYPE(npc_id) == NAME_TYPE_NPC && (npc_id & 0xFFF) < NPC_NUM) {
+        mNpc_SetDefAnimal(animal, npc_id, npc_def_list);
+    }
+}
+#endif
+
 static void mNpc_SetHaveAppeared(mActor_name_t npc_id) {
     u8* used_tbl = Save_Get(npc_used_tbl);
     int idx;

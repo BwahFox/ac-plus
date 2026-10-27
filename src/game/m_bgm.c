@@ -2521,6 +2521,14 @@ static void mBGM_main_control(mBGM* bgm) {
 static void mBGM_weather_set() {
     s16 weather = Common_Get(weather);
 
+#ifdef TARGET_PC
+    {
+        const char* test = getenv("PC_TEST_TENKI"); /* tests: the music's weather, 0-3 */
+        if (test != NULL && *test >= '0' && *test <= '3') {
+            weather = *test - '0';
+        }
+    }
+#endif
     if (weather >= mEnv_WEATHER_LEAVES) {
         weather = mEnv_WEATHER_SAKURA;
     } else if (weather < 0) {

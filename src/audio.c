@@ -1,3 +1,5 @@
+#include <stdlib.h>
+#include <stdio.h>
 #include "audio.h"
 
 #include "jaudio_NES/game64.h"
@@ -179,6 +181,12 @@ extern void sAdo_FurnitureInst(u32 id, u8 inst, u8* melody, const xyz_t* pos) {
     f32 fcalc;
 
     sAdo_Calc_MicPosition_common(&fcalc, &scalc, pos);
+#ifdef TARGET_PC
+    if (getenv("PC_MP_DEBUG") != NULL) {
+        printf("[mpdbg] furniture inst %u at %d,%d,%d: mic distance %.1f angle %u\n", inst, (int)pos->x, (int)pos->y,
+               (int)pos->z, fcalc, scalc);
+    }
+#endif
     Na_FurnitureInst(id, inst, melody, scalc, fcalc);
 }
 

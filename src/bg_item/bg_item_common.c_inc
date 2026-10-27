@@ -1,6 +1,7 @@
 #ifdef TARGET_PC
 #include "pc_sky.h"
 #include "pc_money_tree.h"
+#include "pc_mp.h"
 #endif
 static void bit_cmn_single_drawS(GAME* game, bg_item_common_info_c* common_info, mActor_name_t fg_item, xyz_t* pos,
                                  s_xyz* angle, xyz_t* scale, u8 alpha, bIT_DRAW_BF_PROC draw_bf,
@@ -1061,6 +1062,12 @@ static void drop_fruit(mActor_name_t fg_item, int ut_x, int ut_z, xyz_t* drop_po
     for (i = 0; i < ARRAY_COUNT(fg_ytable); i++) {
         if (fg_item == fg_ytable[i].src_tree_item) {
             mActor_name_t item = fg_ytable[i].dropped_item;
+
+#ifdef TARGET_PC
+            if (!pc_mp_trusted() && !pc_mp_guest_may_shake(fg_item)) {
+                return; /* a guest in someone's town: the owner's money trees keep their bells */
+            }
+#endif
 
             if (item == FTR_START(FTR_NOG_FAN01)) {
                 int list = mSP_LISTTYPE_ABC;

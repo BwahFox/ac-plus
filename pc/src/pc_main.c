@@ -206,6 +206,13 @@ int pc_platform_poll_events(void) {
     pc_quit_request_poll();
 
     while (SDL_PollEvent(&event)) {
+        {
+            extern int pc_mp_menu_typing(void);
+            extern int pc_mp_menu_text_event(const SDL_Event* e);
+            if (pc_mp_menu_typing() && pc_mp_menu_text_event(&event)) {
+                continue; /* typing an address (pc_mp_menu.c) */
+            }
+        }
         switch (event.type) {
             case SDL_QUIT: /* saves first when save_on_quit is set (pc_quick_save.c) */
                 pc_request_quit();
@@ -391,7 +398,15 @@ int main(int argc, char* argv[]) {
 
     /* Redirect stdout/stderr to NUL unless verbose — unbuffered terminal writes
      * are extremely slow on Windows and tank FPS. */
-    if (!g_pc_verbose && !g_pc_profile_enabled) {
+    if (!g_pc_verbose && !g_pc_profile_enabled && getenv("PC_LOG_FILE") != NULL && getenv("PC_LOG_FILE")[0] != '\0') {
+        /* PC_LOG_FILE alone: the log into that file, quietly (no console: a launcher such as Steam's may show one,
+         * and a console can take the controller's focus) */
+        const char* log_file = getenv("PC_LOG_FILE");
+        if (freopen(log_file, "w", stdout) != NULL) {
+            freopen(log_file, "a", stdout);
+            freopen(log_file, "a", stderr);
+        }
+    } else if (!g_pc_verbose && !g_pc_profile_enabled) {
 #ifdef _WIN32
         freopen("NUL", "w", stdout);
         freopen("NUL", "w", stderr);

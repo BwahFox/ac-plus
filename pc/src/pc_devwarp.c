@@ -9,6 +9,8 @@
 #include "m_scene.h"
 #include "m_house.h"
 #include "m_shop.h"
+#include "m_museum_display.h"
+#include "m_private.h"
 #include "m_scene_table.h"
 #include "m_common_data.h"
 #include "m_player_lib.h"
@@ -251,5 +253,266 @@ void pc_dev_fg_find(int item) {
 void pc_devtest_set_loan(int bells) {
     if (Now_Private != NULL) {
         Now_Private->inventory.loan = (u32)bells;
+    }
+}
+
+/* PC_CTL shopbuy SLOT (multiplayer tests): what buying the shop's item SLOT does to the town and the player - the
+ * slot marked sold (mSP_ShopSaleReport), the item into the pockets, the price out of the wallet */
+void pc_dev_shop_buy(int slot) {
+    Private_c* priv = Now_Private;
+    mActor_name_t item;
+    int idx;
+
+    if (slot < 0 || slot >= mSP_GOODS_COUNT || priv == NULL) {
+        return;
+    }
+    item = Save_Get(shop).items[slot];
+    idx = mPr_GetPossessionItemIdx(priv, EMPTY_NO);
+    if (item == EMPTY_NO || item >= 0xFE00 || idx < 0) {
+        printf("[shop] can't buy slot %d (%04X)\n", slot, item);
+        return;
+    }
+    mSP_ShopSaleReport(item, Save_Get(shop).items, mSP_GOODS_COUNT, RSV_SHOP_SOLD_FTR);
+    mPr_SetPossessionItem(priv, idx, item, mPr_ITEM_COND_NORMAL);
+    priv->inventory.wallet -= mSP_ItemNo2ItemPrice(item) <= priv->inventory.wallet ? mSP_ItemNo2ItemPrice(item) : 0;
+    printf("[shop] bought slot %d (%04X), wallet %u\n", slot, item, priv->inventory.wallet);
+}
+
+/* PC_CTL shoplog: the shop's goods and the wallet */
+void pc_dev_shop_log(void) {
+    int i;
+    printf("[shop] wallet %u goods", Now_Private != NULL ? Now_Private->inventory.wallet : 0);
+    for (i = 0; i < 8; i++) {
+        printf(" %04X", Save_Get(shop).items[i]);
+    }
+    printf("\n");
+    if (Now_Private != NULL) {
+        printf("[shop] pockets");
+        for (i = 0; i < mPr_POCKETS_SLOT_COUNT; i++) {
+            printf(" %04X", Now_Private->inventory.pockets[i]);
+        }
+        printf("\n");
+    }
+}
+
+/* PC_CTL museumlog: the museum's fish (who donated each, 4 bits per fish) */
+void pc_dev_museum_log(void) {
+    int i;
+    printf("[museum] fish");
+    for (i = 0; i < mMmd_FISH_BIT_NUM; i++) {
+        printf(" %02X", Save_Get(museum_display).fish_bit[i]);
+    }
+    printf("\n");
+}
+
+/* PC_CTL roomset HOME FLOOR UNIT ITEM / roomlog HOME FLOOR UNIT: a house's furniture unit (main layer) */
+void pc_dev_room(int home, int floor, int unit, int item) {
+    mActor_name_t* it;
+    if (home < 0 || home >= PLAYER_NUM || floor < 0 || floor >= mHm_ROOM_NUM || unit < 0 || unit >= UT_TOTAL_NUM) {
+        return;
+    }
+    it = &Save_Get(homes[home]).floors[floor].layer_main.items[unit / UT_X_NUM][unit % UT_X_NUM];
+    if (item >= 0) {
+        *it = (mActor_name_t)item;
+    }
+    printf("[room] home %d floor %d unit %d = %04X\n", home, floor, unit, *it);
+}
+
+/* ctl wear: put on a shirt, as the pockets do (m_hand_ovl.c) */
+void pc_dev_wear(int item) {
+    if (Now_Private == NULL || gamePT == NULL) {
+        return;
+    }
+    mPlib_change_player_cloth_info_lv2(Now_Private, (mActor_name_t)item);
+    mPlib_change_player_cloth(gamePT, Now_Private->cloth.idx);
+}
+
+/* ctl npcgone: villager idx at home in this game, their actor gone */
+void pc_dev_npc_gone(int idx) {
+    GAME_PLAY* play = (GAME_PLAY*)gamePT;
+    ACTOR* a;
+    if (play == NULL || idx < 0 || idx >= ANIMAL_NUM_MAX) {
+        return;
+    }
+    Save_Get(animals[idx]).is_home = TRUE;
+    Common_Get(npclist)[idx].position = Common_Get(npclist)[idx].house_position; /* elsewhere, as far as we know */
+    for (a = play->actor_info.list[ACTOR_PART_NPC].actor; a != NULL; a = a->next_actor) {
+        if (a->npc_id == Save_Get(animals[idx]).id.npc_id) {
+            Actor_delete(a);
+            printf("[devtest] villager %d removed\n", idx);
+        }
+    }
+}
+
+/* ctl talkto: in front of villager idx, facing them */
+void pc_dev_talkto(int idx) {
+    GAME_PLAY* play = (GAME_PLAY*)gamePT;
+    ACTOR* a;
+    char pos[48];
+    if (play == NULL || idx < 0 || idx >= ANIMAL_NUM_MAX) {
+        return;
+    }
+    for (a = play->actor_info.list[ACTOR_PART_NPC].actor; a != NULL; a = a->next_actor) {
+        if (a->npc_id == Save_Get(animals[idx]).id.npc_id) {
+            snprintf(pos, sizeof(pos), "%d,%d,180", (int)a->world.position.x, (int)a->world.position.z + 36);
+            pc_dev_teleport(play, pos);
+            printf("[devtest] in front of villager %d\n", idx);
+            return;
+        }
+    }
+    printf("[devtest] villager %d isn't here\n", idx);
+}
+
+/* ctl neartree: in front of the nearest grown tree with open ground south of it, facing it */
+void pc_dev_near_tree(void) {
+    GAME_PLAY* play = (GAME_PLAY*)gamePT;
+    PLAYER_ACTOR* player;
+    int ut_x, ut_z, best_x = -1, best_z = -1;
+    f32 best = 1e9f;
+    char pos[48];
+
+    if (play == NULL || !mFI_CheckFieldData()) {
+        return;
+    }
+    player = GET_PLAYER_ACTOR(play);
+    for (ut_z = 0; ut_z + 1 < mFI_GetBlockZMax() * UT_Z_NUM; ut_z++) {
+        for (ut_x = 0; ut_x < mFI_GetBlockXMax() * UT_X_NUM; ut_x++) {
+            mActor_name_t* fg = mFI_UtNum2UtFG(ut_x, ut_z);
+            mActor_name_t* below = mFI_UtNum2UtFG(ut_x, ut_z + 1);
+            f32 dx, dz;
+            if (fg == NULL || below == NULL || !IS_ITEM_GROWN_TREE(*fg) || *below != EMPTY_NO) {
+                continue;
+            }
+            dx = ut_x * 40 + 20 - player->actor_class.world.position.x;
+            dz = ut_z * 40 + 20 - player->actor_class.world.position.z;
+            if (dx * dx + dz * dz < best) {
+                best = dx * dx + dz * dz, best_x = ut_x, best_z = ut_z;
+            }
+        }
+    }
+    if (best_x < 0) {
+        printf("[devtest] no tree near\n");
+        return;
+    }
+    snprintf(pos, sizeof(pos), "%d,%d,180", best_x * 40 + 20, (best_z + 1) * 40 + 20);
+    pc_dev_teleport(play, pos);
+    printf("[devtest] at tree %04X, unit %d,%d\n", *mFI_UtNum2UtFG(best_x, best_z), best_x, best_z);
+}
+
+/* ctl switchnear */
+static int l_sw_best_on, l_sw_best_x, l_sw_best_z, l_sw_best_layer, l_sw_best_name;
+static f32 l_sw_best;
+static int l_sw_only;
+
+static void sw_near(void* user, int idx, u16 name, int ut_x, int ut_z, int layer, int on) {
+    PLAYER_ACTOR* player = (PLAYER_ACTOR*)user;
+    f32 dx = ut_x * 40 + 20 - player->actor_class.world.position.x;
+    if (l_sw_only >= 0 && name != l_sw_only) {
+        return;
+    }
+    f32 dz = ut_z * 40 + 20 - player->actor_class.world.position.z;
+    if (dx * dx + dz * dz < l_sw_best) {
+        l_sw_best = dx * dx + dz * dz;
+        l_sw_best_on = on, l_sw_best_x = ut_x, l_sw_best_z = ut_z, l_sw_best_layer = layer, l_sw_best_name = name;
+    }
+}
+
+void pc_dev_switch_near(int only) {
+    extern void pc_aMR_switch_each(void (*fn)(void* user, int idx, u16 name, int ut_x, int ut_z, int layer, int on),
+                                   void* user);
+    extern int pc_aMR_switch_set(u16 name, int ut_x, int ut_z, int layer, int on);
+    GAME_PLAY* play = (GAME_PLAY*)gamePT;
+    if (play == NULL) {
+        return;
+    }
+    l_sw_best = 1e9f;
+    l_sw_best_name = -1;
+    l_sw_only = only;
+    pc_aMR_switch_each(sw_near, GET_PLAYER_ACTOR(play));
+    if (l_sw_best_name < 0) {
+        printf("[devtest] no furniture here\n");
+        return;
+    }
+    pc_aMR_switch_set((u16)l_sw_best_name, l_sw_best_x, l_sw_best_z, l_sw_best_layer, !l_sw_best_on);
+    printf("[devtest] furniture %d at %d,%d switched %s\n", l_sw_best_name, l_sw_best_x, l_sw_best_z,
+           !l_sw_best_on ? "on" : "off");
+}
+
+/* ctl talkprof: in front of the first actor of a profile, facing it */
+void pc_dev_talk_profile(int profile) {
+    GAME_PLAY* play = (GAME_PLAY*)gamePT;
+    int part;
+    char pos[48];
+    if (play == NULL) {
+        return;
+    }
+    for (part = 0; part < ACTOR_PART_NUM; part++) {
+        ACTOR* a;
+        for (a = play->actor_info.list[part].actor; a != NULL; a = a->next_actor) {
+            if (a->id == profile) {
+                snprintf(pos, sizeof(pos), "%d,%d,180", (int)a->world.position.x, (int)a->world.position.z + 40);
+                pc_dev_teleport(play, pos);
+                printf("[devtest] in front of profile %d at %d,%d\n", profile, (int)a->world.position.x,
+                       (int)a->world.position.z);
+                return;
+            }
+        }
+    }
+    printf("[devtest] no profile %d here\n", profile);
+}
+
+/* ctl nearwater: the dry unit south of the nearest river or pond water unit, facing the water */
+void pc_dev_near_water(void) {
+    GAME_PLAY* play = (GAME_PLAY*)gamePT;
+    PLAYER_ACTOR* player;
+    int ut_x, ut_z, best_x = -1, best_z = -1;
+    f32 best = 1e9f;
+    char pos[48];
+
+    if (play == NULL || !mFI_CheckFieldData()) {
+        return;
+    }
+    player = GET_PLAYER_ACTOR(play);
+    for (ut_z = UT_Z_NUM; ut_z + 1 < mFI_GetBlockZMax() * UT_Z_NUM; ut_z++) {
+        for (ut_x = UT_X_NUM; ut_x < (mFI_GetBlockXMax() - 1) * UT_X_NUM; ut_x++) {
+            xyz_t w = { ut_x * 40.0f + 20.0f, 0.0f, ut_z * 40.0f + 20.0f };
+            xyz_t d = { ut_x * 40.0f + 20.0f, 0.0f, (ut_z + 1) * 40.0f + 20.0f };
+            f32 dx, dz;
+            if (!mCoBG_CheckWaterAttribute_OutOfSea(mCoBG_Wpos2BgAttribute_Original(w)) ||
+                mCoBG_CheckWaterAttribute(mCoBG_Wpos2BgAttribute_Original(d))) {
+                continue;
+            }
+            dx = d.x - player->actor_class.world.position.x;
+            dz = d.z - player->actor_class.world.position.z;
+            if (dx * dx + dz * dz < best) {
+                best = dx * dx + dz * dz, best_x = ut_x, best_z = ut_z + 1;
+            }
+        }
+    }
+    if (best_x < 0) {
+        printf("[devtest] no water\n");
+        return;
+    }
+    snprintf(pos, sizeof(pos), "%d,%d,180", best_x * 40 + 20, best_z * 40 + 20);
+    pc_dev_teleport(play, pos);
+    printf("[devtest] by the water at unit %d,%d (%d,%d)\n", best_x, best_z, best_x * 40 + 20, best_z * 40 + 20);
+}
+
+/* ctl npcaway: villager idx out but elsewhere in this game, their actor here gone */
+void pc_dev_npc_away(int idx) {
+    pc_dev_npc_gone(idx);
+    if (idx >= 0 && idx < ANIMAL_NUM_MAX) {
+        xyz_t* p = &Common_Get(npclist)[idx].position;
+        Save_Get(animals[idx]).is_home = FALSE;
+        /* a different acre from where they were: two acres over */
+        p->x = p->x < 3 * 640.0f ? p->x + 2 * 640.0f : p->x - 2 * 640.0f;
+        printf("[devtest] villager %d is out at %d,%d\n", idx, (int)p->x, (int)p->z);
+    }
+}
+
+/* ctl wallet BELLS */
+void pc_dev_wallet(int bells) {
+    if (Now_Private != NULL) {
+        Now_Private->inventory.wallet = (u32)bells;
     }
 }

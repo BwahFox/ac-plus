@@ -43,6 +43,8 @@ void pc_pattern_note_edit(int player_no, int image);
 u32 pc_pattern_slot_id(int player_no, int image);
 /* The library copy of a pattern, NULL if unknown. Valid until the next save. */
 const mNW_original_design_c* pc_pattern_get(u32 id);
+/* Online visits: add the host's pattern id with its design for the visit (FALSE if there or no room) */
+int pc_pattern_visit_add(u32 id, const mNW_original_design_c* d);
 
 /* Worn shirt: bind when a pattern is put on; returns the bound design while the
  * player still wears that slot's shirt, NULL to use the slot. */

@@ -343,6 +343,13 @@ static int mMsg_Main_Cursol_SetSelectString_ControlCursol(mMsg_Window_c* msg_p, 
     for (i = 0; i < select_count; i++) {
       mChoice_Load_ChoseStringFromRom(mChoice_Get_base_window_p(), str[i], id_tbl[i], actor);
     }
+#ifdef TARGET_PC
+    {
+      /* Porter's "travel?" also offers online visits (pc_mp.c) */
+      extern int pc_mp_porter_choices(ACTOR* actor, int msg_no, u8 (*str)[mChoice_CHOICE_STRING_LEN], int count);
+      select_count = pc_mp_porter_choices(actor, msg_p->msg_no, str, select_count);
+    }
+#endif
 
     {
       u8* str0 = str[0];

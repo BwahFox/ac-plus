@@ -188,6 +188,18 @@ static void aSTM_cardproc(NPC_STATION_MASTER_ACTOR* master, GAME_PLAY* play) {
 
 static void aSTM_chk_leave_talk(NPC_STATION_MASTER_ACTOR* master, GAME_PLAY* play) {
     if (mMsg_CHECK_MAINNORMALCONTINUE() == TRUE) {
+#ifdef TARGET_PC
+        {
+            /* the online choices (pc_mp.c): taken there, or -1 for the GameCube's own */
+            extern int pc_mp_porter_chosen(int chosen);
+            if (pc_mp_porter_chosen(mChoice_GET_CHOSENUM()) >= 0) {
+                /* he says no more: the GameCube's words for that choice are "not going"'s */
+                mMsg_request_main_disappear(mMsg_Get_base_window_p());
+                aSTC_clip_change_talk_proc((ACTOR*)master, aSTM_TALK_END_WAIT);
+                return;
+            }
+        }
+#endif
         switch (mChoice_GET_CHOSENUM()) {
             case mChoice_CHOICE0:
                 aSTC_clip_change_talk_proc((ACTOR*)master, aSTM_TALK_CHK_LEAVE_TALK2);
@@ -507,5 +519,11 @@ static int aSTC_clip_change_talk_proc(ACTOR* actorx, int talk_act) {
     NPC_STATION_MASTER_ACTOR* master = (NPC_STATION_MASTER_ACTOR*)actorx;
 
     master->talk_proc = proc[talk_act];
+#ifdef TARGET_PC
+    {
+        extern int pc_porter_talk_act; /* pc_mp.c: his "travel?" question gets the online choices */
+        pc_porter_talk_act = talk_act;
+    }
+#endif
     return TRUE;
 }

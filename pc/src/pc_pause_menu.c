@@ -33,9 +33,10 @@ typedef enum {
     PAGE_QR = 3,
     PAGE_CONST = 4, /* Celeste's telescope, opened by her (pc_constellation_edit.c) */
     PAGE_SKIN = 5,  /* the skin tone picker, opened by Rover or a mirror (pc_skin.c) */
+    PAGE_ONLINE = 6, /* online visits (pc_mp_menu.c) */
 } PauseMenuPage;
 
-#define MAIN_ITEM_MAX       6
+#define MAIN_ITEM_MAX       7
 #define CONFIRM_ITEM_COUNT  2
 
 /* Main page rows. Design only shows once pattern materials are unlocked. */
@@ -44,9 +45,15 @@ typedef enum {
     MAIN_DESIGN,
     MAIN_STORAGE,
     MAIN_QR,
+    MAIN_ONLINE,
     MAIN_SETTINGS,
     MAIN_QUIT,
 } MainItem;
+
+void pc_mp_menu_enter(void);
+int pc_mp_menu_active(void);
+void pc_mp_menu_action(int act);
+void pc_mp_menu_draw(struct game_s* game);
 
 static PauseMenuPage cur_page = PAGE_MAIN;
 static int main_sel = 0;    /* row index into main_items() */
@@ -71,6 +78,7 @@ static int main_items(MainItem* out) {
     if (pc_qr_menu_available()) {
         out[n++] = MAIN_QR;
     }
+    out[n++] = MAIN_ONLINE;
     out[n++] = MAIN_SETTINGS;
     out[n++] = MAIN_QUIT;
     return n;
@@ -84,6 +92,13 @@ void pc_pause_menu_open_skin(void) {
 void pc_pause_menu_open_const(void) {
     g_pc_paused = 1;
     cur_page = PAGE_CONST;
+}
+
+/* Porter's "Online" (pc_mp.c): straight to Online Play */
+void pc_pause_menu_open_online(void) {
+    g_pc_paused = 1;
+    cur_page = PAGE_ONLINE;
+    pc_mp_menu_enter();
 }
 
 void pc_pause_menu_toggle(void) {
@@ -123,6 +138,10 @@ static void main_activate(void) {
         case MAIN_QR:
             cur_page = PAGE_QR;
             pc_qr_menu_enter();
+            break;
+        case MAIN_ONLINE:
+            cur_page = PAGE_ONLINE;
+            pc_mp_menu_enter();
             break;
         case MAIN_SETTINGS:
             cur_page = PAGE_SETTINGS;
@@ -193,6 +212,12 @@ static void handle_action(MenuAction act) {
             g_pc_paused = 0;
             g_pc_pause_input_drain = 1;
         }
+        return;
+    }
+
+    if (cur_page == PAGE_ONLINE) {
+        pc_mp_menu_action((int)act); /* MenuAction values as pc_mp_menu.c numbers them */
+        if (!pc_mp_menu_active()) cur_page = PAGE_MAIN;
         return;
     }
 
@@ -314,8 +339,8 @@ int pc_pause_menu_handle_event(const SDL_Event* e) {
 /* Drawing */
 
 static void draw_main_page(struct game_s* game) {
-    static const char* labels[] = { "Resume", "Design a Pattern", "Pattern Storage", "Pattern QR Codes", "Settings",
-                                    "Quit Game" };
+    static const char* labels[] = { "Resume",       "Design a Pattern", "Pattern Storage", "Pattern QR Codes",
+                                    "Online Play",  "Settings",         "Quit Game" };
     MainItem items[MAIN_ITEM_MAX];
     int count = main_items(items);
 
@@ -366,6 +391,7 @@ void pc_pause_menu_draw(struct game_s* game) {
         if (cur_page == PAGE_MAIN)              draw_main_page(game);
         else if (cur_page == PAGE_CONFIRM_QUIT) draw_confirm_page(game);
         else if (cur_page == PAGE_QR)           pc_qr_menu_draw(game);
+        else if (cur_page == PAGE_ONLINE)       pc_mp_menu_draw(game);
     }
 
     mFont_UnSetMatrix(game->graph, mFont_MODE_FONT);

@@ -136,6 +136,8 @@ static void autosave_tick(GAME_PLAY* play) {
 
 /* Quit the game, saving first if save_on_quit is set. Asking twice quits at once. */
 void pc_request_quit(void) {
+    extern void pc_mcd_passport_write(void);
+    pc_mcd_passport_write(); /* on an online visit: home from here next time, whatever this quit does */
     if (!g_pc_settings.save_on_quit || l_quit_wait > 0) {
         g_pc_running = 0;
         return;

@@ -64,6 +64,16 @@ void pc_oftr_reset(void);
 int pc_oftr_read_chunk(const char tag[4], void* f, unsigned int size);
 int pc_oftr_write_chunk(void* f);
 
+/* Online visits (pc_mp_town.c): the host lists its furniture units; the visitor puts them in the grid a visited
+ * town's furniture actor uses (checked like the save's) */
+void pc_oftr_export(void (*fn)(void* user, int ut, int layer, mActor_name_t item), void* user);
+void pc_oftr_visit_clear(void);
+int pc_oftr_visit_set(int ut, int layer, mActor_name_t item);
+/* online host: the outdoor furniture's changes since the last call (the first call only takes note) */
+void pc_oftr_changes(void (*fn)(void* user, int ut, int layer, mActor_name_t old_item, mActor_name_t new_item),
+                     void* user);
+void pc_oftr_changes_reset(void);
+
 /* Is the ground under all count units uts at one height (a piece can't straddle a cliff)? */
 int pc_oftr_units_level(const int* uts, int count);
 /* Put furniture item ftr (its rotation in the item number) on the count units uts (its first unit first, as the

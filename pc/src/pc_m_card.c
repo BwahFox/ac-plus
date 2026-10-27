@@ -4,6 +4,8 @@
  * Card B (save/card_b/) = second town for visiting (drop any AC GCI file there)
  */
 #include "m_card.h"
+#include "m_actor.h"
+#include "m_play.h"
 #include "m_start_data_init.h"
 #include "m_common_data.h"
 #include "m_flashrom.h"
@@ -51,6 +53,8 @@
 #define PC_GCI_TMP_PATH   PC_CARD_A_DIR "/" PC_GCI_FILENAME ".tmp"
 #define PC_SAVE_DIR       "save"
 #define PC_SAVE_MAX_BACKUPS 3
+#define PC_PASSPORT_PATH "save/online_passport.bin"
+#define PC_PASSPORT_TMP_PATH "save/online_passport.bin.tmp"
 
 /* Legacy paths for migration from flat save/ layout */
 #define PC_GCI_PATH_LEGACY     "save/DobutsunomoriP_MURA.gci"
@@ -280,6 +284,10 @@ static void pc_ensure_save_dirs(void) {
 }
 
 static int pc_save_write_gci_to(const char* gci_path, const char* tmp_path);
+void pc_mcd_passport_write(void);
+static void pc_mcd_passport_done(void);
+static void pc_mcd_passport_restore(void);
+int pc_mcd_online_visiting(void);
 void pc_autosave_reset_timer(void);        /* pc_quick_save.c */
 void pc_cloud_save_push(const char* path); /* pc_cloud_save.c */
 void pc_cloud_save_pull(const char* path);
@@ -353,6 +361,12 @@ static int pc_save_write_gci_to(const char* gci_path, const char* tmp_path) {
     u8* others_ptr;
 
     if (!pc_save_ready) return TRUE;
+    if (pc_mcd_online_visiting()) {
+        /* the town in memory is someone else's (an online visit): nothing of it goes over a save on disk */
+        printf("[save] not saving: visiting a town online (the passport instead)\n");
+        pc_mcd_passport_write();
+        return TRUE;
+    }
 
     pc_ensure_save_dirs();
 
@@ -492,6 +506,7 @@ static int pc_save_write_gci_to(const char* gci_path, const char* tmp_path) {
     OSReport("[PC] GCI save: written successfully to %s (backups rotated)\n", gci_path);
     pc_autosave_reset_timer();
     if (strcmp(gci_path, PC_GCI_PATH) == 0) {
+        pc_mcd_passport_done();
         pc_ext_save_write(gci_path);
         pc_cloud_save_push(gci_path);
         pc_sync_after_save();
@@ -798,13 +813,14 @@ static int pc_save_read_gci_to_keep(const char* path) {
             off_diary = ALIGN_NEXT(off_mail + mail_size, 32);
         }
 
-        memcpy(&l_keepMail, others_ptr + off_mail, mail_size);
+        /* the blocks' sizes are rounded up to 32 bytes; copy only what the structs hold */
+        memcpy(&l_keepMail, others_ptr + off_mail, sizeof(l_keepMail));
         pc_save_bswap_keep_mail(&l_keepMail, PC_BSWAP_FROM_BE);
 
-        memcpy(&l_keepOriginal, others_ptr + off_orig, orig_size);
+        memcpy(&l_keepOriginal, others_ptr + off_orig, sizeof(l_keepOriginal));
         pc_save_bswap_keep_original(&l_keepOriginal, PC_BSWAP_FROM_BE);
 
-        memcpy(&l_keepDiary, others_ptr + off_diary, l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY]);
+        memcpy(&l_keepDiary, others_ptr + off_diary, sizeof(l_keepDiary));
         pc_save_bswap_keep_diary(&l_keepDiary, PC_BSWAP_FROM_BE);
     }
 
@@ -887,16 +903,28 @@ static int pc_save_scan_gci_dir(void) {
 
 /* Reload save from GCI file on disk. PC equivalent of GC re-reading the
  * memory card. */
+static int pc_save_load_home(void);
+
 int pc_save_reload(void) {
     struct stat st;
+    int ok;
     if (!pc_save_loaded) return 0;
-    if (stat(PC_GCI_PATH, &st) == 0) {
-        return pc_save_read_gci(PC_GCI_PATH);
+    ok = stat(PC_GCI_PATH, &st) == 0 ? pc_save_read_gci(PC_GCI_PATH) : pc_save_scan_gci_dir();
+    if (ok) {
+        pc_mcd_passport_restore();
     }
-    return pc_save_scan_gci_dir();
+    return ok;
 }
 
 int pc_save_check_and_load(void) {
+    int ok = pc_save_load_home();
+    if (ok) {
+        pc_mcd_passport_restore();
+    }
+    return ok;
+}
+
+static int pc_save_load_home(void) {
     struct stat st;
     {
         char cwd[512];
@@ -1298,6 +1326,7 @@ int mCD_SaveStation_NextLand_bg(s32* chan) {
     /* 1. Build passport BEFORE marking player as away (need full player data) */
     {
         Private_c* current_priv = Now_Private;
+        remove(PC_PASSPORT_PATH); /* a train trip: no online visit's passport may bring this player home */
         memset(&l_mcd_foreigner_file, 0, sizeof(l_mcd_foreigner_file));
         if (current_priv) {
             mPr_CopyPrivateInfo(&l_mcd_foreigner_file.file.priv, current_priv);
@@ -1444,9 +1473,9 @@ void mCD_toNextLand(void) {
     l_keepSave_set = FALSE;
 
     /* Load ARAM blocks from the other town */
-    mCD_save_data_main_to_aram(&l_keepMail, l_aram_alloc_size_table[mCD_ARAM_DATA_MAIL], mCD_ARAM_DATA_MAIL);
-    mCD_save_data_main_to_aram(&l_keepOriginal, l_aram_alloc_size_table[mCD_ARAM_DATA_ORIGINAL], mCD_ARAM_DATA_ORIGINAL);
-    mCD_save_data_main_to_aram(&l_keepDiary, l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY], mCD_ARAM_DATA_DIARY);
+    mCD_save_data_main_to_aram(&l_keepMail, sizeof(l_keepMail), mCD_ARAM_DATA_MAIL);
+    mCD_save_data_main_to_aram(&l_keepOriginal, sizeof(l_keepOriginal), mCD_ARAM_DATA_ORIGINAL);
+    mCD_save_data_main_to_aram(&l_keepDiary, sizeof(l_keepDiary), mCD_ARAM_DATA_DIARY);
 
     OSReport("[PC] toNextLand: transitioned to visited town, player_no=%d\n",
              Common_Get(player_no));
@@ -1559,4 +1588,238 @@ int mCD_card_format_bg(s32 chan) {
 
 void mCD_PrintErrInfo(gfxprint_t* gfxprint) {
     (void)gfxprint;
+}
+
+/* --- Online visits (multiplayer, pc_mp.c) ---
+ * The GameCube trip with a passport, with the other town coming from the host over the network (already checked
+ * and built by pc_mp_town.c) instead of from card B, and no train: the scene change after these goes straight to
+ * the town's station, and the start-of-town setup that the train's arrival scene does runs right after the swap
+ * (pc_mcd_online_after_swap, from m_play.c). The visited town is never written anywhere: no card B path. */
+
+static int l_online_pending = 0; /* start condition to run after the swap, 0 = none */
+static int l_online_home_player = 0;
+
+#define PC_ONLINE_KEEP_PATH "save/online_visit.gci" /* never exists: the visited town has no companion save */
+
+/* The passport: while visiting online, the player as they are right now (pockets, bells, everything), in a file next
+ * to the home save. Online, a visit can end without the trip home - a closed window, a crash, a lost connection - and
+ * the GameCube's rule for that (the pockets are gone, a gyroid's face) is far too harsh for an internet connection.
+ * So the next start brings the player home from the passport instead. It holds what they really have at that moment,
+ * so nothing can be duplicated by it. Written when leaving, every few seconds during the visit and on every save the
+ * visit refuses (quitting, autosave); removed once the home save is written with the player back home. */
+#define PC_PASSPORT_MAGIC 0x41435050u /* 'ACPP' */
+#define PC_PASSPORT_VERSION 1
+
+typedef struct {
+    u32 magic;
+    u32 version;
+    u32 home_player; /* the player's slot in the home save */
+    u32 size;        /* sizeof(mCD_foreigner_c), as written */
+    mCD_foreigner_c file;
+} pc_passport_c;
+
+static pc_passport_c l_passport;
+
+static void pc_passport_save(Private_c* priv) {
+    FILE* fp;
+
+    if (l_online_home_player < 0 || l_online_home_player >= PLAYER_NUM) {
+        return;
+    }
+    memset(&l_passport, 0, sizeof(l_passport));
+    l_passport.magic = PC_PASSPORT_MAGIC;
+    l_passport.version = PC_PASSPORT_VERSION;
+    l_passport.home_player = (u32)l_online_home_player;
+    l_passport.size = sizeof(mCD_foreigner_c);
+    l_passport.file = l_mcd_foreigner_file.file;
+    mPr_CopyPrivateInfo(&l_passport.file.priv, priv);
+    l_passport.file.priv.exists = TRUE;
+    l_passport.file.checksum = 0;
+    l_passport.file.checksum = mFRm_GetFlatCheckSum((u16*)&l_passport.file, sizeof(mCD_foreigner_c), 0);
+
+    pc_ensure_save_dirs();
+    fp = fopen(PC_PASSPORT_TMP_PATH, "wb");
+    if (fp == NULL) {
+        return;
+    }
+    if (fwrite(&l_passport, sizeof(l_passport), 1, fp) != 1) {
+        fclose(fp);
+        remove(PC_PASSPORT_TMP_PATH);
+        return;
+    }
+    fflush(fp);
+    fclose(fp);
+    remove(PC_PASSPORT_PATH); /* (Windows' rename won't replace) */
+    rename(PC_PASSPORT_TMP_PATH, PC_PASSPORT_PATH);
+}
+
+void pc_mcd_passport_write(void) {
+    if (pc_mcd_online_visiting() && Now_Private != NULL) {
+        pc_passport_save(Now_Private);
+    }
+}
+
+/* the home save written with the player at home: the passport has done its job */
+static void pc_mcd_passport_done(void) {
+    if (Common_Get(player_no) < PLAYER_NUM && Save_Get(private_data[Common_Get(player_no)]).exists) {
+        remove(PC_PASSPORT_PATH);
+    }
+}
+
+/* right after the home save is read from disk: a player it says is away, whose passport is here, comes home */
+static void pc_mcd_passport_restore(void) {
+    FILE* fp = fopen(PC_PASSPORT_PATH, "rb");
+    Private_c* priv;
+    u16 sum;
+    int ok;
+
+    if (fp == NULL) {
+        return;
+    }
+    memset(&l_passport, 0, sizeof(l_passport));
+    ok = fread(&l_passport, sizeof(l_passport), 1, fp) == 1;
+    fclose(fp);
+    if (!ok || l_passport.magic != PC_PASSPORT_MAGIC || l_passport.version != PC_PASSPORT_VERSION ||
+        l_passport.size != sizeof(mCD_foreigner_c) || l_passport.home_player >= PLAYER_NUM) {
+        OSReport("[PC] passport: unreadable, left alone\n");
+        return;
+    }
+    sum = l_passport.file.checksum;
+    l_passport.file.checksum = 0;
+    if (mFRm_GetFlatCheckSum((u16*)&l_passport.file, sizeof(mCD_foreigner_c), 0) != sum) {
+        OSReport("[PC] passport: checksum wrong, left alone\n");
+        return;
+    }
+    priv = Save_GetPointer(private_data[l_passport.home_player]);
+    if (priv->exists) {
+        return; /* home already (the trip back finished; the passport goes with the next save) */
+    }
+    if (!mPr_CheckCmpPersonalID(&priv->player_ID, &l_passport.file.priv.player_ID)) {
+        OSReport("[PC] passport: not this town's player, left alone\n");
+        return;
+    }
+    mPr_CopyPrivateInfo(priv, &l_passport.file.priv);
+    priv->exists = TRUE;
+    priv->reset_code = 0; /* no penalty: the visit just ended without the train */
+    OSReport("[PC] passport: player %u is home from an online visit\n", l_passport.home_player);
+}
+
+int pc_mcd_online_depart(GAME_PLAY* play, const Save_t* town) {
+    mCD_persistent_data_c* persistant = Common_GetPointer(travel_persistent_data);
+    int i;
+
+    if (Now_Private == NULL || mLd_PlayerManKindCheck() || Common_Get(player_no) >= PLAYER_NUM) {
+        return FALSE; /* already away */
+    }
+    memcpy(&persistant->land, Save_GetPointer(land_info), sizeof(mLd_land_info_c));
+    for (i = 0; i < PLAYER_NUM; i++) {
+        mPr_CopyPersonalID(&persistant->pid[i], &Save_Get(private_data[i]).player_ID);
+    }
+
+    /* the passport, as at the station */
+    memset(&l_mcd_foreigner_file, 0, sizeof(l_mcd_foreigner_file));
+    mPr_CopyPrivateInfo(&l_mcd_foreigner_file.file.priv, Now_Private);
+    l_mcd_foreigner_file.file.copy_protect = (u16)Common_Get(copy_protect);
+    l_mcd_foreigner_file.file.checksum = 0;
+    l_mcd_foreigner_file.file.checksum =
+        mFRm_GetFlatCheckSum((u16*)&l_mcd_foreigner_file.file, sizeof(mCD_foreigner_c), l_mcd_foreigner_file.file.checksum);
+
+    /* away from home while visiting, as on the GameCube (quitting during the visit costs the pockets) */
+    l_online_home_player = Common_Get(player_no);
+    Now_Private->exists = FALSE;
+    Now_Private->reset_code = 0;
+    {
+        /* buildings on screen have placeholders on the map until the scene ends: write from a restored copy (as
+         * the station does with Actor_info_save_actor, and quick save with restore_fgdata_all) */
+        Save_t* live = Common_GetPointer(save.save);
+        Save_t* snapshot = (Save_t*)malloc(sizeof(Save_t));
+        int ok;
+
+        if (snapshot == NULL) {
+            Now_Private->exists = TRUE;
+            return FALSE;
+        }
+        memcpy(snapshot, live, sizeof(Save_t));
+        if (play != NULL) {
+            restore_fgdata_all(play);
+        }
+        ok = pc_save_write_gci();
+        memcpy(live, snapshot, sizeof(Save_t));
+        free(snapshot);
+        if (!ok) {
+            Now_Private->exists = TRUE;
+            OSReport("[PC] online visit: couldn't save home first\n");
+            return FALSE;
+        }
+    }
+    pc_passport_save(&l_mcd_foreigner_file.file.priv); /* as they leave: home from here if the visit never ends well */
+
+    memset(&l_keepSave, 0, sizeof(Save));
+    memcpy(&l_keepSave.save, town, sizeof(Save_t));
+    memset(&l_keepMail, 0, sizeof(l_keepMail));
+    memset(&l_keepOriginal, 0, sizeof(l_keepOriginal));
+    memset(&l_keepDiary, 0, sizeof(l_keepDiary));
+    snprintf(l_keepSave_path, sizeof(l_keepSave_path), "%s", PC_ONLINE_KEEP_PATH);
+    l_card_b_gci_path[0] = '\0';
+    l_keepSave_set = TRUE;
+    l_mcd_keep_startCond = mCD_START_COND_INCOMING_FOREIGNER;
+    l_online_pending = mCD_START_COND_INCOMING_FOREIGNER;
+    OSReport("[PC] online visit: leaving for %.8s\n", town->land_info.name);
+    return TRUE;
+}
+
+int pc_mcd_online_return(void) {
+    if (Common_Get(player_no) != mPr_FOREIGNER || l_online_pending != 0) {
+        return FALSE;
+    }
+    if (Now_Private != NULL) {
+        mPr_CopyPrivateInfo(&l_mcd_foreigner_file.file.priv, Now_Private);
+        l_mcd_foreigner_file.file.checksum = 0;
+        l_mcd_foreigner_file.file.checksum = mFRm_GetFlatCheckSum((u16*)&l_mcd_foreigner_file.file,
+                                                                  sizeof(mCD_foreigner_c),
+                                                                  l_mcd_foreigner_file.file.checksum);
+    }
+    OSReport("[PC] online visit: loading home\n");
+    if (!pc_save_read_gci_to_keep(PC_GCI_PATH)) {
+        OSReport("[PC] online visit: couldn't load home to go back\n");
+        return FALSE;
+    }
+    l_mcd_keep_startCond = mCD_START_COND_OUTGOING_FOREIGNER;
+    l_online_pending = mCD_START_COND_OUTGOING_FOREIGNER;
+    OSReport("[PC] online visit: going home\n");
+    return TRUE;
+}
+
+int pc_mcd_online_visiting(void) {
+    return Common_Get(player_no) == mPr_FOREIGNER && l_keepSave_path[0] != '\0' &&
+           strcmp(l_keepSave_path, PC_ONLINE_KEEP_PATH) == 0;
+}
+
+/* m_play.c, right after mCD_toNextLand: what the arrival scene after the train would do */
+void pc_mcd_online_after_swap(void) {
+    int cond = l_online_pending;
+    s32 chan;
+
+    if (cond == 0) {
+        return;
+    }
+    l_online_pending = 0;
+    if (cond == mCD_START_COND_INCOMING_FOREIGNER) {
+        extern void pc_mp_town_apply_extras(void);
+        mCD_InitGameStart_bg(mPr_FOREIGNER, 0, cond, &chan);
+        pc_mp_town_apply_extras(); /* the host's ground patterns and outdoor furniture, before the town is built */
+    } else {
+        extern void pc_oftr_visit_clear(void);
+        mCD_InitGameStart_bg(l_online_home_player, 0, cond, &chan);
+        pc_oftr_visit_clear();
+        l_keepSave_path[0] = '\0';
+    }
+    {
+        /* the swap wiped the door we left by: arrive at the station, where just off the platform, south of the tracks
+         * (ac_npc_p_sel2_talk.c_inc's station door; goto_other_scene stores next_scene_id + 1) */
+        Door_data_c station = { SCENE_FG, mSc_DIRECT_SOUTH, FALSE, 0, { 1979, 0, 840 }, EMPTY_NO, 0, { 0, 0, 0 } };
+        Common_Set(door_data, station);
+        Common_Get(door_data).next_scene_id = SCENE_FG + 1;
+    }
+    OSReport("[PC] online visit: arrived, player_no=%d\n", Common_Get(player_no));
 }

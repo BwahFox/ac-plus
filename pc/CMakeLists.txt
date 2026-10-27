@@ -70,6 +70,7 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/glad/include
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/fixnes
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/monocypher
     # .inc assets are loaded at runtime from disc image (no build/GAFE01_00 needed)
 )
 
@@ -331,6 +332,19 @@ set(PC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_updater.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_http.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_sync.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_mp.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_mp_town.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_mp_items.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_mp_world.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_mp_menu.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_mp_npc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_mp_fish.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_mp_bugs.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/mp/mp_wire.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/mp/mp_noise.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/mp/mp_link.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/mp/mp_mm.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/monocypher/monocypher.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_skin.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_museum_rooms.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_settings.c
@@ -481,7 +495,7 @@ else()
 endif()
 
 if(WIN32)
-    target_link_libraries(ac_pc opengl32 winmm imm32 version setupapi winhttp bcrypt)
+    target_link_libraries(ac_pc opengl32 winmm imm32 version setupapi winhttp bcrypt ws2_32)
     # Hardening for the PC layer, where outside data comes in (saves, downloads, the network): a smashed stack
     # stops the game instead of running what overwrote it. libssp linked statically (no extra DLL to ship).
     if(CMAKE_C_COMPILER_ID STREQUAL "GNU")

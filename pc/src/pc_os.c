@@ -2,6 +2,7 @@
 #include "pc_platform.h"
 
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 /* --- Memory arena --- */
@@ -26,6 +27,7 @@ static s64 gc_epoch_offset_ticks = 0; /* Ticks from GC epoch to program start */
 
 static s64 s_wall_shift_secs = 0; /* --time / --date: how far the game's clock is set from the real one */
 static s64 s_calendar_fix = 0;    /* added to OSGetTime for the calendar (pc_os_calendar_ticks) */
+static s64 s_mp_shift = 0;        /* online visits: the host's town time, on top of ours (pc_mp.c) */
 
 /* GC ticks of a real time, as local time (daylight saving included) plus the --time/--date shift */
 static s64 pc_os_wall_ticks(time_t real_now) {
@@ -88,7 +90,25 @@ s64 pc_os_calendar_ticks(void) {
             OSReport("[PC] clock: caught up %lld s with the computer's clock\n", (long long)(drift / GC_TIMER_CLOCK));
         }
     }
-    return osGetTime() + s_calendar_fix;
+    return osGetTime() + s_calendar_fix + s_mp_shift;
+}
+
+s64 OSCalendarTimeToTicks(void* td_ptr);
+
+/* Online visits (pc_mp.c): read the host's clock (a GC calendar date and time) from now on, 0 to go back to
+ * our own. Kept apart from s_calendar_fix, which only follows this computer's clock. */
+void pc_os_mp_set_clock(int on, int year, int month, int day, int hour, int min, int sec) {
+    int td[10];
+    s64 target;
+
+    if (!on) {
+        s_mp_shift = 0;
+        return;
+    }
+    memset(td, 0, sizeof(td));
+    td[0] = sec, td[1] = min, td[2] = hour, td[3] = day, td[4] = month - 1, td[5] = year;
+    target = OSCalendarTimeToTicks(td);
+    s_mp_shift = target - (osGetTime() + s_calendar_fix);
 }
 
 /* same as OSGetTime on PC (no time_adjust needed) */

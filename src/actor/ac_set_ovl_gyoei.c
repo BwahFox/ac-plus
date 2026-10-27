@@ -2168,6 +2168,16 @@ extern int aSOG_gyoei_set(SET_MANAGER* set_manager, GAME_PLAY* play) {
   res = FALSE;
   block_kind = mFI_BkNum2BlockKind(set_manager->player_pos.next_bx, set_manager->player_pos.next_bz);
 
+#ifdef TARGET_PC
+  {
+    /* online, in the host's acre: the host's fish are the fish here (pc_mp_fish.c) */
+    extern int pc_mp_fish_shared(void);
+    if (pc_mp_fish_shared()) {
+      return FALSE;
+    }
+  }
+#endif
+
   /* check if there's any condition preventing a fish from spawning in the next acre, and spawn one if not */
   if (aSOG_gyoei_block_check(set_manager, play, block_kind) == FALSE) {
     aSOG_gyoei_clear_set_data(&set_data);

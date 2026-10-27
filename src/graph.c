@@ -402,7 +402,13 @@ static void graph_main(GRAPH* this, GAME* game) {
     {
         extern void pc_quick_save_draw(GAME* game);
         extern void pc_ground_debug_draw(GAME* game);
+        extern void pc_mp_draw(GAME* game);
         pc_quick_save_draw(game);
+        pc_mp_draw(game); /* lines said in an online visit */
+        {
+            extern void pc_mp_frame_end(GAME* game);
+            pc_mp_frame_end(game); /* the connection goes on outside the town too (an NES game) */
+        }
         pc_ground_debug_draw(game); /* F4 tile readout */
     }
 #endif

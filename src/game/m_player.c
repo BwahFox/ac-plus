@@ -5,6 +5,7 @@
 #include "m_common_data.h"
 #ifdef TARGET_PC
 #include "pc_settings.h"
+#include "pc_mp.h"
 #endif
 #include "m_actor_shadow.h"
 #include "m_bgm.h"
@@ -1556,6 +1557,12 @@ static void Player_actor_main_Demo_get_golden_axe_wait(ACTOR*, GAME*);
         priv->equipment = EMPTY_NO;
         last_direction = 0;
         Player_actor_request_main_putin_item(game, 0x25);
+    }
+
+    /* PC_CTL equip ITEM (tests): hold a tool */
+    void pc_dev_equip(GAME* game, mActor_name_t item) {
+        Common_Get(now_private)->equipment = item;
+        Player_actor_request_main_takeout_item(game, mPlayer_REQUEST_PRIORITY_37);
     }
 
     static void Player_actor_check_and_switch_tool(GAME* game) {

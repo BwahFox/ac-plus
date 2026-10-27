@@ -26,6 +26,8 @@ typedef struct {
     int master_volume;    /* Applied at the PC audio output, 0-100 (default 100) */
     char music_pack[64];  /* Folder under music/ with custom hourly tracks, empty = off (see pc_music.h) */
     int music_volume;     /* Custom music pack volume, 0-100 (default 100) */
+    int music_custom;     /* 1 = play the music pack (default), 0 = the game's own music even with a pack set */
+    int rain_spring;      /* 1 = rain plays the hour's spring (cherry blossom) arrangement instead of the rain song */
     int autosave_minutes; /* Save automatically after this many minutes of play, 0 = off (default) */
     int save_on_quit;     /* 1 = save the town when quitting, where Z+Start could (default) */
     int cloud_save;       /* 1 = mirror the town save into cloud_save_folder (see pc_cloud_save.c) */
@@ -37,6 +39,12 @@ typedef struct {
     int sync_enabled;     /* 1 = the game syncs the town with an ac-plus-server itself (pc_sync.c) */
     char sync_url[256];   /* the server, e.g. https://saves.example.org or http://192.168.1.5:8086 */
     char sync_token[96];  /* from the server's add-token */
+    int mp_port;          /* online visits: the UDP port this town is hosted on (pc_mp.c, default 41330) */
+    char mp_last_visit[128]; /* the last town visited, address[:port] or invite code */
+/* the ac-plus project's matchmaking server (invite codes and relay); players can change or clear it */
+#define PC_MP_DEFAULT_SERVER "lsdomain.org:41331"
+    char mp_server[128];     /* matchmaking server for invite codes, host[:port] (an ac-plus-server; empty = none) */
+    int mp_public;           /* 1 = list the town publicly on that server while hosting */
     int update_check;     /* 1 = at startup, look for a newer ac-plus release and offer it (pc_updater.c, default) */
     char update_repo[128]; /* the GitHub repository releases come from, owner/name (default BwahFox/ac-plus) */
     char update_skip[32];  /* a release the player chose to skip ("Skip this version"), e.g. alpha-6 */

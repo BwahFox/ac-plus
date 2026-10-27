@@ -649,6 +649,10 @@ void Sou_BgmFadeoutEndCheck() {
     }
 }
 
+#ifdef TARGET_PC
+extern "C" int pc_settings_rain_spring(void); /* pc_settings.c: rain plays the spring arrangement */
+#endif
+
 u8 Sou_BgmTenkiConv(u8 id) {
     Na_BgmMuteClear();
     if (id >= 1 && id <= 24) {
@@ -659,6 +663,14 @@ u8 Sou_BgmTenkiConv(u8 id) {
                 NA_COMMAND_AUDIO_SUBTRACK_SET_MUTE(sou_now_bgm_handle, AUDIOCMD_ALL_SUBTRACKS, TRUE);
             } break;
             case 1: {
+#ifdef TARGET_PC
+                /* ac-plus (Settings > Audio): the hour's spring arrangement in the rain, not the rain song */
+                if (pc_settings_rain_spring()) {
+                    NA_COMMAND_AUDIO_GROUP_SET_APPLY_SUBTRACK_MASK(sou_now_bgm_handle, BGM_MUTE_TABLE_SAKURA[id - 1]);
+                    NA_COMMAND_AUDIO_SUBTRACK_SET_MUTE(sou_now_bgm_handle, AUDIOCMD_ALL_SUBTRACKS, TRUE);
+                    break;
+                }
+#endif
                 id = 0x45;
             } break;
             case 2: {
@@ -3823,6 +3835,16 @@ extern void Na_SceneMode(u8 a) {
                 Sou_lev_ongen_data_struct_clear();
                 Sou_SeVolumeReset();
                 Na_BGMVolume(1.f, 0);
+#ifdef TARGET_PC
+                if (a == 8) {
+                    /* Outdoor furniture: a visitor's town (the gateway's field) has its instruments too, as mode 1 */
+                    na_melody_id_hist[0] = -1;
+                    na_melody_id_hist[1] = -1;
+                    NA_COMMAND_AUDIO_START_SEQ(FTR_INST_GROUP, 246, 0);
+                    NA_COMMAND_AUDIO_GRP_FADE_VOLUME_SCALE(FTR_INST_GROUP, 1.f);
+                    break;
+                }
+#endif
                 NA_COMMAND_AUDIO_STOP_SEQ(FTR_INST_GROUP, 0);
             } break;
             case 0xb:

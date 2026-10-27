@@ -1806,6 +1806,16 @@ extern void aMR_SaveWaltzTempo2(void) {
 }
 
 static int aMR_CheckRoomOwner(u32 player_no, MY_ROOM_ACTOR* my_room) {
+#ifdef TARGET_PC
+    {
+        /* ac-plus online visits: a visitor looks at the host's houses and outdoor furniture but doesn't
+         * rearrange them (the host's game wouldn't see it, and they're the host's things) */
+        extern int pc_mcd_online_visiting(void);
+        if (pc_mcd_online_visiting()) {
+            return FALSE;
+        }
+    }
+#endif
     if (Common_Get(field_type) == mFI_FIELDTYPE2_PLAYER_ROOM || my_room->scene == SCENE_COTTAGE_MY) {
         return TRUE;
     }
@@ -3154,5 +3164,156 @@ void aMR_pc_dev_fill(int per_acre) {
     }
     printf("[oftr] filled %d pieces around acre %d,%d\n", placed, aMR_pc_acre_x, aMR_pc_acre_z);
     aMR_pc_acre_x = -1; /* load again */
+}
+#endif
+
+#ifdef TARGET_PC
+/* online (pc_mp.c): the on/off switches of the furniture in this room (TVs, lamps, gyroids...), so another
+ * player's switching shows here too. Where: the unit (whole town's for outdoors) and layer. */
+static int aMR_pc_switch_room_ok(void) {
+    return aMR_CLIP != NULL && aMR_CLIP->my_room_actor_p != NULL && l_aMR_work.ftr_actor_list != NULL &&
+           l_aMR_work.used_list != NULL;
+}
+
+/* a switch that starts something for whoever pressed it (an NES game's prompt, the radio exercise) isn't the room's
+ * to share */
+static int aMR_pc_switch_shared(u16 name) {
+    aFTR_PROFILE* profile = aMR_GetFurnitureProfile(name);
+    return profile != NULL &&
+           !aFTR_CHECK_INTERACTION(profile->interaction_type, aFTR_INTERACTION_TYPE_FAMICOM) &&
+           !aFTR_CHECK_INTERACTION(profile->interaction_type, aFTR_INTERACTION_TYPE_FAMICOM_ITEM) &&
+           !aFTR_CHECK_INTERACTION(profile->interaction_type, aFTR_INTERACTION_TYPE_RADIO_AEROBICS);
+}
+
+void pc_aMR_switch_each(void (*fn)(void* user, int idx, u16 name, int ut_x, int ut_z, int layer, int on),
+                        void* user) {
+    int i;
+
+    if (!aMR_pc_switch_room_ok()) {
+        return;
+    }
+    for (i = 0; i < l_aMR_work.list_size; i++) {
+        FTR_ACTOR* ftr_actor = &l_aMR_work.ftr_actor_list[i];
+        int ut_x, ut_z;
+
+        if (l_aMR_work.used_list[i] == TRUE && ftr_actor->name < FTR_NUM && aMR_pc_switch_shared(ftr_actor->name) &&
+            mFI_Wpos2UtNum(&ut_x, &ut_z, ftr_actor->position)) {
+            fn(user, i, ftr_actor->name, ut_x, ut_z, ftr_actor->layer, ftr_actor->switch_bit != FALSE);
+        }
+    }
+}
+
+/* set a switch as another game says; the furniture shows the change itself (switch_changed_flag). Returns its index,
+ * or -1 if there's no such furniture here */
+int pc_aMR_switch_set(u16 name, int ut_x, int ut_z, int layer, int on) {
+    int i;
+
+    if (!aMR_pc_switch_room_ok()) {
+        return -1;
+    }
+    for (i = 0; i < l_aMR_work.list_size; i++) {
+        FTR_ACTOR* ftr_actor = &l_aMR_work.ftr_actor_list[i];
+        int x, z;
+
+        if (l_aMR_work.used_list[i] == TRUE && ftr_actor->name == name && ftr_actor->layer == layer &&
+            mFI_Wpos2UtNum(&x, &z, ftr_actor->position) && x == ut_x && z == ut_z) {
+            if (!aMR_pc_switch_shared(name)) {
+                return -1;
+            }
+            if ((ftr_actor->switch_bit != FALSE) != (on != 0)) {
+                aFTR_PROFILE* profile = aMR_GetFurnitureProfile(ftr_actor->name);
+                ACTOR* my_room_actor = aMR_CLIP->my_room_actor_p;
+
+                ftr_actor->switch_bit = on ? TRUE : FALSE;
+                ftr_actor->switch_changed_flag = TRUE;
+                if (profile != NULL && aFTR_CHECK_INTERACTION(profile->interaction_type, aFTR_INTERACTION_TYPE_MUSIC_DISK) &&
+                    ftr_actor->items[0] >= ITM_MINIDISK_START && ftr_actor->items[0] <= ITM_MINIDISK_END) {
+                    /* a stereo: its song, as switching it on or off here does (aMR's music disk interaction) */
+                    if (on) {
+                        aMR_OneMDSwitchOn_TheOtherSwitchOff(ftr_actor);
+                        aMR_ReserveBgm(my_room_actor, BGM_MD0 + (ftr_actor->items[0] - ITM_MINIDISK_START), ftr_actor, 30);
+                    } else {
+                        aMR_AllMDSwitchOff();
+                        aMR_ReserveDefaultBgm(my_room_actor, ftr_actor);
+                        aMR_ChangeMDBgm(my_room_actor, ftr_actor);
+                    }
+                }
+            }
+            return i;
+        }
+    }
+    return -1;
+}
+#endif
+
+#ifdef TARGET_PC
+/* online (pc_mp_world.c): the host rearranged house home's floor while a visitor is in that very room. Unit `unit` of
+ * layer `layer` went from old_item to new_item: the piece that stood there goes (with its puff) and the new one is
+ * made, as entering the room would make it. Nothing happens in any other room (it shows when someone walks in). */
+void pc_aMR_room_live(int home, int floor, int layer, int unit, mActor_name_t old_item, mActor_name_t new_item) {
+    MY_ROOM_ACTOR* my_room;
+    mActor_name_t field_id = mFI_GetFieldId();
+    int ut_x = unit % UT_X_NUM, ut_z = unit / UT_X_NUM;
+    int i;
+
+    if (!aMR_pc_switch_room_ok() || aMR_pc_field || gamePT == NULL ||
+        mFI_GET_TYPE(field_id) != mFI_FIELD_PLAYER0_ROOM || ((field_id - mFI_FIELD_PLAYER0_ROOM) & 3) != home) {
+        return;
+    }
+    my_room = (MY_ROOM_ACTOR*)aMR_CLIP->my_room_actor_p;
+    if (mFI_GetPlayerHouseFloorNo(my_room->scene) != floor) {
+        return;
+    }
+    if (ITEM_IS_FTR(old_item)) {
+        u16 name = mRmTp_FtrItemNo2FtrIdx(old_item);
+        for (i = 0; i < l_aMR_work.list_size; i++) {
+            FTR_ACTOR* ftr_actor = &l_aMR_work.ftr_actor_list[i];
+            int x, z;
+            if (l_aMR_work.used_list[i] == TRUE && ftr_actor->name == name && ftr_actor->layer == layer &&
+                ftr_actor->state != aFTR_STATE_BYE &&
+                aMR_Wpos2PlaceNumber(&x, &z, ftr_actor->position, ftr_actor->shape_type) && x == ut_x && z == ut_z) {
+                aMR_FtrID2ExtinguishFurniture(i);
+                break;
+            }
+        }
+    }
+    if (ITEM_IS_FTR(new_item)) {
+        aMR_MakeOneFurniture((ACTOR*)my_room, new_item, gamePT, ut_x, ut_z, layer);
+    }
+}
+#endif
+
+#ifdef TARGET_PC
+/* online visit (pc_mp.c): the host's outdoor furniture changed at unit ut (whole town's) of layer; the visited town's
+ * grid already has the change. A piece in the acres loaded around the visitor goes or is made at once. */
+void pc_aMR_field_live(int ut, int layer, mActor_name_t old_item, mActor_name_t new_item) {
+    int ut_x = ut % aMR_UT_X_NUM, ut_z = ut / aMR_UT_X_NUM;
+    aMR_place_t* place_p;
+    int i;
+
+    if (!aMR_pc_switch_room_ok() || !aMR_pc_field || aMR_pc_home || gamePT == NULL || layer > mCoBG_LAYER1) {
+        return;
+    }
+    if (ITEM_IS_FTR(old_item)) {
+        u16 name = mRmTp_FtrItemNo2FtrIdx(old_item);
+        for (i = 0; i < l_aMR_work.list_size; i++) {
+            FTR_ACTOR* ftr_actor = &l_aMR_work.ftr_actor_list[i];
+            int x, z;
+            if (l_aMR_work.used_list[i] == TRUE && ftr_actor->name == name && ftr_actor->layer == layer &&
+                ftr_actor->state != aFTR_STATE_BYE &&
+                aMR_Wpos2PlaceNumber(&x, &z, ftr_actor->position, ftr_actor->shape_type) && x == ut_x && z == ut_z) {
+                aMR_FtrID2ExtinguishFurniture(i);
+                break;
+            }
+        }
+    }
+    place_p = aMR_GetLayerPlaceTable(layer);
+    if (ITEM_IS_FTR(new_item) && aMR_pc_loaded_unit(ut) && place_p != NULL && place_p[ut] == aMR_NO_FTR_ID) {
+        aMR_MakeOneFurniture((ACTOR*)aMR_CLIP->my_room_actor_p, new_item, gamePT, ut_x, ut_z, layer);
+        if (place_p[ut] < l_aMR_work.list_size) {
+            FTR_ACTOR* ftr_actor = &l_aMR_work.ftr_actor_list[place_p[ut]];
+            aMR_SetFurniture2FG(ftr_actor, ftr_actor->position, TRUE); /* its other units too */
+        }
+    }
 }
 #endif

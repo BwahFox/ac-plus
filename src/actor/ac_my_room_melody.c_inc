@@ -11,6 +11,12 @@ static void aMR_SoundMelody(FTR_ACTOR* ftr_actor, ACTOR* actorx, int idx) {
         u8* melody_data = aMR_GetMelodyData(actorx);
 
         sAdo_FurnitureInst((u32)ftr_actor, idx, melody_data, &ftr_actor->position);
+#ifdef TARGET_PC
+        if (getenv("PC_MP_DEBUG") != NULL) {
+            printf("[mpdbg] instrument %d plays: melody %02X %02X %02X %02X, bgm %d\n", ftr_actor->name,
+                   melody_data[0], melody_data[1], melody_data[2], melody_data[3], mBGMPsComp_execute_bgm_num_get());
+        }
+#endif
     }
 
     sAdo_FurnitureInstPos((u32)ftr_actor, &ftr_actor->position);

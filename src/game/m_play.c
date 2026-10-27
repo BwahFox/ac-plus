@@ -391,6 +391,12 @@ extern void play_cleanup(GAME* game) {
     mHsRm_GetHuusuiRoom(NULL, Common_Get(player_no));
     mFM_Field_dt();
     mCD_toNextLand();
+#ifdef TARGET_PC
+    {
+        extern void pc_mcd_online_after_swap(void);
+        pc_mcd_online_after_swap(); /* online visits arrive without the train (pc_m_card.c) */
+    }
+#endif
     mEA_CleanCardDLProgram();
 
     if (my_malloc_current == &my_malloc_func) {
@@ -550,6 +556,12 @@ static void Game_play_move_fbdemo_not_move(GAME* game) {
         game->doing_point = 0;
         game->doing_point_specific = 0x90;
         Actor_info_call_actor(play, &play->actor_info);
+#ifdef TARGET_PC
+        {
+            extern void pc_mp_after_actors(GAME* game);
+            pc_mp_after_actors(game); /* villagers where the other game has them (pc_mp_npc.c) */
+        }
+#endif
 #ifdef TARGET_PC
         {
             extern void pc_museum_rooms_move(GAME_PLAY* play);
@@ -908,6 +920,8 @@ extern void play_main(GAME* game) {
     {
         extern void pc_quick_save_tick(GAME* game);
         pc_quick_save_tick(game);
+        extern void pc_mp_play_tick(GAME* game);
+        pc_mp_play_tick(game); /* online multiplayer (pc_mp.c) */
     }
 #endif
     game->doing_point = 0;

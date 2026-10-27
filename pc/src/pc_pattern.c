@@ -589,3 +589,26 @@ void pc_pattern_dev_dump(const char* path) {
     }
     fclose(f);
 }
+
+/* Online visits (pc_mp_town.c): a pattern of the host's town under the host's id, so its ground patterns show.
+ * Only while visiting (nothing reconciles then, a foreigner isn't active()); the library comes back from the home
+ * companion save on the way home. */
+int pc_pattern_visit_add(u32 id, const mNW_original_design_c* d) {
+    PatLibEntry* e;
+
+    if (id == 0) {
+        return FALSE;
+    }
+    e = lib_find(id); /* the visited town's blank slots may have taken the id: the host's design wins */
+    if (e == NULL) {
+        if (s_lib_count == PAT_LIB_MAX) {
+            return FALSE;
+        }
+        e = &s_lib[s_lib_count++];
+    }
+    memset(e, 0, sizeof(*e));
+    e->id = id;
+    e->hash = design_hash(d);
+    memcpy(&e->design, d, sizeof(e->design));
+    return TRUE;
+}

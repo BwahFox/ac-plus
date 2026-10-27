@@ -35,6 +35,13 @@ static void aGYO_free_clip_area(void);
 
 static ACTOR* aGYO_ctrlActor = NULL;
 
+#ifdef TARGET_PC
+/* online (pc_mp_fish.c): the fish controller, with its fish (NULL while there's none) */
+ACTOR* pc_gyoei_ctrl_actor(void) {
+    return aGYO_ctrlActor;
+}
+#endif
+
 typedef struct gyoei_overlay_s {
     u8 buf[0x3C00];
 } aGYO_overlay_c ATTRIBUTE_ALIGN(8);
@@ -77,6 +84,11 @@ static void aGYO_actor_dt(ACTOR* actorx, GAME* game) {
     }
 
     aGYO_free_clip_area();
+#ifdef TARGET_PC
+    if (aGYO_ctrlActor == actorx) {
+        aGYO_ctrlActor = NULL; /* (pc_gyoei_ctrl_actor) */
+    }
+#endif
 }
 
 #include "../src/actor/ac_gyoei_model.c_inc"

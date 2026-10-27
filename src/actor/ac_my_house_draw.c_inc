@@ -260,6 +260,29 @@ static void aMHS_actor_draw(ACTOR* actorx, GAME* game) {
                 pal = mNW_PaletteIdx2Palette(kept->palette);
                 tex = (u8*)kept->design.data;
             }
+            {
+                extern int pc_mcd_online_visiting(void);
+                extern int pc_mp_town_door(int home, u8* palette, u8** tex);
+                u8 door_pal;
+                u8* door_tex;
+                if (pc_mcd_online_visiting()) {
+                    static int logged[PLAYER_NUM];
+                    int have = pc_mp_town_door(my_house->action, &door_pal, &door_tex);
+                    if (getenv("PC_MP_DEBUG") != NULL && my_house->action >= 0 && my_house->action < PLAYER_NUM &&
+                        !logged[my_house->action]) {
+                        logged[my_house->action] = TRUE;
+                        printf("[mpdbg] house %d door: original %02X player %d, host's design %s\n", my_house->action,
+                               door_original, pl_no, have ? "drawn" : "missing: plain door");
+                    }
+                    if (have) {
+                        pal = mNW_PaletteIdx2Palette(door_pal); /* an online visit: the host's door, as sent */
+                        tex = door_tex;
+                    } else {
+                        pal = (u16*)obj_myhome_mark_pal; /* never this game's own patterns on the host's door */
+                        tex = obj_myhome_mark_tex_txt;
+                    }
+                }
+            }
 #endif
 
             gSPSegment(gfx++, G_MWO_SEGMENT_9, tex);

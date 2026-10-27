@@ -1323,6 +1323,29 @@ extern void mPlib_change_player_face_pallet(GAME* game) {
     }
 }
 
+#ifdef TARGET_PC
+/* Multiplayer (pc_mp.c): another player's face (0xE00: eyes then mouths) and face palette, for their puppet.
+ * Like mPlib_change_player_face but for the given look; values are checked by the caller. */
+extern void mPlib_pc_load_face(int sex, int face_type, int tone, int sunburn_rank, u8* face_tex, u16* face_pal) {
+    u32 tex = mPlib_Get_UseFaceTexRom_p_common(sex, face_type, FALSE, FALSE);
+    u32 pal;
+
+    _JW_GetResourceAram(tex, face_tex, 0xE00);
+    DCStoreRangeNoSync(face_tex, 0xE00);
+    if (sunburn_rank > 0) {
+        u32 idx = mPlib_Get_UseFaceRom_index(sex, face_type, FALSE, FALSE, mPlayer_USE_FACE_ROM_TYPE_PAL);
+        pal = mPlib_Get_UseFaceTexRom_p_common(mPr_SEX_FEMALE, mPr_FACE_TYPE7, TRUE, TRUE) + 0xE00 +
+              (sunburn_rank + idx) * 0x20;
+    } else {
+        pal = tex + 0xE00;
+    }
+    _JW_GetResourceAram(pal, (u8*)face_pal, mNW_PALETTE_SIZE);
+    mPlib_ByteSwapPlayerPalette(face_pal);
+    pc_skin_apply(face_pal, tone, sunburn_rank);
+    DCStoreRangeNoSync(face_pal, mNW_PALETTE_SIZE);
+}
+#endif
+
 extern void mPlib_change_player_face(GAME* game) {
     u8* player_face_p = mPlib_get_player_face_p(game);
     u32 player_face_rom_p = mPlib_Get_UseFaceTexRom_p();
@@ -2243,6 +2266,15 @@ extern int mPlib_request_main_give_type1(GAME* game, mActor_name_t item, int mod
 }
 
 extern int mPlib_request_main_sitdown_type1(GAME* game, int direct, const xyz_t* pos_p, int ftr_no) {
+#ifdef TARGET_PC
+    {
+        /* online: someone in another game is already sitting there (pc_mp.c) */
+        extern int pc_mp_seat_taken(GAME* game, const xyz_t* pos);
+        if (pc_mp_seat_taken(game, pos_p)) {
+            return FALSE;
+        }
+    }
+#endif
     return GET_PLAYER_ACTOR_GAME(game)->request_main_sitdown_all_proc(game, direct, pos_p, ftr_no,
                                                                       mPlayer_REQUEST_PRIORITY_2);
 }

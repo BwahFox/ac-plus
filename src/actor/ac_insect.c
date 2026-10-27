@@ -11,6 +11,13 @@
 #include "m_rcp.h"
 
 static aINS_CTRL_ACTOR* aINS_ctrlActor = NULL;
+
+#ifdef TARGET_PC
+/* online (pc_mp_bugs.c): the insect controller, with its insects (NULL while there's none) */
+aINS_CTRL_ACTOR* pc_insect_ctrl_actor(void) {
+    return aINS_ctrlActor;
+}
+#endif
 static aINS_overlay_c aINS_overlay;
 static aINS_Clip_c aINS_clip;
 
@@ -78,4 +85,9 @@ static void aINS_actor_ct(ACTOR* actorx, GAME* game) {
 
 static void aINS_actor_dt(ACTOR* actorx, GAME* game) {
     aINS_free_clip_area();
+#ifdef TARGET_PC
+    if ((ACTOR*)aINS_ctrlActor == actorx) {
+        aINS_ctrlActor = NULL; /* (pc_insect_ctrl_actor) */
+    }
+#endif
 }

@@ -630,6 +630,9 @@ static void aBRW_talk_request(ACTOR* actorx, GAME* game) {
 static int aBRW_talk_init(ACTOR* actorx, GAME* game) {
     NPC_BREWSTER_ACTOR* brw = (NPC_BREWSTER_ACTOR*)actorx;
 
+    if (aBRW_stool_seated(game) < 0) {
+        brw->seated_talk = FALSE; /* they got up before he started: a talk across the counter (m_demo.c) */
+    }
     brw->talk_proc = &aBRW_talk_wait_line;
     mDemo_Set_ListenAble();
     brw->npc_class.head.angle_add_y = DEG2SHORT_ANGLE(5.625f);

@@ -1501,22 +1501,17 @@ extern void mPr_PrintMapInfo_debug(gfxprint_t* gfxprint) {
 #ifdef PC_ENHANCEMENTS
 /* bell amount for a money-bag item, 0 if not one */
 extern u32 mPr_GetAmountForMoneyItem(mActor_name_t item) {
-    int type = mNT_get_itemTableNo(item);
-    int idx = item & 0xFF;
-
-    if (type != 9) return 0;
-
-    switch (idx) {
-        case 0: return 1000;
-        case 1: return 10000;
-        case 2: return 30000;
-    }
-
-    if (idx >= 3 && idx <= 0x0B) {
-        return (u32)(idx - 2) * 100;
-    }
-    if (idx >= 0x0C && idx <= 0x6E) {
-        return (u32)(idx - 0x0B) * 1000;
+    switch (item) {
+        case ITM_MONEY_100:
+            return 100;
+        case ITM_MONEY_1000:
+            return 1000;
+        case ITM_MONEY_10000:
+            return 10000;
+        case ITM_MONEY_30000:
+            return 30000;
+        case ITM_MONEY_90000:
+            return 90000;
     }
 
     return 0;

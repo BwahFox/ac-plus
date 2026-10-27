@@ -416,9 +416,22 @@ static int set_talk_default() {
     return TRUE;
 }
 
+#ifdef TARGET_PC
+extern ACTOR* pc_mDemo_seated_speaker;
+static int pc_mDemo_seated_speak_ok(void);
+#endif
+
 static int wait_talk_start() {
     PLAYER_ACTOR* player = GET_PLAYER_ACTOR_NOW();
 
+#ifdef TARGET_PC
+    /* ac-plus: asked to talk to the player sitting at the Roost's counter, but they got up before it started:
+     * then it's an ordinary talk, and the player is held for it like any other (or they could walk off) */
+    if (!demo->data.talk.change_player && demo->current.actor == pc_mDemo_seated_speaker &&
+        !pc_mDemo_seated_speak_ok()) {
+        demo->data.talk.change_player = TRUE;
+    }
+#endif
     if (demo->data.talk.change_player) {
         if (mPlib_get_player_actor_main_index(gamePT) != 65 &&
             mPlib_request_main_talk_type1(gamePT, demo->current.actor, demo->data.talk.turn, FALSE) == FALSE) {
@@ -996,6 +1009,15 @@ extern int mDemo_Request(int type, ACTOR* actor, mDemo_REQUEST_PROC req_proc) {
         if (type >= demo->priority_type) {
             mDemo_Request_c* req = &demo->request[request_num];
 
+#ifdef TARGET_PC
+            {
+                /* online: one player at a time talks to a villager (pc_mp.c) */
+                extern int pc_mp_villager_busy(ACTOR* a);
+                if ((type == mDemo_TYPE_TALK || type == mDemo_TYPE_SPEAK) && pc_mp_villager_busy(actor)) {
+                    return FALSE;
+                }
+            }
+#endif
             if (type == mDemo_TYPE_TALK) {
                 weight = weight_of_talk_position(actor);
 

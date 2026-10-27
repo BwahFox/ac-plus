@@ -143,13 +143,18 @@ extern void Na_RhythmAllStop() {
 extern u8 sou_scene_mode;
 extern u8 sou_now_bgm_num;
 
+/* outdoors in a town: scene mode 1, or 8 in a visited town (the gateway's field) */
+static int na_rhythm_outdoors(void) {
+    return sou_scene_mode == 1 || sou_scene_mode == 8;
+}
+
 /* ac-plus: do instruments and gyroids keep time with the background music? Outdoors (outdoor furniture) only a
  * K.K. song from a stereo or music box counts, not the hourly town music; anywhere else as before */
 static int na_rhythm_follow_bgm(void) {
     if (AG.groups[sou_now_bgm_handle].flags.enabled == 0) {
         return FALSE;
     }
-    return sou_scene_mode != 1 || (sou_now_bgm_num >= BGM_MD0 && sou_now_bgm_num <= BGM_MD54);
+    return !na_rhythm_outdoors() || (sou_now_bgm_num >= BGM_MD0 && sou_now_bgm_num <= BGM_MD54);
 }
 #define NA_RHYTHM_FOLLOW_BGM() na_rhythm_follow_bgm()
 #else
@@ -380,7 +385,7 @@ static void tempo_adjust(group* group) {
         }
     }
 #ifdef TARGET_PC
-    else if (sou_scene_mode == 1) {
+    else if (na_rhythm_outdoors()) {
         /* back to the steady default tempo (Na_SetRhythmInfo), as when nothing plays */
         if (tempo > 120) {
             tempo--;

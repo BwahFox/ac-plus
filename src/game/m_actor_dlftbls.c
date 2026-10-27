@@ -6,6 +6,7 @@
 #include "ac_npc_brewster.h"
 #include "ac_npc_kk_roost.h"
 #include "ac_roost_guest.h"
+#include "ac_mp_puppet.h"
 #endif
 #include "ac_sample.h"
 #include "ac_airplane.h"
@@ -511,6 +512,7 @@ ACTOR_DLFTBL actor_dlftbls[] = {
   MAKE_ACTOR_DLF(Npc_Brewster),
   MAKE_ACTOR_DLF(Npc_Kk_Roost),
   MAKE_ACTOR_DLF(Roost_Guest),
+  MAKE_ACTOR_DLF(Mp_Puppet),
 #endif
 };
 
@@ -518,7 +520,7 @@ int actor_dlftbls_num;
 
 extern void actor_dlftbls_init() {
 #ifdef TARGET_PC
-  actor_dlftbls_num = 250;
+  actor_dlftbls_num = 251;
 #else
   actor_dlftbls_num = 246;
 #endif
