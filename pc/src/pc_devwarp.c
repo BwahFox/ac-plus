@@ -278,10 +278,30 @@ void pc_dev_shop_buy(int slot) {
     printf("[shop] bought slot %d (%04X), wallet %u\n", slot, item, priv->inventory.wallet);
 }
 
+/* ctl shopcandy: buy a candy or a grab bag (whichever the shop has), as its shelf does (ac_shop_design.c) */
+void pc_dev_shop_counted(void) {
+    Private_c* priv = Now_Private;
+    mActor_name_t item =
+        Common_Get(tanuki_shop_status) == mSP_TANUKI_SHOP_STATUS_HALLOWEEN ? ITM_FOOD_CANDY : ITM_HUKUBUKURO_BAG;
+    int idx;
+
+    if (priv == NULL || (idx = mPr_GetPossessionItemIdx(priv, EMPTY_NO)) < 0 ||
+        Save_Get(shop).flowers_candy_grab_bag_count <= 0) {
+        printf("[shop] none to buy (%d left)\n", Save_Get(shop).flowers_candy_grab_bag_count);
+        return;
+    }
+    mSP_ShopSaleReport(item, Save_Get(shop).items, mSP_GOODS_COUNT, RSV_SHOP_SOLD_PLANT);
+    mPr_SetPossessionItem(priv, idx, item, mPr_ITEM_COND_NORMAL);
+    priv->inventory.wallet -= mSP_ItemNo2ItemPrice(item) <= priv->inventory.wallet ? mSP_ItemNo2ItemPrice(item) : 0;
+    printf("[shop] bought a %04X, %d left, wallet %u\n", item, Save_Get(shop).flowers_candy_grab_bag_count,
+           priv->inventory.wallet);
+}
+
 /* PC_CTL shoplog: the shop's goods and the wallet */
 void pc_dev_shop_log(void) {
     int i;
-    printf("[shop] wallet %u goods", Now_Private != NULL ? Now_Private->inventory.wallet : 0);
+    printf("[shop] wallet %u, %d candies/grab bags left, goods", Now_Private != NULL ? Now_Private->inventory.wallet : 0,
+           Save_Get(shop).flowers_candy_grab_bag_count);
     for (i = 0; i < 8; i++) {
         printf(" %04X", Save_Get(shop).items[i]);
     }

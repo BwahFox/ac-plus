@@ -42,7 +42,7 @@ run() {
 case "${1:-}" in
     build)
         image
-        run -e AC_BUILD_DIR=/build/src/pc/build-container -e PC_CONSOLE=OFF "$IMAGE" ./build_wine.sh
+        run -e AC_BUILD_DIR=/build/src/pc/build-container -e PC_CONSOLE=OFF -e PC_DEV=OFF "$IMAGE" ./build_wine.sh
         mkdir -p "$DIST/rom" "$DIST/save" "$DIST/texture_pack" "$DIST/music" "$DIST/shaders"
         cp pc/build-container/bin/AnimalCrossing.exe "$DIST/"
         cp pc/build-container/bin/shaders/* "$DIST/shaders/"

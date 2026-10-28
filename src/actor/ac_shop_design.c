@@ -357,7 +357,39 @@ static mActor_name_t aSD_UnitNum2ItemNo(int ux, int uz) {
     }
 }
 
+/* PC: remote is a sale in another game of an online visit (pc_mp_world.c): the shop's goods already say so, only
+ * the shelf here changes (no takings, no report; was_rare: it was the rare item) */
+static int aSD_ReportGoodsSales_common(int ux, int uz, int remote, int was_rare);
+
 static int aSD_ReportGoodsSales(int ux, int uz) {
+    return aSD_ReportGoodsSales_common(ux, uz, FALSE, FALSE);
+}
+
+/* PC: someone in another game bought item (ITM_FOOD_CANDY / ITM_HUKUBUKURO_BAG: one of them): if it's on a shelf here,
+ * it goes as if sold here */
+void pc_aSD_remote_sale(mActor_name_t item, int was_rare) {
+    int ux, uz;
+
+    if (Common_Get(clip).shop_design_clip == NULL) {
+        return;
+    }
+    for (uz = 0; uz < UT_Z_NUM; uz++) {
+        for (ux = 0; ux < UT_X_NUM; ux++) {
+            mActor_name_t here = aSD_UnitNum2ItemNo(ux, uz);
+            if (here == item || (item == ITM_FOOD_CANDY && here == ITM_HUKUBUKURO_BAG) ||
+                (item == ITM_HUKUBUKURO_BAG && here == ITM_FOOD_CANDY)) {
+                OSReport("[shop] %04X sold in another game: off the shelf at %d,%d\n", here, ux, uz);
+                aSD_ReportGoodsSales_common(ux, uz, TRUE, was_rare);
+                return;
+            }
+        }
+    }
+}
+
+/* (as mSP_ShopSaleReport answers when the goods already said so) */
+#define aSD_SALE_REPORT(item, goods, max, rsv) (remote ? FALSE : mSP_ShopSaleReport(item, goods, max, rsv))
+
+static int aSD_ReportGoodsSales_common(int ux, int uz, int remote, int was_rare) {
     mActor_name_t item = aSD_UnitNum2ItemNo(ux, uz);
     u32 price = mSP_ItemNo2ItemPrice(item);
     mActor_name_t rsv_item = EMPTY_NO;
@@ -365,21 +397,23 @@ static int aSD_ReportGoodsSales(int ux, int uz) {
     if (Common_Get(clip).shop_design_clip != NULL) {
         SHOP_DESIGN_ACTOR* shop_design = Common_Get(clip).shop_design_clip->design_actor;
 
-        mSP_PlusSales(price);
+        if (!remote) {
+            mSP_PlusSales(price);
+        }
         if (item == ITM_HUKUBUKURO_BAG) {
-            mSP_ShopSaleReport(item, shop_design->goods_list, shop_design->goods_list_max, RSV_SHOP_SOLD_PLANT);
+            aSD_SALE_REPORT(item, shop_design->goods_list, shop_design->goods_list_max, RSV_SHOP_SOLD_PLANT);
             mFI_UtNumtoFGSet_common(RSV_SHOP_SOLD_PLANT, ux, uz, FALSE);
             return FALSE;
         } else if ((item >= ITM_SAPLING && item <= ITM_CEDAR_SAPLING) ||
                    (item >= ITM_WHITE_PANSY_BAG && item <= ITM_YELLOW_TULIP_BAG) || item == ITM_FOOD_CANDY) {
-            if (mSP_ShopSaleReport(item, shop_design->goods_list, shop_design->goods_list_max, RSV_SHOP_SOLD_PLANT)) {
+            if (aSD_SALE_REPORT(item, shop_design->goods_list, shop_design->goods_list_max, RSV_SHOP_SOLD_PLANT)) {
                 return TRUE;
             } else {
                 mFI_UtNumtoFGSet_common(RSV_SHOP_SOLD_PLANT, ux, uz, FALSE);
                 return FALSE;
             }
         } else if (item >= ITM_CLOTH_START && item <= ITM_CLOTH_END) {
-            mSP_ShopSaleReport(item, shop_design->goods_list, shop_design->goods_list_max, RSV_SHOP_SOLD_CLOTH);
+            aSD_SALE_REPORT(item, shop_design->goods_list, shop_design->goods_list_max, RSV_SHOP_SOLD_CLOTH);
             Common_Get(clip).shop_manekin_clip->change2naked_manekin_proc(ux, uz);
             mFI_UtNumtoFGSet_common(RSV_NO, ux, uz, FALSE);
             return FALSE;
@@ -389,7 +423,7 @@ static int aSD_ReportGoodsSales(int ux, int uz) {
 
             Common_Get(clip).my_room_clip->unitNum2ftrItemNoftrId_proc(&ftr_item, &ftrID, ux, uz, mCoBG_LAYER0);
             Common_Get(clip).my_room_clip->ftrId2extinguishFtr_proc(ftrID);
-            if (item == Save_Get(shop).rare_item) {
+            if (remote ? was_rare : item == Save_Get(shop).rare_item) {
                 rsv_item = RSV_SHOP_SOLD_RARE;
             } else {
                 rsv_item = RSV_SHOP_SOLD_FTR;
@@ -437,7 +471,7 @@ static int aSD_ReportGoodsSales(int ux, int uz) {
         }
 
         if (rsv_item != EMPTY_NO) {
-            if (mSP_ShopSaleReport(item, shop_design->goods_list, shop_design->goods_list_max, rsv_item)) {
+            if (aSD_SALE_REPORT(item, shop_design->goods_list, shop_design->goods_list_max, rsv_item)) {
                 return TRUE;
             }
 
@@ -449,3 +483,4 @@ static int aSD_ReportGoodsSales(int ux, int uz) {
         return FALSE;
     }
 }
+#undef aSD_SALE_REPORT

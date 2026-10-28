@@ -9,6 +9,9 @@
 extern "C" {
 #endif
 
+/* MP_WORLD_SHOP slot of the count of candies or grab bags the shop has left (mSP_ShopSaleReport); slots below it
+ * are the goods (Save shop items) and the rare item. Not known to Alpha 8, which ignores it */
+#define PC_MP_SHOP_COUNTED 40 /* mSP_GOODS_COUNT + 1 */
 enum { MP_WORLD_SET = 1, MP_WORLD_DEPOSIT = 2, MP_WORLD_SHOP = 3, MP_WORLD_MUSEUM = 4, MP_WORLD_ROOM = 5, MP_WORLD_SWITCH = 6, MP_WORLD_OFTR0 = 7 }; /* (and 8, 9: layers 1, 2) */ /* = MP_ACT_* (mp_wire.h) */
 
 /* SET: a = ux, b = uz (town units); DEPOSIT: a = acre 0-29, b = row 0-15 */

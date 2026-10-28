@@ -42,6 +42,7 @@
  *                    (editor screen, 320x240) over frames F1-F2 holding SDL buttons B (1 left, 4 right)
  * PC_DESIGN_EDIT_AT=F open the pattern editor on slot 0 (nothing is saved unless it is confirmed)
  * PC_CTRLZ_AT=F      hold Ctrl+Z for frame F (pattern designer undo)
+ * (dev builds) PC_CTL jank, or F9: the jank button (pc_jank.c)
  * PC_NO_PAD=1       don't open gamepads (pc_main.c), so a test copy can't read the player's controller
  * PC_CTL=file       live control: lines appended to the file while the game runs are done as they come (see
  *                   devctl_run below): press/tap buttons, hold the sticks, screenshots, warps, quit. Each logs
@@ -57,6 +58,10 @@
 #include <string.h>
 
 static u32 s_frame;
+
+u32 pc_devtest_frame(void) {
+    return s_frame;
+}
 
 /* PC_CTL: what the live control is holding, and until which frame */
 static u32 s_ctl_buttons, s_ctl_buttons_until;
@@ -552,6 +557,9 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
     } else if (strcmp(cmd, "shopbuy") == 0 && sscanf(line, "%*s %d", &n) == 1) {
         extern void pc_dev_shop_buy(int slot);
         pc_dev_shop_buy(n);
+    } else if (strcmp(cmd, "shopcandy") == 0) {
+        extern void pc_dev_shop_counted(void);
+        pc_dev_shop_counted();
     } else if (strcmp(cmd, "shopfake") == 0 && sscanf(line, "%*s %d %x", &x, &n) == 2) {
         /* shopfake SLOT ITEM: this game's shop slot only, unreported (tests a purchase the host refuses) */
         extern int pc_mp_world_apply(int kind, int a, int b, unsigned short value);
@@ -589,6 +597,11 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
         /* talkto IDX: stand just south of villager IDX, facing them (then "tap A" talks) */
         extern void pc_dev_talkto(int idx);
         pc_dev_talkto(n);
+#ifdef PC_DEV
+    } else if (strcmp(cmd, "jank") == 0) {
+        extern void pc_jank_press(void);
+        pc_jank_press(); /* as F9 does (pc_jank.c) */
+#endif
     } else if (strcmp(cmd, "neartree") == 0) {
         /* neartree: stand just south of the nearest full-grown tree, facing it (then "tap A" with an axe) */
         extern void pc_dev_near_tree(void);
@@ -716,6 +729,12 @@ void pc_devtest_frame_end(void) {
         shot++;
     }
     devctl_poll(&quit_at, &exit_at);
+#ifdef PC_DEV
+    {
+        extern void pc_jank_frame_end(void);
+        pc_jank_frame_end(); /* F9 (pc_jank.c) */
+    }
+#endif
     if (s_ctl_shot[0] != '\0') {
         devtest_write_shot(s_ctl_shot);
         s_ctl_shot[0] = '\0';

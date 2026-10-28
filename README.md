@@ -152,6 +152,7 @@ mouse, controllers), ac-plus adds:
   the museum, furniture indoors and out, switches (TVs, lamps, stereos, instruments), the town's
   time and weather, where villagers are, fish and insects, and each player's clothes and face.
   Two players can't talk to the same villager or sit on the same seat at once.
+- A purchase comes off the shelves at once for everyone in the shop, candy and grab bags included.
 - Villagers remember a visitor from one visit to the next.
 - Chat from the Online Play menu (Say).
 - Connections are encrypted, and each game has its own key (shown in Online Play). Your town is

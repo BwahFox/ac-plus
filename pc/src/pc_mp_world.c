@@ -9,7 +9,8 @@
  * Buildings, signs and mailboxes on screen put placeholders on their units (DUMMY_*, RSV_NO) until the scene
  * ends; those differ between games, so a unit showing a placeholder keeps its last real value in the copy and is
  * never sent. Changes that came from the network are written into the copy too, so they aren't sent back.
- * The shop's goods are kept the same the same way: a sale turns an item into a "sold" mark. So is the museum,
+ * The shop's goods are kept the same the same way: a sale turns an item into a "sold" mark (candy and grab bags
+ * aren't goods: the shop counts how many are left, and a sale takes one from the count). So is the museum,
  * though only the host's players can donate (foreigners can't, as on the GameCube), and the houses' furniture,
  * which only the host rearranges (visitors leave it alone, ac_my_room.c aMR_CheckRoomOwner). */
 #include "pc_mp_world.h"
@@ -31,7 +32,7 @@
 
 static mActor_name_t l_fg_copy[FG_UNITS];
 static u16 l_dep_copy[DEP_ROWS];
-static mActor_name_t l_shop_copy[mSP_GOODS_COUNT + 1];
+static mActor_name_t l_shop_copy[mSP_GOODS_COUNT + 2];
 static u8 l_museum_copy[sizeof(mMmd_info_c)];
 static int l_copy_valid;
 
@@ -66,11 +67,28 @@ static int room_index(int a, int b) {
     return (a / 2) * UT_TOTAL_NUM + (a % 2) * 128 + b;
 }
 
-#define SHOP_SLOTS (mSP_GOODS_COUNT + 1)
+#define SHOP_SLOTS (mSP_GOODS_COUNT + 2)
+_Static_assert(PC_MP_SHOP_COUNTED == mSP_GOODS_COUNT + 1, "the counted slot follows the rare item");
 
-/* slot i of the shop's goods; the last is the rare item */
+/* slot i of the shop's goods; then the rare item; then PC_MP_SHOP_COUNTED, how many candies or grab bags are left */
 static mActor_name_t* shop_slot(int i) {
     return i < mSP_GOODS_COUNT ? &Save_Get(shop).items[i] : &Save_Get(shop).rare_item;
+}
+
+static mActor_name_t shop_get(int i) {
+    if (i == PC_MP_SHOP_COUNTED) {
+        s8 n = Save_Get(shop).flowers_candy_grab_bag_count;
+        return n > 0 ? (mActor_name_t)n : 0;
+    }
+    return *shop_slot(i);
+}
+
+static void shop_set(int i, mActor_name_t value) {
+    if (i == PC_MP_SHOP_COUNTED) {
+        Save_Get(shop).flowers_candy_grab_bag_count = (s8)value;
+    } else {
+        *shop_slot(i) = value;
+    }
 }
 
 static mActor_name_t* fg_unit(int i) {
@@ -107,7 +125,7 @@ void pc_mp_world_reset(void) {
     }
     memcpy(l_dep_copy, dep_row(0), sizeof(l_dep_copy));
     for (i = 0; i < SHOP_SLOTS; i++) {
-        l_shop_copy[i] = *shop_slot(i);
+        l_shop_copy[i] = shop_get(i);
     }
     memcpy(l_museum_copy, museum_byte(0), sizeof(l_museum_copy));
     for (i = 0; i < ROOM_UNITS; i++) {
@@ -142,7 +160,7 @@ void pc_mp_world_scan(pc_mp_world_change_fn fn, void* user) {
         }
     }
     for (i = 0; i < SHOP_SLOTS; i++) {
-        mActor_name_t now = *shop_slot(i);
+        mActor_name_t now = shop_get(i);
         if (now != l_shop_copy[i]) {
             fn(user, MP_WORLD_SHOP, i, 0, l_shop_copy[i], now);
             l_shop_copy[i] = now;
@@ -224,11 +242,24 @@ int pc_mp_world_apply(int kind, int a, int b, u16 value) {
         return TRUE;
     }
     if (kind == MP_WORLD_SHOP) {
-        if (a < 0 || a >= SHOP_SLOTS || b != 0 || !pc_mp_shop_item_ok(value)) {
+        if (a < 0 || a >= SHOP_SLOTS || b != 0 ||
+            (a == PC_MP_SHOP_COUNTED ? value > 127 : !pc_mp_shop_item_ok(value))) {
             return FALSE;
         }
-        l_shop_copy[a] = value;
-        *shop_slot(a) = value; /* the shelves show it the next time someone goes in */
+        {
+            extern void pc_aSD_remote_sale(mActor_name_t item, int was_rare); /* ac_shop_design.c */
+            mActor_name_t was = l_shop_copy[a];
+            l_shop_copy[a] = value;
+            shop_set(a, value); /* the shelves show it the next time someone goes in, */
+            /* and the shop someone is in right now at once */
+            if (a == PC_MP_SHOP_COUNTED) {
+                for (; was > value; was--) {
+                    pc_aSD_remote_sale(ITM_FOOD_CANDY, FALSE);
+                }
+            } else if (was != EMPTY_NO && pc_mp_item_ok(was) && pc_mp_shop_sold(value)) {
+                pc_aSD_remote_sale(was, a == mSP_GOODS_COUNT);
+            }
+        }
         return TRUE;
     }
     if (kind == MP_WORLD_MUSEUM) {
@@ -330,6 +361,9 @@ int pc_mp_world_visitor_may(int kind, int a, int b, u16 old_value, u16 new_value
     int i;
     if (kind == MP_WORLD_MUSEUM || kind == MP_WORLD_ROOM) {
         return FALSE; /* foreigners don't donate, visitors don't rearrange the host's houses */
+    }
+    if (kind == MP_WORLD_SHOP && a == PC_MP_SHOP_COUNTED) {
+        return old_value > 0 && new_value == old_value - 1; /* buying a candy or a grab bag */
     }
     if (kind == MP_WORLD_SHOP) {
         return old_value != EMPTY_NO && pc_mp_item_ok(old_value) && pc_mp_shop_sold(new_value); /* buying it */

@@ -46,7 +46,22 @@ static const unsigned char UPD_SIGNING_KEY[64] = {
 
 /* --- versions --- */
 
-/* alpha-N < beta-N < N.N.N (or vN.N.N); 0 = not a release name */
+/* "9" or "9.1" (a fix release of 9): 900, 901 */
+static long upd_point_rank(const char* n) {
+    int major = atoi(n), minor = 0;
+    const char* dot = n;
+
+    while (isdigit((unsigned char)*dot)) {
+        dot++;
+    }
+    if (*dot == '.' && isdigit((unsigned char)dot[1])) {
+        minor = atoi(dot + 1);
+    }
+    return major * 100L + (minor < 100 ? minor : 99);
+}
+
+/* alpha-N < alpha-N.M < alpha-N+1 < beta-N < N.N.N (or vN.N.N); 0 = not a release name.
+ * (Alpha 8 and older read alpha-N.M as alpha-N, so they're only offered whole numbers) */
 static long upd_version_rank(const char* tag) {
     int a = 0, b = 0, c = 0;
 
@@ -54,10 +69,10 @@ static long upd_version_rank(const char* tag) {
         return 0;
     }
     if (strncmp(tag, "alpha-", 6) == 0 && isdigit((unsigned char)tag[6])) {
-        return 1000000L + atoi(tag + 6);
+        return 1000000L + upd_point_rank(tag + 6);
     }
     if (strncmp(tag, "beta-", 5) == 0 && isdigit((unsigned char)tag[5])) {
-        return 2000000L + atoi(tag + 5);
+        return 2000000L + upd_point_rank(tag + 5);
     }
     if (*tag == 'v') {
         tag++;

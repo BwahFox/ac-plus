@@ -38,10 +38,14 @@ if [ ! -f Makefile ]; then
     cmake .. -DCMAKE_TOOLCHAIN_FILE=../cmake/Toolchain-mingw32.cmake \
         -DPC_CONSOLE="${PC_CONSOLE:-ON}" \
         -DPC_MEMTRACK="${PC_MEMTRACK:-OFF}" \
+        -DPC_DEV="${PC_DEV:-ON}" \
         -DCMAKE_DISABLE_FIND_PACKAGE_SDL2=ON \
         -DCMAKE_DISABLE_FIND_PACKAGE_PkgConfig=ON \
         -DCMAKE_C_FLAGS="$FLAGS" -DCMAKE_CXX_FLAGS="$FLAGS"
 fi
+
+# A build folder made before PC_DEV existed (or with the other setting): set it
+grep -q "^PC_DEV:BOOL=${PC_DEV:-ON}\$" CMakeCache.txt || cmake . -DPC_DEV="${PC_DEV:-ON}" > /dev/null
 
 echo "=== Building PC port ==="
 make -j"$(nproc)"

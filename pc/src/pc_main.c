@@ -244,6 +244,13 @@ int pc_platform_poll_events(void) {
                     pc_ground_debug_toggle(); /* tile readout (pc_ground_pattern.c) */
                     break;
                 }
+#ifdef PC_DEV
+                if (event.key.keysym.sym == SDLK_F9 && !event.key.repeat) {
+                    extern void pc_jank_press(void);
+                    pc_jank_press(); /* the jank button (pc_jank.c) */
+                    break;
+                }
+#endif
                 if (event.key.keysym.sym == SDLK_ESCAPE && !event.key.repeat) {
                     if (g_pc_paused) {
                         pc_pause_menu_handle_event(&event);
@@ -398,6 +405,17 @@ int main(int argc, char* argv[]) {
 
     /* Redirect stdout/stderr to NUL unless verbose — unbuffered terminal writes
      * are extremely slow on Windows and tank FPS. */
+#ifdef PC_DEV
+    /* Dev builds keep a log even without PC_LOG_FILE, so the jank button (pc_jank.c) has one to copy
+     * (--verbose's log goes to the console as before) */
+    if (!g_pc_verbose && !g_pc_profile_enabled && (getenv("PC_LOG_FILE") == NULL || getenv("PC_LOG_FILE")[0] == '\0')) {
+#ifdef _WIN32
+        _putenv("PC_LOG_FILE=dev.log");
+#else
+        setenv("PC_LOG_FILE", "dev.log", 1);
+#endif
+    }
+#endif
     if (!g_pc_verbose && !g_pc_profile_enabled && getenv("PC_LOG_FILE") != NULL && getenv("PC_LOG_FILE")[0] != '\0') {
         /* PC_LOG_FILE alone: the log into that file, quietly (no console: a launcher such as Steam's may show one,
          * and a console can take the controller's focus) */

@@ -19,6 +19,7 @@
 #include "m_common_data.h"
 #include "m_land.h"
 #include "m_name_table.h"
+#include "m_shop.h"
 #include "m_demo.h"
 #include "m_msg.h"
 #include "ac_effectbg.h"
@@ -1130,10 +1131,18 @@ static int mp_action_plausible(int slot, const mp_action* in) {
 }
 
 static void mp_host_on_action(int peer, int slot, const mp_action* in) {
-    mp_action out = *in;
+    mp_action out = *in, counted;
     u16 here;
     int ok;
 
+    if (in->kind == MP_WORLD_SHOP && in->ux == PC_MP_SHOP_COUNTED && in->uz == 0 && in->new_item + 1 == in->item &&
+        pc_mp_world_get(MP_WORLD_SHOP, PC_MP_SHOP_COUNTED, 0, &here) && here > 0) {
+        /* a candy or a grab bag: any of them, so it's sold while any are left, even if someone bought one since */
+        counted = *in;
+        counted.item = here, counted.new_item = here - 1;
+        in = &counted;
+        out = *in;
+    }
     out.player = (uint8_t)slot;
     if (in->kind == MP_WORLD_SWITCH) {
         if (getenv("PC_MP_DEBUG") != NULL) {
@@ -1400,6 +1409,13 @@ static void mp_visitor_on_world(const mp_action* a) {
         if (l_mp.pending[i].req == a->req && l_mp.pending[i].kind == MP_WORLD_SHOP &&
             pc_mp_shop_sold(l_mp.pending[i].new_value)) {
             pc_mp_world_undo_purchase(l_mp.pending[i].old_value);
+        }
+        /* the last candy or grab bag, bought by someone else first */
+        if (l_mp.pending[i].req == a->req && l_mp.pending[i].kind == MP_WORLD_SHOP &&
+            l_mp.pending[i].a == PC_MP_SHOP_COUNTED) {
+            pc_mp_world_undo_purchase(Common_Get(tanuki_shop_status) == mSP_TANUKI_SHOP_STATUS_HALLOWEEN
+                                          ? ITM_FOOD_CANDY
+                                          : ITM_HUKUBUKURO_BAG);
         }
         if (l_mp.pending[i].req == a->req) {
             l_mp.pending[i].req = 0; /* answered: a second "no" for it takes nothing more */
@@ -1848,6 +1864,19 @@ static void mp_on_event(void* user, const mp_event* ev) {
                     mp_send_look(game, ev->peer);
                     mp_host_send_clock(ev->peer);
                     mp_host_swap_looks(ev->peer, free_slot);
+                    {
+                        /* how many candies or grab bags the shop has left: not in the town (its layout is
+                         * Alpha 8's), so it follows; the visitor holds it until it arrives */
+                        mp_action c;
+                        memset(&c, 0, sizeof(c));
+                        c.kind = MP_WORLD_SHOP;
+                        c.ux = PC_MP_SHOP_COUNTED;
+                        c.ok = 1;
+                        if (pc_mp_world_get(MP_WORLD_SHOP, PC_MP_SHOP_COUNTED, 0, &c.new_item)) {
+                            c.item = c.new_item;
+                            mp_send_world(ev->peer, &c);
+                        }
+                    }
                     {
                         /* the villagers remember them (if they've been here before) */
                         mp_msg mm;

@@ -11,6 +11,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 # Options
 option(PC_CONSOLE "Show console window (disables -mwindows, useful for debugging)" OFF)
+option(PC_DEV "Dev build: the F9 jank button and a log file by default (pc_jank.c); release builds leave it off" OFF)
 option(PC_MEMTRACK "Dev build: track host heap blocks by call stack (pc_memtrack.c)" OFF)
 
 # =============================================================================
@@ -316,6 +317,7 @@ set(PC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_constellation.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_constellation_edit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_devwarp.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_jank.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_celeste.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_cf_lines.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_cf_room.c
@@ -556,6 +558,10 @@ if(MINGW)
         message(STATUS "Stripped version.o from winpthread: ${WINPTHREAD_STRIPPED}")
     endif()
     target_link_options(ac_pc PRIVATE -static-libgcc -static-libstdc++ -Wl,-Bstatic,--whole-archive "${WINPTHREAD_STRIPPED}" -Wl,-Bdynamic,--no-whole-archive)
+endif()
+
+if(PC_DEV)
+    target_compile_definitions(ac_pc PRIVATE PC_DEV)
 endif()
 
 if(PC_MEMTRACK)
