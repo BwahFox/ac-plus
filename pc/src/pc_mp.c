@@ -1484,6 +1484,15 @@ static int mp_host_town_pack(GAME_PLAY* play, int peer) {
     return len;
 }
 
+/* this game's release for JOIN, e.g. alpha-9.1 ("" in a dev build), MP_RELEASE_LEN bytes with its end */
+static void mp_release(char* out) {
+    extern void pc_updater_release(char* out, size_t n);
+    char r[64];
+    pc_updater_release(r, sizeof(r));
+    memset(out, 0, MP_RELEASE_LEN);
+    snprintf(out, MP_RELEASE_LEN, "%s", r);
+}
+
 /* a new visitor sees the ones already here, and they see the new one */
 static void mp_host_swap_looks(int peer, int slot) {
     int k;
@@ -1828,9 +1837,25 @@ static void mp_on_event(void* user, const mp_event* ev) {
                     if (m->type != MP_MSG_JOIN) {
                         break;
                     }
-                    if (m->u.join.version != MP_PROTO_VERSION) {
+                    if (m->u.join.version != MP_JOIN_VERSION) {
+                        printf("[mp] a visitor's game is too old or too new (join version %u)\n", m->u.join.version);
+                        mp_status("Someone with another ac-plus version tried to visit.");
                         mp_link_kick(l_mp.link, ev->peer, MP_BYE_VERSION);
                         break;
+                    }
+                    {
+                        /* the same release on both sides (a dev build, with none, plays with anyone) */
+                        char mine[MP_RELEASE_LEN], theirs[MP_RELEASE_LEN + 1], name[MP_NAME_LEN + 1];
+                        mp_release(mine);
+                        memcpy(theirs, m->u.join.release, MP_RELEASE_LEN);
+                        theirs[MP_RELEASE_LEN] = '\0';
+                        if (mine[0] != '\0' && theirs[0] != '\0' && strcmp(mine, theirs) != 0) {
+                            mp_name_text(m->u.join.look.name, name);
+                            printf("[mp] %s has %s, we have %s: refused\n", name, theirs, mine);
+                            mp_status("%s tried to visit with another version (%s; you have %s).", name, theirs, mine);
+                            mp_link_kick(l_mp.link, ev->peer, MP_BYE_VERSION);
+                            break;
+                        }
                     }
                     for (s = 1; s < PC_MP_SLOTS && free_slot == 0; s++) {
                         if (!l_mp.remote[s].present) {
@@ -1955,7 +1980,8 @@ static void mp_on_event(void* user, const mp_event* ev) {
             mp_status("Connected%s (host key %s).", l_mp.mm_relayed ? " via the server" : "", fp);
             memset(&m, 0, sizeof(m));
             m.type = MP_MSG_JOIN;
-            m.u.join.version = MP_PROTO_VERSION;
+            m.u.join.version = MP_JOIN_VERSION;
+            mp_release((char*)m.u.join.release);
             mp_my_look(game, &m.u.join.look);
             l_look_sent = m.u.join.look;
             mp_link_send(l_mp.link, 0, &m);
@@ -1966,7 +1992,17 @@ static void mp_on_event(void* user, const mp_event* ev) {
                 "The host closed the town.", "The town is full.", "The host has another ac-plus version.",
                 "The host said no.", "The host sent you home.", "Lost the connection.",
             };
-            mp_status("%s", ev->reason >= 0 && ev->reason < MP_BYE_COUNT ? why[ev->reason] : why[MP_BYE_ERROR]);
+            if (ev->reason == MP_BYE_VERSION) {
+                char mine[MP_RELEASE_LEN];
+                mp_release(mine);
+                mp_status("The host has another ac-plus version%s%s%s. You both need the same one.",
+                          mine[0] != '\0' ? " (you have " : "", mine, mine[0] != '\0' ? ")" : "");
+            } else if (ev->reason == MP_BYE_ERROR && l_mp.my_slot < 0 && l_mp.travelling == 0) {
+                /* dropped before the host let us in: an Alpha 9 or older host can't read our JOIN */
+                mp_status("The host's game didn't let us in. It may have another ac-plus version.");
+            } else {
+                mp_status("%s", ev->reason >= 0 && ev->reason < MP_BYE_COUNT ? why[ev->reason] : why[MP_BYE_ERROR]);
+            }
             mp_forget();
             l_mp.mm_on = 0; /* the session is over: nothing more to look up or relay */
             if (l_mp.travelling != 0) {

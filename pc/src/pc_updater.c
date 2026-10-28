@@ -115,6 +115,13 @@ static int upd_read_version(char* out, size_t n) {
     return out[0] != '\0';
 }
 
+/* This game's release (its VERSION file, e.g. alpha-9.1), "" in a dev build; online play compares it (pc_mp.c) */
+void pc_updater_release(char* out, size_t n) {
+    if (!upd_read_version(out, n)) {
+        out[0] = '\0';
+    }
+}
+
 /* What the title screen shows: "ac-plus Alpha 5", or "ac-plus dev build" without a VERSION file */
 const char* pc_updater_version_label(void) {
     static char label[48];

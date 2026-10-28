@@ -18,6 +18,7 @@
 #include "m_collision_bg.h"
 #include "ac_my_room.h"
 #include "m_room_type.h"
+#include "pc_nlrooms.h"
 #include <stdio.h>
 
 #include <stdlib.h>
@@ -325,13 +326,28 @@ void pc_dev_museum_log(void) {
     printf("\n");
 }
 
+/* ctl hra: the Happy Room Academy scores the player's house now (and sends its letter), as it does at night;
+ * ctl fengshui: the house's luck from its furniture */
+void pc_dev_hra(void) {
+    extern int mMkRm_MarkRoomOvl(int player_no);
+    printf("[hra] %d points\n", mMkRm_MarkRoomOvl(Common_Get(player_no)));
+}
+
+void pc_dev_fengshui(void) {
+    extern void mHsRm_HuusuiRoomOvl(int player_no);
+    mHsRm_HuusuiRoomOvl(Common_Get(player_no));
+    printf("[fengshui] money power %d, goods power %d\n", Common_Get(money_power), Common_Get(goods_power));
+}
+
 /* PC_CTL roomset HOME FLOOR UNIT ITEM / roomlog HOME FLOOR UNIT: a house's furniture unit (main layer) */
 void pc_dev_room(int home, int floor, int unit, int item) {
     mActor_name_t* it;
-    if (home < 0 || home >= PLAYER_NUM || floor < 0 || floor >= mHm_ROOM_NUM || unit < 0 || unit >= UT_TOTAL_NUM) {
+    mHm_flr_c* f;
+    if (home < 0 || home >= PLAYER_NUM || floor < 0 || floor >= PC_NLR_FLOOR_FIRST + PC_NLR_ROOMS || unit < 0 ||
+        unit >= UT_TOTAL_NUM || (f = mHm_GetFloorP(home, floor)) == NULL) {
         return;
     }
-    it = &Save_Get(homes[home]).floors[floor].layer_main.items[unit / UT_X_NUM][unit % UT_X_NUM];
+    it = &f->layer_main.items[unit / UT_X_NUM][unit % UT_X_NUM]; /* (floors 3-5: the extra rooms, pc_nlrooms.c) */
     if (item >= 0) {
         *it = (mActor_name_t)item;
     }

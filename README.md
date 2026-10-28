@@ -213,7 +213,8 @@ mouse, controllers), ac-plus adds:
   basement), Tom Nook offers more: a room off the left, the right and the back of the main room,
   each 6×6 at first and then grown to 8×8. Each one is built overnight, adds a wing to the house
   outside, and is paid off like any other loan. The statue comes after the last one. If something
-  is in a doorway's way, it stays where it is for you to move.
+  is in a doorway's way, it stays where it is for you to move. The Happy Room Academy and feng
+  shui count them like the upstairs.
 - City Folk style storage: each of your dressers, wardrobes and closets has its own large storage
   (up to 128 in a town). Storage from older versions turns up in the first one you open.
 - With the HD texture pack, wallpaper no longer stretches after you've browsed the catalog.
@@ -355,7 +356,8 @@ default back.
 
 **Online visits**
 - **Experimental:** expect rough edges, and back up both save files before hosting.
-- Every player needs the same ac-plus version.
+- Every player needs the same ac-plus version, down to the point release (Alpha 9.1 can't visit
+  Alpha 9.2). The game says so when they differ.
 - Some things aren't shown to the other players yet: their footsteps and tool sounds, trees
   falling, and the dust of digging. A visitor can't take the train with Porter's ride; visits
   start from his menu instead.

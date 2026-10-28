@@ -7,6 +7,9 @@
 #include "m_home_h.h"
 #include "m_common_data.h"
 #include "m_name_table.h"
+#ifdef TARGET_PC
+#include "pc_nlrooms.h"
+#endif
 
 #define mHsRm_UNIT_MAX_S 6
 #define mHsRm_UNIT_MAX_M 8
@@ -289,6 +292,27 @@ extern void mHsRm_HuusuiRoomOvl(int player_no) {
         layers[1] = &home->floors[mHm_ROOM_BASEMENT].layer_secondary;
         mHsRm_EvaluateHuusuiPoint(layers, mHsRm_UNIT_MAX_BASEMENT, &money_power, &goods_power);
     }
+
+#ifdef TARGET_PC
+    {
+        /* ac-plus: and the New Leaf style rooms off the main room (pc_nlrooms.c) */
+        int house = mHS_get_arrange_idx(player_no);
+        int room;
+
+        for (room = 0; room < PC_NLR_ROOMS; room++) {
+            int size = pc_nlr_room_size(house, room);
+            mHm_flr_c* floor = mHm_GetFloorP(house, PC_NLR_FLOOR_FIRST + room);
+
+            if (size == 0 || floor == NULL) {
+                continue;
+            }
+            layers[0] = &floor->layer_main;
+            layers[1] = &floor->layer_secondary;
+            mHsRm_EvaluateHuusuiPoint(layers, size == 8 ? mHsRm_UNIT_MAX_L : mHsRm_UNIT_MAX_M, &money_power,
+                                      &goods_power);
+        }
+    }
+#endif
 
     /* Goods power is clamed to its upper bound of 40 */
     if (goods_power > mHsRm_GOODS_POWER_MAX) {

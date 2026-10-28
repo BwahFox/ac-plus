@@ -15,6 +15,10 @@
 #include <stdint.h>
 
 #define MP_PROTO_VERSION 8
+/* JOIN's version: 9 from Alpha 9.1, whose JOIN also names its release; games of other JOIN versions refuse each
+ * other (MP_BYE_VERSION, a message older games already show) */
+#define MP_JOIN_VERSION 9
+#define MP_RELEASE_LEN 16
 #define MP_MAX_PACKET 1200     /* UDP payload, fits any path MTU */
 #define MP_MAX_FRAME 1160      /* plaintext inside one packet (+ 29 bytes of DATA header and tag) */
 #define MP_MAX_RECORDS 16      /* messages in one frame */
@@ -90,6 +94,8 @@ typedef struct {
     uint16_t version;
     uint8_t want_slot; /* 0 = any */
     mp_look look;
+    uint8_t release[MP_RELEASE_LEN]; /* the release, e.g. "alpha-9.1" (its VERSION file); empty: a dev build, or a
+                                      * JOIN from before MP_JOIN_VERSION 9 */
 } mp_join;
 
 typedef struct {

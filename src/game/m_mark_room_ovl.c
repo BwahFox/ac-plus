@@ -8,6 +8,9 @@
 #include "m_font.h"
 #include "m_string.h"
 #include "m_house.h"
+#ifdef TARGET_PC
+#include "pc_nlrooms.h"
+#endif
 
 typedef struct series_info_s {
     u8 type;
@@ -3682,6 +3685,31 @@ extern int mMkRm_MarkRoomOvl(int player_no) {
                 house->floors[mHm_ROOM_UPPER].wall_floor.flooring_idx, &base_recommendation, &theme_recommendation,
                 series_name, mMkRm_UPPER_EVALUATION);
         }
+
+#ifdef TARGET_PC
+        {
+            /* ac-plus: the New Leaf style rooms off the main room count as the upstairs does (pc_nlrooms.c) */
+            int room;
+
+            for (room = 0; room < PC_NLR_ROOMS; room++) {
+                int size = pc_nlr_room_size(house_no, room);
+                mHm_flr_c* floor = mHm_GetFloorP(house_no, PC_NLR_FLOOR_FIRST + room);
+
+                if (size == 0 || floor == NULL) {
+                    continue;
+                }
+                layer_ut_info[0] = floor->layer_main.items[0];
+                layer_ut_info[1] = floor->layer_secondary.items[0];
+                int room_points =
+                    mMkRm_MarkRoomOneFloor(layer_ut_info, size == 8 ? mHm_ROOMTYPE_LARGE : mHm_ROOMTYPE_MEDIUM,
+                                           floor->wall_floor.wallpaper_idx, floor->wall_floor.flooring_idx,
+                                           &base_recommendation, &theme_recommendation, series_name,
+                                           mMkRm_UPPER_EVALUATION);
+                OSReport("[hra] extra room %d (%dx%d): %d points\n", room, size, size, room_points);
+                points += room_points;
+            }
+        }
+#endif
 
         mMkRm_SendMarkLetter(house, points, house->size_info.size, series_name, base_recommendation,
                              theme_recommendation);

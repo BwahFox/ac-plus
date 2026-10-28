@@ -576,6 +576,12 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
         if (sscanf(line, "%*s %d %d %d %x", &h, &f, &u, &v) == 4) {
             pc_dev_room(h, f, u, v);
         }
+    } else if (strcmp(cmd, "hra") == 0) {
+        extern void pc_dev_hra(void);
+        pc_dev_hra();
+    } else if (strcmp(cmd, "fengshui") == 0) {
+        extern void pc_dev_fengshui(void);
+        pc_dev_fengshui();
     } else if (strcmp(cmd, "roomlog") == 0) {
         extern void pc_dev_room(int home, int floor, int unit, int item);
         int h, f, u;

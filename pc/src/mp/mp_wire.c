@@ -149,7 +149,8 @@ static int mp_frame_ok(float v) {
 /* fixed body sizes; 0 = variable (checked by the decoder) */
 #define MP_PSTATE_SIZE (1 + 2 + 2 + 1 + 12 + 2 + 4 + 8 + 4 + 3 + 4 + 4 + 2 + 4)
 #define MP_LOOK_SIZE (1 + MP_NAME_LEN * 2 + 4 + 2 + MP_DESIGN_BYTES + 32)
-#define MP_JOIN_SIZE (2 + 1 + MP_LOOK_SIZE)
+#define MP_JOIN_SIZE_OLD (2 + 1 + MP_LOOK_SIZE) /* before MP_JOIN_VERSION 9 */
+#define MP_JOIN_SIZE (MP_JOIN_SIZE_OLD + MP_RELEASE_LEN)
 #define MP_WELCOME_SIZE (1 + 1 + MP_NAME_LEN + 4)
 #define MP_BULK_HEAD (1 + 4 + 4 + 2)
 #define MP_CLOCK_SIZE (2 + 6 + 2)
@@ -291,6 +292,7 @@ int mp_wire_encode_msg(mp_wr* w, const mp_msg* m) {
             mp_wr_u16(w, m->u.join.version);
             mp_wr_u8(w, m->u.join.want_slot);
             mp_put_look(w, &m->u.join.look);
+            mp_wr_bytes(w, m->u.join.release, MP_RELEASE_LEN);
             break;
         case MP_MSG_WELCOME:
             mp_wr_u8(w, m->u.welcome.slot);
@@ -435,12 +437,29 @@ static int mp_decode_body(mp_rd* r, mp_msg* m, size_t body_len) {
                    s->speed >= -4.0f && s->speed <= 4.0f;
         }
         case MP_MSG_JOIN:
-            if (body_len != MP_JOIN_SIZE) {
+            if (body_len != MP_JOIN_SIZE && body_len != MP_JOIN_SIZE_OLD) {
                 return 0;
             }
             m->u.join.version = mp_rd_u16(r);
             m->u.join.want_slot = mp_rd_u8(r);
-            return mp_get_look(r, &m->u.join.look) && m->u.join.want_slot < 4;
+            if (!mp_get_look(r, &m->u.join.look) || m->u.join.want_slot >= 4) {
+                return 0;
+            }
+            memset(m->u.join.release, 0, MP_RELEASE_LEN);
+            if (body_len == MP_JOIN_SIZE) {
+                int i;
+                mp_rd_bytes(r, m->u.join.release, MP_RELEASE_LEN);
+                m->u.join.release[MP_RELEASE_LEN - 1] = 0;
+                for (i = 0; i < MP_RELEASE_LEN; i++) { /* a name like alpha-9.1, or nothing */
+                    uint8_t c = m->u.join.release[i];
+                    if (c != 0 && !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                                    c == '-' || c == '.' || c == '_')) {
+                        memset(m->u.join.release, 0, MP_RELEASE_LEN);
+                        break;
+                    }
+                }
+            }
+            return 1;
         case MP_MSG_WELCOME:
             if (body_len != MP_WELCOME_SIZE) {
                 return 0;
