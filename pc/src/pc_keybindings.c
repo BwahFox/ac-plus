@@ -29,6 +29,9 @@ static const PCKeybindings s_kb_defaults = {
     .dpad_down  = SDL_SCANCODE_K,
     .dpad_left  = SDL_SCANCODE_J,
     .dpad_right = SDL_SCANCODE_L,
+
+    /* online chat (T for talk) */
+    .chat = SDL_SCANCODE_T,
 };
 
 /* Back/Select is reserved for opening the PC pause menu, so it is not a
@@ -46,6 +49,7 @@ static const PCPadBindings s_pad_defaults = {
     .dpad_down  = SDL_CONTROLLER_BUTTON_DPAD_DOWN,
     .dpad_left  = SDL_CONTROLLER_BUTTON_DPAD_LEFT,
     .dpad_right = SDL_CONTROLLER_BUTTON_DPAD_RIGHT,
+    .chat       = SDL_CONTROLLER_BUTTON_LEFTSHOULDER, /* LB / L1: no GameCube button uses it */
 };
 
 PCKeybindings g_pc_keybindings;
@@ -82,6 +86,7 @@ static const KeybindEntry s_entries[] = {
     KB_ENTRY("DPad_Down",    dpad_down),
     KB_ENTRY("DPad_Left",    dpad_left),
     KB_ENTRY("DPad_Right",   dpad_right),
+    KB_ENTRY("Chat",         chat),
 };
 
 #define NUM_ENTRIES (sizeof(s_entries) / sizeof(s_entries[0]))
@@ -102,6 +107,7 @@ static const KeybindEntry s_pad_entries[] = {
     PAD_ENTRY("Pad_DPad_Down",  dpad_down),
     PAD_ENTRY("Pad_DPad_Left",  dpad_left),
     PAD_ENTRY("Pad_DPad_Right", dpad_right),
+    PAD_ENTRY("Pad_Chat",       chat),
 };
 
 #define NUM_PAD_ENTRIES (sizeof(s_pad_entries) / sizeof(s_pad_entries[0]))
@@ -282,6 +288,7 @@ void pc_keybindings_save(void) {
         if (i == 7)  fprintf(f, "\n# Main Stick\n");
         if (i == 11) fprintf(f, "\n# C-Stick (Camera)\n");
         if (i == 15) fprintf(f, "\n# D-Pad\n");
+        if (i == 19) fprintf(f, "\n# Online visits: open the chat line\n");
     }
 
     fprintf(f, "\n[Gamepad]\n");

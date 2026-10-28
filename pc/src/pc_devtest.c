@@ -51,6 +51,7 @@
  * same moment with or without --no-framelimit.
  */
 #include "pc_platform.h"
+#include <SDL2/SDL.h>
 #include "PR/gbi.h"
 
 #include <stdlib.h>
@@ -501,6 +502,9 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
         }
         putenv(pos_env);
         pc_dev_warp(gamePT, n);
+    } else if (strcmp(cmd, "pstate") == 0) {
+        extern void pc_dev_pstate(void);
+        pc_dev_pstate();
     } else if (strcmp(cmd, "teleport") == 0) {
         extern void pc_dev_teleport(void* play, const char* pos);
         extern void* gamePT;
@@ -567,6 +571,19 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
     } else if (strcmp(cmd, "museumfish") == 0 && sscanf(line, "%*s %d", &n) == 1) {
         extern void mMmd_SetFish(int fish_no);
         mMmd_SetFish(n);
+    } else if (strcmp(cmd, "museumfossils") == 0 && sscanf(line, "%*s %d", &n) == 1) {
+        /* museumfossils N: the first N fossils on display */
+        extern void mMmd_SetFossil(int fossil_no);
+        for (x = 0; x < n; x++) {
+            mMmd_SetFossil(x);
+        }
+    } else if (strcmp(cmd, "pocket") == 0 && sscanf(line, "%*s %d %x", &x, &n) == 2) {
+        /* pocket SLOT ITEM(hex) */
+        extern void pc_dev_pocket(int slot, int item);
+        pc_dev_pocket(x, n);
+    } else if (strcmp(cmd, "homelog") == 0) {
+        extern void pc_dev_home_log(void);
+        pc_dev_home_log();
     } else if (strcmp(cmd, "museumlog") == 0) {
         extern void pc_dev_museum_log(void);
         pc_dev_museum_log();
@@ -588,6 +605,33 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
         if (sscanf(line, "%*s %d %d %d", &h, &f, &u) == 3) {
             pc_dev_room(h, f, u, -1);
         }
+    } else if (strcmp(cmd, "sdlkey") == 0 && sscanf(line, "%*s %63s", a) == 1) {
+        /* sdlkey NAME: a real key press through SDL's queue (SDL scancode name, e.g. T, Return) */
+        SDL_Event ev;
+        memset(&ev, 0, sizeof(ev));
+        ev.type = SDL_KEYDOWN;
+        ev.key.state = SDL_PRESSED;
+        ev.key.keysym.scancode = SDL_GetScancodeFromName(a);
+        ev.key.keysym.sym = SDL_GetKeyFromScancode(ev.key.keysym.scancode);
+        SDL_PushEvent(&ev);
+        ev.type = SDL_KEYUP;
+        ev.key.state = SDL_RELEASED;
+        SDL_PushEvent(&ev);
+    } else if (strcmp(cmd, "sdltext") == 0 && strlen(line) > 8) {
+        /* sdltext TEXT: typed text, as SDL_TEXTINPUT */
+        SDL_Event ev;
+        memset(&ev, 0, sizeof(ev));
+        ev.type = SDL_TEXTINPUT;
+        snprintf(ev.text.text, sizeof(ev.text.text), "%s", line + 8);
+        SDL_PushEvent(&ev);
+    } else if (strcmp(cmd, "sdlpad") == 0 && sscanf(line, "%*s %d", &n) == 1) {
+        /* sdlpad N: a controller button press (SDL_GameControllerButton number; 9 = LB) */
+        SDL_Event ev;
+        memset(&ev, 0, sizeof(ev));
+        ev.type = SDL_CONTROLLERBUTTONDOWN;
+        ev.cbutton.button = (Uint8)n;
+        ev.cbutton.state = SDL_PRESSED;
+        SDL_PushEvent(&ev);
     } else if (strcmp(cmd, "say") == 0 && strlen(line) > 4) {
         extern int pc_mp_say(const char* text);
         pc_mp_say(line + 4);

@@ -200,6 +200,9 @@ static u8 str_title4[5] = "the\xD3 ";
 
 static void mTG_present_open_proc(Submenu*, mSM_MenuInfo_c*);
 static void mTG_nw_select_this_proc(Submenu*, mSM_MenuInfo_c*);
+#ifdef TARGET_PC
+extern int pc_aCR_identify_mode; /* Blathers is asking which fossils to identify (ac_npc_curator) */
+#endif
 static void mTG_give_proc(Submenu*, mSM_MenuInfo_c*);
 static void mTG_sell_proc(Submenu*, mSM_MenuInfo_c*);
 static void mTG_sell_all_proc(Submenu*, mSM_MenuInfo_c*);
@@ -534,6 +537,14 @@ static mTG_tag_word_c mTG_tag_word_hand_over_curator = {
     "Give            ",
     &mTG_give_proc,
 };
+
+#ifdef TARGET_PC
+static void mTG_pc_give_all_proc(Submenu*, mSM_MenuInfo_c*);
+static mTG_tag_word_c mTG_tag_word_pc_give_all_curator = {
+    "Give All        ",
+    &mTG_pc_give_all_proc,
+};
+#endif
 
 static mTG_tag_word_c mTG_tag_word_nw_select_this = {
     "Use             ",
@@ -1049,6 +1060,13 @@ static mTG_tag_word_c* mTG_tag_hand_over_curator[] = {
     &mTG_tag_word_yameru,
 };
 
+#ifdef TARGET_PC
+static mTG_tag_word_c* mTG_pc_give_all_curator[] = {
+    &mTG_tag_word_pc_give_all_curator,
+    &mTG_tag_word_yameru,
+};
+#endif
+
 static mTG_tag_word_c* mTG_tag_nw_select[] = {
     &mTG_tag_word_nw_select_this,
     &mTG_tag_word_yameru,
@@ -1254,6 +1272,7 @@ static mTG_tag_data_c mTG_label_table[] = {
     { mTG_field_ftr_bury, ARRAY_COUNT(mTG_field_ftr_bury) },                 /* mTG_TYPE_FIELD_FTR_BURY */
     { mTG_field_catch_ftr, ARRAY_COUNT(mTG_field_catch_ftr) },               /* mTG_TYPE_FIELD_CATCH_FTR */
     { mTG_field_release_ftr, ARRAY_COUNT(mTG_field_release_ftr) },           /* mTG_TYPE_FIELD_RELEASE_FTR */
+    { mTG_pc_give_all_curator, ARRAY_COUNT(mTG_pc_give_all_curator) },       /* mTG_TYPE_PC_GIVE_ALL_CURATOR */
 #endif
 };
 
@@ -3397,6 +3416,42 @@ static void mTG_sell_all_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
     }
 }
 
+#ifdef TARGET_PC
+/* Blathers: every marked fossil goes over at once (the one under the cursor is the one seen handed over) */
+static void mTG_pc_give_all_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
+    mIV_Ovl_c* inv_ovl = submenu->overlay->inventory_ovl;
+    int table_idx = mTG_get_table_idx(&submenu->overlay->tag_ovl->tags[0]);
+    Submenu_Item_c* item_p = submenu->item_p;
+    int count = 0;
+    int i;
+
+    /* the cursor's first, so the curator reads it as the one handed over */
+    item_p->item = Now_Private->inventory.pockets[table_idx];
+    item_p->slot_no = table_idx;
+    item_p++;
+    count++;
+    for (i = 0; i < mPr_POCKETS_SLOT_COUNT; i++) {
+        if (i != table_idx && (inv_ovl->item_mark_bitfield & (1 << i)) != 0) {
+            item_p->item = Now_Private->inventory.pockets[i];
+            item_p->slot_no = i;
+            item_p++;
+            count++;
+        }
+    }
+    for (i = count; i < mPr_POCKETS_SLOT_COUNT; i++, item_p++) {
+        item_p->item = EMPTY_NO;
+        item_p->slot_no = 0;
+    }
+    submenu->selected_item_num = count;
+    inv_ovl->item_mark_bitfield = 0;
+    submenu->after_mode = aHOI_REQUEST_PUTAWAY;
+    mPlib_request_main_give_from_submenu(submenu->item_p->item, submenu->after_mode,
+                                         mPr_GET_ITEM_COND(Now_Private->inventory.item_conditions, table_idx) & 1,
+                                         FALSE);
+    mTG_close_window(submenu, menu_info, TRUE);
+}
+#endif
+
 static void mTG_get_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
 #ifdef TARGET_PC
     static mActor_name_t mTG_money_name[] = { ITM_MONEY_100, ITM_MONEY_1000, ITM_MONEY_10000, ITM_MONEY_30000,
@@ -4589,6 +4644,14 @@ static int mTG_mark_enable_check(int menu_type, int param, int table, u8 field_t
                         res = mTG_MARK_TYPE_INV_SELL_ITEM;
                     }
                     break;
+#ifdef TARGET_PC
+                case mSM_IV_OPEN_CURATOR:
+                    /* Blathers identifying fossils: several can be marked and given at once (ac_npc_curator) */
+                    if (table == mTG_TABLE_ITEM && pc_aCR_identify_mode) {
+                        res = mTG_MARK_TYPE_INV_SELL_ITEM;
+                    }
+                    break;
+#endif
             }
             break;
         case mSM_OVL_MAILBOX:
@@ -4678,6 +4741,11 @@ static int mTG_mark_main_sub(Submenu* submenu, int menu_type, int param, int tab
             updated_mark_bitfield->field16 = 1 << table_idx;
             *max_mark_count = mPr_POCKETS_SLOT_COUNT;
 
+#ifdef TARGET_PC
+            if (pc_aCR_identify_mode && mode != mTG_MARK_CHK && mode != mTG_MARK_OFF && mode != mTG_MARK_CLR) {
+                return item == ITM_FOSSIL;
+            }
+#endif
             if ((mode == mTG_MARK_CHK || mode == mTG_MARK_OFF || mode == mTG_MARK_CLR) ||
                 (item != EMPTY_NO && !ITEM_IS_EXERCISE_CARD(item) && item != ITM_KNIFE_AND_FORK &&
                  (ITEM_NAME_GET_TYPE(item) != NAME_TYPE_ITEM1 || (ITEM_NAME_GET_CAT(item) != ITEM1_CAT_MONEY)) &&
@@ -7135,6 +7203,11 @@ static int mTG_select_tag_decide_item(Submenu* submenu, mSM_MenuInfo_c* menu_inf
                     break;
                 case mSM_IV_OPEN_CURATOR:
                     ret_tag_type = mTG_TYPE_TAG_HAND_OVER_CURATOR;
+#ifdef TARGET_PC
+                    if (inv_ovl->item_mark_bitfield != 0 && (inv_ovl->item_mark_bitfield & (1 << idx)) != 0) {
+                        ret_tag_type = mTG_TYPE_PC_GIVE_ALL_CURATOR;
+                    }
+#endif
                     break;
                 case mSM_IV_OPEN_PASSWORD:
                     ret_tag_type = mTG_TYPE_TAG_PASSWORD_ITEM;

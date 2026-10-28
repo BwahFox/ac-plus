@@ -135,8 +135,10 @@ Besides everything ACGC-PC-Port adds (widescreen, high resolutions, texture pack
 mouse, controllers), ac-plus adds:
 
 **Online visits (experimental)**
-- **Visit a friend's town, or host yours**, for up to four players: pause menu → Online Play, or
-  talk to Porter at the train station. Hosting gives you an **invite code** for your friends to
+- **Visit a friend's town, or host yours**, for up to four players: talk to Porter at the train
+  station and choose **Online**. A visit leaves on his train, and you step off it at your friend's
+  station. To go home, tell their Porter "Go home". Once you're online, the pause menu's Online Play
+  has the rest (chat, visitors, stop). Hosting gives you an **invite code** for your friends to
   type in. No router setup is needed for most networks: the ac-plus server introduces the two
   games, and relays the visit when they can't reach each other directly.
 - Settings → Online → **Invite code server** chooses that server: the ac-plus project's by default,
@@ -154,7 +156,9 @@ mouse, controllers), ac-plus adds:
   Two players can't talk to the same villager or sit on the same seat at once.
 - A purchase comes off the shelves at once for everyone in the shop, candy and grab bags included.
 - Villagers remember a visitor from one visit to the next.
-- Chat from the Online Play menu (Say).
+- Chat from the Online Play menu (Say), or press **T** (keyboard) or **LB / L1** (controller) to start
+  typing a line right away. Enter sends it and takes you back to the game. Change the button in
+  Settings > Controls > Keybindings ("Chat (online)").
 - Connections are encrypted, and each game has its own key (shown in Online Play). Your town is
   only open while you host.
 - **Nothing is lost if a visit drops:** during a visit your character (pockets, Bells, clothes and
@@ -203,12 +207,13 @@ mouse, controllers), ac-plus adds:
 - Mouse controls in the pattern designer, plus Ctrl+Z to undo (`mouse_mode`).
 
 **Museum**
-- Blathers identifies and assesses fossils as soon as you talk to him.
+- Blathers identifies fossils himself, as in Animal Crossing Deluxe: once 15 fossils are in the museum he gets his certification, and his menu offers "Identify fossils" (mark several with X to hand them over together).
 - The observatory and the Roost (see [What comes from City Folk](#what-comes-from-city-folk)).
 - Fish and insects you've donated get the map's museum marker in your collection pages.
 - At the Roost, A by the stool always sits you down, without starting a chat with Brewster first.
 
 **Home**
+- Ask Tom Nook to repaint your roof any time: "Other things" → "About my house". It costs what a can of his paint does, and the new color is there the next day.
 - **New Leaf style extra rooms:** once your house is fully paid off (big main room, upstairs and
   basement), Tom Nook offers more: a room off the left, the right and the back of the main room,
   each 6×6 at first and then grown to 8×8. Each one is built overnight, adds a wing to the house
@@ -225,6 +230,8 @@ mouse, controllers), ac-plus adds:
 - **90,000 Bells bags**, as Animal Crossing Deluxe has them. Make one from your wallet's menu once
   you have 90,000 Bells. The bank, shops, the loan and the gyroids take them, and a full wallet
   overflows into them. Bury one in a glowing spot for a money tree that drops three of them.
+- The post office's savings account is open from the start. You don't have to pay off the loan
+  first. While you still owe Tom Nook, the menu offers both "Pay loan" and "Savings".
 - The four NES games that were only available through e-Reader cards (Ice Climber,
   Mario Bros., Super Mario Bros. and The Legend of Zelda) turn up like the others. They're in the
   same prize pools, and Tom Nook's codes work for them.
@@ -359,11 +366,12 @@ default back.
 - Every player needs the same ac-plus version, down to the point release (Alpha 9.1 can't visit
   Alpha 9.2). The game says so when they differ.
 - Some things aren't shown to the other players yet: their footsteps and tool sounds, trees
-  falling, and the dust of digging. A visitor can't take the train with Porter's ride; visits
-  start from his menu instead.
-- **Over the internet it's new:** most testing so far was on one home network. If a visit won't
-  connect, a VPN such as Tailscale or ZeroTier puts everyone on one network: then visit by the
-  host's VPN address.
+  falling, and the dust of digging. Online trips skip the ride inside the train: you board at home
+  and step off at your friend's station.
+- A signboard design the host puts up during a visit shows for players who arrive after that.
+- **Over the internet:** visits between different home networks work, but have had less testing.
+  If a visit won't connect, a VPN such as Tailscale or ZeroTier puts everyone on one network: then
+  visit by the host's VPN address.
 
 **Museum and Roost**
 - **Celeste:** she has no bow, and villagers don't mention constellations yet.

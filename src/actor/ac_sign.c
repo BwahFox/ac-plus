@@ -882,6 +882,18 @@ static void aSIGN_single_all_draw(SIGN_ACTOR* sign, GAME* game) {
                         pal_p = mNW_PaletteIdx2Palette(kept->palette);
                         tex_p = (u8*)kept->design.data;
                     }
+                    {
+                        /* visiting online: the host's design (the residents' patterns aren't here) */
+                        extern int pc_mp_town_sign(u32 key, u8* palette, u8** tex);
+                        u8 mp_pal;
+                        u8* mp_tex;
+                        if (pc_mp_town_sign(pc_pattern_sign_key(sign->single[i].block.x, sign->single[i].block.z,
+                                                                sign->single[i].unit.x, sign->single[i].unit.z),
+                                            &mp_pal, &mp_tex)) {
+                            pal_p = mNW_PaletteIdx2Palette(mp_pal);
+                            tex_p = mp_tex;
+                        }
+                    }
                 }
 #endif
             }
@@ -978,6 +990,18 @@ static void aSIGN_actor_draw(ACTOR* actorx, GAME* game) {
                                         if (kept != NULL) { /* the pattern it was made from */
                                             pal_p = mNW_PaletteIdx2Palette(kept->palette);
                                             tex_p = (u8*)kept->design.data;
+                                        }
+                                    }
+                                    {
+                                        /* visiting online: the host's design (pc_mp_town.c) */
+                                        extern int pc_mp_town_sign(u32 key, u8* palette, u8** tex);
+                                        u8 mp_pal;
+                                        u8* mp_tex;
+                                        if (pc_mp_town_sign(pc_pattern_sign_key(draw_p->block.x, draw_p->block.z,
+                                                                                ut_x, ut_z),
+                                                            &mp_pal, &mp_tex)) {
+                                            pal_p = mNW_PaletteIdx2Palette(mp_pal);
+                                            tex_p = mp_tex;
                                         }
                                     }
 #endif

@@ -20,6 +20,8 @@
 #include "m_land.h"
 #include "m_name_table.h"
 #include "m_shop.h"
+#include "m_kabu_manager.h"
+#include "m_train_control.h"
 #include "m_demo.h"
 #include "m_msg.h"
 #include "ac_effectbg.h"
@@ -53,6 +55,9 @@ extern u16* mPlib_get_player_pallet_p(GAME* game);
 extern int pc_mcd_online_depart(GAME_PLAY* play, const Save_t* town);
 extern int pc_mcd_online_return(void);
 extern int pc_mcd_online_visiting(void);
+/* ac_npc_station_master.c: Porter puts the player on his train (FALSE when he isn't at his post with them near) */
+extern int pc_aSTM_online_board(GAME_PLAY* play);
+extern int g_pc_paused; /* pc_pause_menu.c */
 extern void pc_os_mp_set_clock(int on, int year, int month, int day, int hour, int min, int sec);
 
 #define MP_ID_FILE "save/multiplayer_id.bin"
@@ -85,6 +90,12 @@ static struct {
     int town_ready; /* arrived whole: go there */
     int travelling;  /* 1 = on the way there, 2 = there, 3 = on the way home */
     int go_home;     /* the session ended while away */
+    /* the train (Porter's): a visit started at the station leaves on it, and going home by Porter too */
+    int via_porter;     /* visitor: started from Porter's Online Play, so the trip waits for his train */
+    int boarding;       /* 1: boarding for the host's town, 2: for home (pc_mp_train_left) */
+    Save_t* board_town; /* visitor: the host's town, checked, until the train has left */
+    int board_told;     /* "go to the station" said */
+    int board_stopped;  /* going home: our train has stood at the station (so its pulling out is ours leaving) */
     /* keeping the town the same (pc_mp_world.c) */
     int trusted[PC_MP_SLOTS]; /* host: may this visitor dig, chop, ... */
     f32 act_tokens[PC_MP_SLOTS];          /* host: each visitor's changes, rate-limited */
@@ -502,6 +513,7 @@ static void mp_forget(void) {
     free(l_mp.town_in);
     l_mp.town_in = NULL;
     l_mp.town_ready = 0;
+    l_mp.board_told = 0;
     l_mp.welcomed = 0;
     l_mp.has_clock = 0;
     l_mp.early_n = 0;
@@ -666,10 +678,12 @@ void pc_mp_forget_friend(int i) {
 
 /* look friend i's town up on the server by its host's key, and visit it if it's open */
 int pc_mp_visit_friend(int i) {
+    extern int pc_mp_menu_from_porter(void);
     mp_friends_load();
-    if (i < 0 || i >= l_friends.count || l_mp.link != NULL || l_mp.travelling != 0) {
+    if (i < 0 || i >= l_friends.count || l_mp.link != NULL || l_mp.travelling != 0 || l_mp.boarding != 0) {
         return FALSE;
     }
+    l_mp.via_porter = pc_mp_menu_from_porter();
     if (!mp_at_home()) {
         mp_status("Visit from your own town.");
         return FALSE;
@@ -700,9 +714,11 @@ int pc_mp_visit_friend(int i) {
 }
 
 int pc_mp_visit_start(const char* address) {
-    if (l_mp.link != NULL || l_mp.travelling != 0) {
+    extern int pc_mp_menu_from_porter(void);
+    if (l_mp.link != NULL || l_mp.travelling != 0 || l_mp.boarding != 0) {
         return FALSE;
     }
+    l_mp.via_porter = pc_mp_menu_from_porter();
     if (!mp_at_home()) {
         mp_status("Visit from your own town.");
         return FALSE;
@@ -959,6 +975,7 @@ static void mp_apply_state(int slot, const mp_pstate* s) {
     r->scene = s->scene;
     r->field = s->field;
     r->visible = (s->flags & MP_PS_VISIBLE) != 0;
+    r->train_flags = s->flags & (MP_PS_TRAIN_IN | MP_PS_TRAIN_OUT);
     r->x = s->x, r->y = s->y, r->z = s->z;
     r->angle_y = s->angle_y;
     r->anim0 = s->anim0, r->anim1 = s->anim1;
@@ -1019,6 +1036,20 @@ static int mp_my_state(GAME* game, mp_pstate* s) {
     s->scene = (uint16_t)play->scene_id;
     s->field = (uint16_t)mFI_GetFieldId();
     s->tick = ++l_mp.tick;
+    if (!l_mp.host && l_mp.boarding == 2) {
+        /* boarding for home: the host's train comes too, and leaves when ours pulls out (not once we've gone,
+         * which the host only hears of later) */
+        int act = Common_Get(train_action);
+        if (act == mTRC_ACTION_WAIT_STOPPED) {
+            l_mp.board_stopped = 1;
+        }
+        if (!(l_mp.board_stopped && act >= mTRC_ACTION_SIGNAL_STARTING)) {
+            s->flags |= MP_PS_TRAIN_OUT;
+        }
+    } else if (!l_mp.host && l_mp.travelling == 2 && Common_Get(clip).demo_clip != NULL &&
+               Common_Get(clip).demo_clip->type == mDemo_CLIP_TYPE_RIDE_OFF_DEMO) {
+        s->flags |= MP_PS_TRAIN_IN;
+    }
     if (!Common_Get(player_actor_exists) || (!l_mp.host && l_mp.travelling != 2)) {
         return 1; /* not visible: a visitor is only there once they've arrived */
     }
@@ -1026,7 +1057,7 @@ static int mp_my_state(GAME* game, mp_pstate* s) {
     if (!mp_anim_ok(p->animation0_idx) || p->part_table_idx < 0) {
         return 1;
     }
-    s->flags = MP_PS_VISIBLE;
+    s->flags |= MP_PS_VISIBLE;
     s->x = p->actor_class.world.position.x;
     s->y = p->actor_class.world.position.y;
     s->z = p->actor_class.world.position.z;
@@ -1657,7 +1688,6 @@ int pc_mp_porter_chosen(int chosen) {
 static void mp_porter_tick(GAME* game) {
     extern void pc_pause_menu_open_online(void);
     static int hidden_frames;
-    (void)game;
     if (l_porter_action == 0) {
         return;
     }
@@ -1669,7 +1699,13 @@ static void mp_porter_tick(GAME* game) {
     if (l_porter_action == 1) {
         pc_pause_menu_open_online();
     } else if (l_porter_action == 2) {
-        pc_mp_stop();
+        /* home on his train; if he can't (he's busy), as before */
+        if (l_mp.boarding == 0 && pc_aSTM_online_board((GAME_PLAY*)game)) {
+            l_mp.boarding = 2;
+            l_mp.board_stopped = 0;
+        } else {
+            pc_mp_stop();
+        }
     }
     l_porter_action = 0;
     hidden_frames = 0;
@@ -2137,12 +2173,55 @@ static void mp_host_send_towns(void) {
     }
 }
 
-/* the station of the town, where a train would have left the player (ac_npc_p_sel2_talk.c_inc) */
+/* the station of the town, on the train: the player steps off as after the GameCube's train ride, and it pulls out
+ * (ac_npc_p_sel2_talk.c_inc's station door and ride-off demo; a town swap sets the same again, pc_m_card.c) */
 static void mp_goto_station(GAME_PLAY* play) {
     static Door_data_c station = {
-        SCENE_FG, mSc_DIRECT_SOUTH, FALSE, 0, { 1979, 0, 840 }, EMPTY_NO, 0, { 0, 0, 0 },
+        SCENE_FG, mSc_DIRECT_SOUTH, FALSE, 0, { 1979, 0, 760 }, EMPTY_NO, 0, { 0, 0, 0 },
     };
-    goto_other_scene(play, &station, TRUE);
+    station.wipe_type = WIPE_TYPE_FADE_BLACK;
+    if (goto_other_scene(play, &station, TRUE)) {
+        Common_Set(demo_profiles[0], mAc_PROFILE_RIDE_OFF_DEMO);
+        Common_Get(transition).wipe_type = WIPE_TYPE_CIRCLE_LEFT;
+    }
+}
+
+/* the pause menu Porter opened closes once the host's town is here (pc_mp_menu.c) */
+int pc_mp_train_ready(void) {
+    return l_mp.via_porter && l_mp.town_ready && l_mp.travelling == 0 && l_mp.boarding == 0;
+}
+
+/* aSTM_game_end_init: Porter has seen the train off. TRUE when it was an online trip's, and the scene is changing */
+int pc_mp_train_left(GAME_PLAY* play) {
+    int mode = l_mp.boarding;
+
+    if (mode == 0) {
+        return FALSE;
+    }
+    l_mp.boarding = 0;
+    if (mode == 1) {
+        if (l_mp.link != NULL && l_mp.board_town != NULL && pc_mcd_online_depart(play, l_mp.board_town)) {
+            l_mp.travelling = 1;
+            mp_visitor_use_clock();
+        } else {
+            mp_status("The visit fell through: the train brings you back.");
+        }
+    } else {
+        if (l_mp.link != NULL) {
+            pc_mp_stop(); /* says goodbye */
+        }
+        l_mp.go_home = 0;
+        pc_os_mp_set_clock(0, 0, 0, 0, 0, 0, 0);
+        if (pc_mcd_online_return()) {
+            l_mp.travelling = 3;
+        }
+    }
+    free(l_mp.board_town);
+    l_mp.board_town = NULL;
+    printf("[mp] the train has left (%s)\n", mode == 1 ? "visit" : "home");
+    fflush(stdout);
+    mp_goto_station(play);
+    return TRUE;
 }
 
 /* only from the town outdoors, with the player free to walk */
@@ -2153,6 +2232,9 @@ static int mp_can_travel(GAME_PLAY* play) {
 }
 
 static void mp_visitor_travel(GAME_PLAY* play) {
+    if (l_mp.boarding != 0) {
+        return; /* Porter's train decides (pc_mp_train_left) */
+    }
     if (l_mp.go_home && l_mp.travelling == 2 && mp_can_travel(play)) {
         l_mp.go_home = 0;
         printf("[mp] going home\n");
@@ -2176,27 +2258,58 @@ static void mp_visitor_travel(GAME_PLAY* play) {
         }
         l_mp.early_n = 0;
         mp_status("Visiting %.8s.", (const char*)mLd_GetLandName());
+        if (getenv("PC_MP_DEBUG") != NULL) {
+            const Kabu_price_c* k = Save_GetPointer(kabu_price_schedule);
+            printf("[mpdbg] turnips here: %d %d %d %d %d %d %d\n", k->daily_price[0], k->daily_price[1], k->daily_price[2],
+                   k->daily_price[3], k->daily_price[4], k->daily_price[5], k->daily_price[6]);
+        }
         mp_friends_remember(l_mp.host_key, mLd_GetLandName(), l_mp.remote[0].name);
     } else if (l_mp.travelling == 3 && !pc_mcd_online_visiting() && Common_Get(player_no) < mPr_PLAYER_NUM) {
         l_mp.travelling = 0;
         mp_status("Back home.");
     }
     if (l_mp.town_ready && l_mp.travelling == 0 && mp_can_travel(play)) {
-        Save_t* town = (Save_t*)malloc(sizeof(Save_t));
-        l_mp.town_ready = 0;
-        if (town == NULL) {
+        if (l_mp.board_town == NULL) {
+            Save_t* town = (Save_t*)malloc(sizeof(Save_t));
+            if (town == NULL) {
+                return;
+            }
+            memcpy(town, Common_GetPointer(save.save), sizeof(Save_t));
+            if (!pc_mp_town_unpack(l_mp.town_in, (int)l_mp.town_in_len, town)) {
+                printf("[mp] the host's town didn't check out: leaving\n");
+                free(town);
+                l_mp.town_ready = 0;
+                mp_visitor_quit("The host's town didn't check out.");
+                return;
+            }
+            l_mp.board_town = town;
+        }
+        if (l_mp.via_porter) {
+            /* on Porter's train: he has to be at his post with the player by him, the menu closed */
+            if (g_pc_paused) {
+                return; /* the menu Porter opened closes by itself (pc_mp_menu_draw) */
+            }
+            if (!pc_aSTM_online_board(play)) {
+                if (!l_mp.board_told) {
+                    l_mp.board_told = 1;
+                    mp_status("Your train is ready: see Porter at the station.");
+                }
+                return;
+            }
+            l_mp.town_ready = 0;
+            l_mp.boarding = 1;
+            mp_status("Here comes the train to %.8s.", (const char*)l_mp.board_town->land_info.name);
             return;
         }
-        memcpy(town, Common_GetPointer(save.save), sizeof(Save_t));
-        if (!pc_mp_town_unpack(l_mp.town_in, (int)l_mp.town_in_len, town)) {
-            printf("[mp] the host's town didn't check out: leaving\n");
-            mp_visitor_quit("The host's town didn't check out.");
-        } else if (pc_mcd_online_depart(play, town)) {
+        /* dev starts (PC_MP_JOIN) go straight there */
+        l_mp.town_ready = 0;
+        if (pc_mcd_online_depart(play, l_mp.board_town)) {
             l_mp.travelling = 1;
             mp_visitor_use_clock();
             mp_goto_station(play);
         }
-        free(town);
+        free(l_mp.board_town);
+        l_mp.board_town = NULL;
     }
 }
 
@@ -2311,12 +2424,64 @@ static void mp_spawn_puppets(GAME_PLAY* play) {
     }
 }
 
+/* host: a visitor arriving on the train, or boarding it to go home, has the host's own train do the same at its
+ * station, out in the town: it pulls in as for the GameCube's arrival (train_coming_flag 3), or is called as Porter
+ * calls it (2) and leaves once nobody is boarding (control 0, as his see-off does). Only when no train is about. */
+static int l_host_train_called;
+
+static void mp_host_trains(GAME_PLAY* play) {
+    int k, boarding = 0;
+
+    if (l_mp.host) {
+        /* a visitor in Nook's shop: someone from another town has come by, which Nookington's waits for. On the
+         * GameCube the visitor's game sets it in the town it then saves back to the card (aSD_..._ct ->
+         * mSP_SetNewVisitor); online only the host's town is kept */
+        for (k = 1; k < PC_MP_SLOTS; k++) {
+            int sc = l_mp.remote[k].scene;
+            if (l_mp.remote[k].present && l_mp.remote[k].has_state &&
+                (sc == SCENE_SHOP0 || sc == SCENE_CONVENI || sc == SCENE_SUPER || sc == SCENE_DEPART ||
+                 sc == SCENE_DEPART_2) &&
+                !Save_Get(shop).visitor_flag) {
+                Save_Get(shop).visitor_flag = TRUE;
+                printf("[mp] a visitor came by Nook's shop (Nookington's can come)\n");
+            }
+        }
+    }
+    if (!l_mp.host || play->scene_id != SCENE_FG) {
+        return;
+    }
+    for (k = 1; k < PC_MP_SLOTS; k++) {
+        pc_mp_remote* r = &l_mp.remote[k];
+        int fresh = r->present ? r->train_flags & ~r->train_seen : 0;
+
+        if (!r->present) {
+            continue;
+        }
+        if ((fresh & MP_PS_TRAIN_IN) && Common_Get(train_action) == 0 /* mTRC_ACTION_NONE */) {
+            Common_Set(train_coming_flag, 3);
+        }
+        if ((fresh & MP_PS_TRAIN_OUT) && Common_Get(train_action) == 0) {
+            Common_Set(train_coming_flag, 2);
+            l_host_train_called = 1;
+        }
+        r->train_seen = r->train_flags;
+        boarding |= r->train_flags & MP_PS_TRAIN_OUT;
+    }
+    if (l_host_train_called && !boarding) {
+        l_host_train_called = 0;
+        Common_Set(train_control_state, 0); /* off it goes */
+    }
+}
+
 void pc_mp_play_tick(GAME* game) {
     unsigned long long now;
     mp_pstate s;
     int i;
 
     mp_porter_tick(game);
+    if (l_mp.link != NULL) {
+        mp_host_trains((GAME_PLAY*)game);
+    }
     if (!l_mp.started) {
         mp_start();
     }

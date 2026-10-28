@@ -24,6 +24,8 @@ typedef struct {
     int scene;
     int field;
     int visible;
+    int train_flags; /* MP_PS_TRAIN_IN / _OUT as last sent */
+    int train_seen;  /* host: which of those its own train has already answered */
     f32 x, y, z;
     s16 angle_y;
     int anim0, anim1, part_table, eye, mouth;

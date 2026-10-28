@@ -47,6 +47,7 @@ typedef struct mp_puppet_actor_s {
     ACTOR* umbrella;
     int umbrella_kind;
     ClObjPipe_c col_pipe; /* a body to bump into, as a villager has */
+    int ghost;            /* no body while it overlaps the local player (see aMPP_actor_move) */
 } MP_PUPPET_ACTOR;
 
 extern cKF_Skeleton_R_c cKF_bs_r_boy_1;
@@ -73,9 +74,10 @@ ACTOR_PROFILE Mp_Puppet_Profile = {
     NULL,
 };
 
-/* the other player's body: the local player walks around it like around a villager, and can't push it (it goes where
+/* the other player's body, for the local player only (villagers and Porter walk through it, so it never blocks their paths):
+ * the local player walks around it like around a villager, and can't push it (it goes where
  * its own game says) */
-static ClObjPipeData_c aMPP_pipe_data = { { 57, 32, ClObj_TYPE_PIPE }, { 1 }, { 18, 40, 0, { 0, 0, 0 } } };
+static ClObjPipeData_c aMPP_pipe_data = { { ClObj_FLAG_CHECK | ClObj_FLAG_COLLIDE_PLAYER, 32, ClObj_TYPE_PIPE }, { 1 }, { 18, 40, 0, { 0, 0, 0 } } };
 static StatusData_c aMPP_status_data = { 0, 18, 40, 0, MASSTYPE_HEAVY };
 
 static void aMPP_skeleton(MP_PUPPET_ACTOR* pp, int gender) {
@@ -100,6 +102,7 @@ static void aMPP_actor_ct(ACTOR* actorx, GAME* game) {
     pp->item_shape = pp->item_anim = -1;
     pp->umbrella = NULL;
     pp->umbrella_kind = -1;
+    pp->ghost = TRUE; /* solid once it has been apart from the local player */
     ClObjPipe_ct(game, &pp->col_pipe);
     ClObjPipe_set5(game, &pp->col_pipe, actorx, &aMPP_pipe_data);
     CollisionCheck_Status_set3(&actorx->status_data, &aMPP_status_data);
@@ -225,7 +228,27 @@ static void aMPP_actor_move(ACTOR* actorx, GAME* game) {
     aMPP_item_pose(pp, r);
     aMPP_umbrella(pp, r, game);
     CollisionCheck_Uty_ActorWorldPosSetPipeC(actorx, &pp->col_pipe);
-    CollisionCheck_setOC(game, &play->collision_check, &pp->col_pipe.collision_obj);
+
+    /* a heavy body that turns up on top of the local player (off the train, a warp, lag) would shove them sideways,
+     * and could wedge them in a wall or the station. Until the two have stepped apart it has no body. */
+    {
+        PLAYER_ACTOR* player = GET_PLAYER_ACTOR(play);
+
+        if (player != NULL) {
+            f32 px = player->actor_class.world.position.x - pos->x;
+            f32 pz = player->actor_class.world.position.z - pos->z;
+            f32 d2 = px * px + pz * pz;
+
+            if (d2 < 24.0f * 24.0f) {
+                pp->ghost = TRUE;
+            } else if (d2 > 40.0f * 40.0f) {
+                pp->ghost = FALSE;
+            }
+        }
+    }
+    if (!pp->ghost) {
+        CollisionCheck_setOC(game, &play->collision_check, &pp->col_pipe.collision_obj);
+    }
 }
 
 /* the right hand (joint 20, as Player_actor_draw_After_hand) */

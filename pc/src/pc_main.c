@@ -263,6 +263,11 @@ int pc_platform_poll_events(void) {
                     pc_pause_menu_handle_event(&event);
                     break; /* swallow all keys while paused */
                 }
+                /* the chat button, online (not while typing into the game's own keyboard) */
+                if ((int)event.key.keysym.scancode == g_pc_keybindings.chat && !event.key.repeat &&
+                    !(g_pc_typing_mode && g_pc_editor_active) && pc_pause_menu_quick_say()) {
+                    break;
+                }
                 pc_typing_handle_event(&event);
                 break;
             case SDL_MOUSEBUTTONDOWN:
@@ -282,6 +287,8 @@ int pc_platform_poll_events(void) {
                 /* Back/Select opens the pause menu (controller Esc). */
                 if (event.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) {
                     pc_pause_menu_toggle();
+                } else if (event.cbutton.button == g_pc_padbindings.chat) {
+                    pc_pause_menu_quick_say(); /* the chat button, online */
                 }
                 break;
             case SDL_CONTROLLERAXISMOTION:

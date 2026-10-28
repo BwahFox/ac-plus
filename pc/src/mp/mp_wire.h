@@ -75,7 +75,9 @@ typedef struct {
 } mp_pstate;
 
 #define MP_PS_VISIBLE 0x01
-#define MP_PS_FLAGS_MASK 0x01
+#define MP_PS_TRAIN_IN 0x02  /* arriving on the train (the ride-off demo): the host's train pulls in too */
+#define MP_PS_TRAIN_OUT 0x04 /* boarding Porter's train home: the host's train comes for them */
+#define MP_PS_FLAGS_MASK 0x07
 
 typedef struct {
     uint8_t slot;     /* whose look (the host sets it; a visitor's own JOIN says 0) */

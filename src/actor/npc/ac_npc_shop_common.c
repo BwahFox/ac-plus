@@ -88,6 +88,28 @@ static void aNSC_BGcheck(ACTOR* actor) {
     mCoBG_BgCheckControll(NULL, actor, 8.0f, 0.0f, 1, 0, 0);
 }
 
+#if defined(TARGET_PC) && !defined(aNSC_MAMEDANUKI)
+#include "pc_nook_paint.h"
+
+static int pc_aNSC_paint_only; /* the roof colour being picked is a repaint (About my house), not an upgrade's */
+
+/* a new roof colour overnight, for the price of his paint, as the paint does (mHm_CheckRehouseOrder); an upgrade on
+ * order takes it too */
+static void pc_aNSC_paint(mHm_hs_c* home, int pal) {
+    u32 price = mSP_ItemNo2ItemPrice(ITM_RED_PAINT);
+
+    if (pal >= 0 && pal < mHm_OUTLOOK_PAL_NUM && mSP_money_check(price)) {
+        mSP_get_sell_price(price); /* paid as for a can of his paint (bags of Bells too) */
+        home->next_outlook_pal = pal;
+        if (home->size_info.next_size != home->size_info.size) {
+            home->ordered_outlook_pal = pal;
+        }
+        Now_Private->state_flags |= mPr_FLAG_UPDATE_OUTLOOK_PENDING; /* no villager repaints it first */
+    }
+    pc_aNSC_paint_only = FALSE;
+}
+#endif
+
 #ifndef aNSC_MAMEDANUKI
 static int aNSC_check_present_balloon() {
     int idx;
@@ -1775,6 +1797,9 @@ static void aNSC_start_wait(NPC_SHOP_COMMON_ACTOR* shop_common, GAME_PLAY* play)
                 break;
             case aNSC_WAIT_TYPE_DONE_REHOUSE: {
                 int idx = mHS_get_arrange_idx(Common_Get(player_no));
+#ifdef TARGET_PC
+                pc_aNSC_paint_only = FALSE;
+#endif
                 mHm_hs_c* home = &Save_Get(homes)[idx];
                 switch (home->size_info.size) {
                     case mHm_HOMESIZE_MEDIUM:
@@ -1906,6 +1931,12 @@ static void aNSC_check_roof_col_order(NPC_SHOP_COMMON_ACTOR* shop_common, GAME_P
                 case mChoice_CHOICE1:
                 case mChoice_CHOICE2:
                     action = aNSC_ACTION_SAY_HELLO_END_WAIT;
+#ifdef TARGET_PC
+                    if (pc_aNSC_paint_only) {
+                        pc_aNSC_paint(home, choice);
+                        break;
+                    }
+#endif
                     home->size_info.next_size += 1;
                     home->ordered_outlook_pal = choice;
                     aNSC_set_rehouse_order_date(home);
@@ -1931,6 +1962,12 @@ static void aNSC_check_roof_col_order2(NPC_SHOP_COMMON_ACTOR* shop_common, GAME_
             case mChoice_CHOICE1:
             case mChoice_CHOICE2:
                 action = aNSC_ACTION_SAY_HELLO_END_WAIT;
+#ifdef TARGET_PC
+                if (pc_aNSC_paint_only) {
+                    pc_aNSC_paint(home, choice + unk * 3);
+                    break;
+                }
+#endif
                 home->size_info.next_size += 1;
                 home->ordered_outlook_pal = choice + unk * 3;
                 aNSC_set_rehouse_order_date(home);
@@ -2043,6 +2080,11 @@ static void aNSC_request_Q_answer_wait(NPC_SHOP_COMMON_ACTOR* shop_common, GAME_
                     next = 0x4;
                     break;
             }
+#if defined(TARGET_PC) && !defined(aNSC_MAMEDANUKI)
+            /* the "other things" menu offers About my house to a resident (pc_nook_paint.c) */
+            pc_aNSC_paint_only = FALSE;
+            pc_nook_paint_set_menu(next == 0 && mLd_PlayerManKindCheck() == FALSE);
+#endif
             mDemo_Set_OrderValue(mDemo_ORDER_NPC0, 0x9, 0x0);
             aNSC_Set_continue_msg_num(msg_p, shop_common, aNSC_get_msg_no(msg_no[next]));
             aNSC_setupAction(shop_common, play, next_act_idx[next]);
@@ -2064,6 +2106,35 @@ static void aNSC_request_Q_answer_wait2(NPC_SHOP_COMMON_ACTOR* shop_common, GAME
     if (res != 0) {
         if (mMsg_Check_MainNormalContinue(msg_p) == TRUE) {
             int next;
+#if defined(TARGET_PC) && !defined(aNSC_MAMEDANUKI)
+            if (pc_nook_paint_menu_on() && mChoice_Get_ChoseNum(mChoice_Get_base_window_p()) == mChoice_CHOICE3) {
+                /* About my house: his answer for the house as it stands, then the roof colours */
+                mHm_hs_c* home = &Save_Get(homes)[mHS_get_arrange_idx(Common_Get(player_no))];
+
+                u32 price = mSP_ItemNo2ItemPrice(ITM_RED_PAINT); /* what a can of his paint costs */
+
+                pc_nook_paint_set_menu(FALSE);
+                mDemo_Set_OrderValue(mDemo_ORDER_NPC0, 0x9, 0x0);
+                mMsg_Set_continue_msg_num(msg_p, PC_NOOK_PAINT_MSG);
+                if (aNSC_money_check(price) == FALSE) {
+                    pc_nook_paint_set_case(PC_NOOK_PAINT_NO_MONEY, price);
+                    aNSC_setupAction(shop_common, play, aNSC_ACTION_REQUEST_Q_END_WAIT);
+                    return;
+                }
+                if (Now_Private->inventory.loan != 0) {
+                    pc_nook_paint_set_case(PC_NOOK_PAINT_LOAN, price);
+                } else if (home->size_info.size >= mHm_HOMESIZE_STATUE ||
+                           home->size_info.next_size >= mHm_HOMESIZE_STATUE) {
+                    pc_nook_paint_set_case(PC_NOOK_PAINT_FINISHED, price);
+                } else {
+                    pc_nook_paint_set_case(PC_NOOK_PAINT_PAID, price);
+                }
+                pc_aNSC_paint_only = TRUE;
+                aNSC_setupAction(shop_common, play, aNSC_ACTION_CHECK_ROOF_COL_ORDER);
+                return;
+            }
+            pc_nook_paint_set_menu(FALSE);
+#endif
             switch (mChoice_Get_ChoseNum(mChoice_Get_base_window_p())) {
                 case mChoice_CHOICE0:
                     if (Common_Get(time).rtc_time.weekday == 0) {
@@ -2925,6 +2996,12 @@ static void aNSC_check_col_chg_or_make_basement_init(NPC_SHOP_COMMON_ACTOR* shop
 
 static void aNSC_check_roof_col_order_init(NPC_SHOP_COMMON_ACTOR* shop_common, GAME_PLAY* play) {
     mDemo_Set_OrderValue(mDemo_ORDER_NPC0, 0x9, 0x0);
+#ifdef TARGET_PC
+    if (pc_aNSC_paint_only) {
+        return; /* a repaint asked for at the counter: he stays where he is (after an upgrade he walks up to the
+                 * player at the door; here he'd walk into them) */
+    }
+#endif
     aNSC_set_walk_spd(shop_common);
 }
 

@@ -55,6 +55,9 @@ typedef struct {
     PCInputCode dpad_down;
     PCInputCode dpad_left;
     PCInputCode dpad_right;
+
+    /* ac-plus: open the chat line during an online visit (not a GameCube button) */
+    PCInputCode chat;
 } PCKeybindings;
 
 /* Gamepad button bindings. Sticks are hardwired to the analog sticks
@@ -72,6 +75,7 @@ typedef struct {
     PCPadCode dpad_down;
     PCPadCode dpad_left;
     PCPadCode dpad_right;
+    PCPadCode chat;
 } PCPadBindings;
 
 extern PCKeybindings  g_pc_keybindings;

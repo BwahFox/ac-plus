@@ -25,6 +25,7 @@ typedef void (*aPG_INIT_PROC)(ACTOR*, GAME*);
 #define aPG_STATUS_DESK_FULL (1 << 0)
 #define aPG_STATUS_DONE_FIRST_JOB (1 << 1)
 #define aPG_HAS_BANK_ACCOUNT (1 << 2)
+#define aPG_LOAN_AND_BANK (aPG_STATUS_DONE_FIRST_JOB | aPG_HAS_BANK_ACCOUNT)
 
 struct ac_npc_postgirl {
     NPC_ACTOR npc_class;

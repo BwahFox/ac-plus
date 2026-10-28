@@ -1815,11 +1815,13 @@ void pc_mcd_online_after_swap(void) {
         l_keepSave_path[0] = '\0';
     }
     {
-        /* the swap wiped the door we left by: arrive at the station, where just off the platform, south of the tracks
-         * (ac_npc_p_sel2_talk.c_inc's station door; goto_other_scene stores next_scene_id + 1) */
-        Door_data_c station = { SCENE_FG, mSc_DIRECT_SOUTH, FALSE, 0, { 1979, 0, 840 }, EMPTY_NO, 0, { 0, 0, 0 } };
+        /* the swap wiped the door we left by: arrive at the station on the train, as after the GameCube's train ride
+         * (ac_npc_p_sel2_talk.c_inc's station door and ride-off demo: the player steps off, Porter greets them, the
+         * train pulls out; goto_other_scene stores next_scene_id + 1) */
+        Door_data_c station = { SCENE_FG, mSc_DIRECT_SOUTH, FALSE, 0, { 1979, 0, 760 }, EMPTY_NO, 0, { 0, 0, 0 } };
         Common_Set(door_data, station);
         Common_Get(door_data).next_scene_id = SCENE_FG + 1;
+        Common_Set(demo_profiles[0], mAc_PROFILE_RIDE_OFF_DEMO);
     }
     OSReport("[PC] online visit: arrived, player_no=%d\n", Common_Get(player_no));
 }

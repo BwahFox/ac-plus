@@ -17,6 +17,7 @@ extern int g_pc_title_main_menu_visible; /* set by ac_animal_logo */
 extern int g_pc_nes_active;
 
 /* Toggle pause. ESC handler in pc_main calls this. No-op if pausing is blocked. */
+int pc_pause_menu_quick_say(void); /* the chat button: Online Play's Say line while online */
 void pc_pause_menu_toggle(void);
 
 /* Forward an SDL event for menu navigation. Returns 1 if consumed. No-op if not paused. */

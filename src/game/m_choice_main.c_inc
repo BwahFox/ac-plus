@@ -523,7 +523,13 @@ extern void mChoice_Load_ChoseStringFromRom(mChoice_c* choice, u8* str, int str_
     {
         /* City Folk characters' menu options (pc_cf_lines.c) */
         extern int pc_cf_lines_choice(int str_no, u8* str, int len);
-        if (pc_cf_lines_choice(str_no, str, mChoice_CHOICE_STRING_LEN)) {
+        extern int pc_aPG_choice(int str_no, u8* str, int len); /* the post office's loan and savings */
+        extern int pc_fossil_id_choice(int str_no, u8* str, int len); /* Blathers: Identify fossils */
+        extern int pc_nook_paint_choice(int str_no, u8* str, int len); /* Nook: About my house */
+        if (pc_cf_lines_choice(str_no, str, mChoice_CHOICE_STRING_LEN) ||
+            pc_aPG_choice(str_no, str, mChoice_CHOICE_STRING_LEN) ||
+            pc_fossil_id_choice(str_no, str, mChoice_CHOICE_STRING_LEN) ||
+            pc_nook_paint_choice(str_no, str, mChoice_CHOICE_STRING_LEN)) {
             return;
         }
     }

@@ -12,7 +12,8 @@
  * and stock, the bridge, and a few town settings (station, grass, fruit, tune, weather). Then ac-plus's own: the
  * patterns laid on the ground (with their designs) and the furniture standing outdoors; the visitor puts those in
  * after arriving (pc_mp_town_apply_extras), as the swap of towns resets them. Of the residents' patterns only the
- * one on each house's door is sent, kept apart from the visitor's own patterns (pc_mp_town_door). */
+ * one on each house's door and those on signboards are sent, kept apart from the visitor's own patterns
+ * (pc_mp_town_door, pc_mp_town_sign). */
 #include "pc_mp_town.h"
 
 #include <stdio.h>
@@ -32,13 +33,14 @@
 #include "m_random_field.h"
 #include "m_shop.h"
 #include "m_kankyo.h"
+#include "m_kabu_manager.h"
 #include "pc_ext_save.h"
 #include "pc_outdoor_ftr.h"
 #include "pc_pattern.h"
 
 #include "mp/mp_wire.h"
 
-#define TOWN_VERSION 4
+#define TOWN_VERSION 6
 
 extern void mNpc_pc_SetDefAnimal(Animal_c* animal, mActor_name_t npc_id); /* m_npc.c */
 
@@ -260,9 +262,9 @@ void pc_mp_town_apply_extras(void) {
 
 /* the visited town's door designs: drawn on its houses' doors, nothing more (the visitor's patterns stay theirs) */
 static struct {
+    u8 tex[mNW_DESIGN_TEX_SIZE] ATTRIBUTE_ALIGN(32); /* drawn from here: aligned as the game's own designs are */
     int has;
     u8 palette;
-    u8 tex[mNW_DESIGN_TEX_SIZE];
 } l_doors[PLAYER_NUM];
 
 int pc_mp_town_door(int home, u8* palette, u8** tex) {
@@ -272,6 +274,89 @@ int pc_mp_town_door(int home, u8* palette, u8** tex) {
     *palette = l_doors[home].palette;
     *tex = l_doors[home].tex;
     return TRUE;
+}
+
+/* the visited town's signboard designs, by sign (pc_pattern_sign_key): as for doors, only what's drawn on them */
+#define SIGNS_MAX 128
+static struct {
+    u8 tex[mNW_DESIGN_TEX_SIZE] ATTRIBUTE_ALIGN(32); /* drawn from here: aligned as the game's own designs are */
+    u32 key;
+    u8 palette;
+} l_signs[SIGNS_MAX];
+static int l_signs_n;
+
+int pc_mp_town_sign(u32 key, u8* palette, u8** tex) {
+    extern int pc_mcd_online_visiting(void);
+    int i;
+    if (!pc_mcd_online_visiting()) {
+        return FALSE;
+    }
+    for (i = 0; i < l_signs_n; i++) {
+        if (l_signs[i].key == key) {
+            *palette = l_signs[i].palette;
+            *tex = l_signs[i].tex;
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+/* host: each signboard showing a resident's design, with that design as the sign draws it (ac_sign.c) */
+static void pack_signs(mp_wr* w, const Save_t* s) {
+    int n = 0, pass, x, z, k;
+
+    for (pass = 0; pass < 2; pass++) { /* count, then write */
+        if (pass == 1) {
+            mp_wr_u16(w, (u16)n);
+        }
+        n = 0;
+        for (z = 0; z < FG_BLOCK_Z_NUM; z++) {
+            for (x = 0; x < FG_BLOCK_X_NUM; x++) {
+                for (k = 0; k < UT_TOTAL_NUM && n < SIGNS_MAX; k++) {
+                    mActor_name_t it = s->fg[z][x].items[k / UT_X_NUM][k % UT_X_NUM];
+                    int d = it - SIGNBOARD_START, pl, org, ux = k % UT_X_NUM, uz = k / UT_X_NUM;
+                    u32 key = pc_pattern_sign_key(x + 1, z + 1, ux, uz); /* the sign's block counts the border */
+                    const mNW_original_design_c* kept;
+                    u8 pal;
+                    const u8* tex;
+
+                    if (!ITEM_IS_SIGNBOARD(it) || ((d >> 5) & 1)) {
+                        continue; /* not a sign, or a blank one */
+                    }
+                    pl = (d >> 3) & 3, org = d & 7;
+                    pal = s->private_data[pl].my_org[org].palette;
+                    tex = s->private_data[pl].my_org[org].design.data;
+                    if ((kept = pc_pattern_use(PC_PAT_USE_SIGN, key, pl, org)) != NULL) {
+                        pal = kept->palette;
+                        tex = kept->design.data;
+                    }
+                    if (pass == 1) {
+                        mp_wr_u32(w, key);
+                        mp_wr_u8(w, pal);
+                        mp_wr_bytes(w, tex, mNW_DESIGN_TEX_SIZE);
+                    }
+                    n++;
+                }
+            }
+        }
+    }
+}
+
+static int unpack_signs(mp_rd* r) {
+    u32 n = mp_rd_u16(r), i;
+
+    l_signs_n = 0;
+    if (n > SIGNS_MAX) {
+        return FALSE;
+    }
+    for (i = 0; i < n && !r->bad; i++) {
+        l_signs[i].key = mp_rd_u32(r); /* only ever compared with the keys of signs in the town */
+        l_signs[i].palette = mp_rd_u8(r) % mNW_PALETTE_NUM;
+        mp_rd_bytes(r, l_signs[i].tex, mNW_DESIGN_TEX_SIZE); /* pixels: any value is a colour */
+    }
+    l_signs_n = r->bad ? 0 : (int)n;
+    printf("[mp] town: %d signboard designs\n", l_signs_n);
+    return !r->bad;
 }
 
 static int town_pack(u8* out, int cap) {
@@ -392,6 +477,27 @@ static int town_pack(u8* out, int cap) {
     }
     mp_wr_u8(&w, s->remove_animal_idx);
     pack_extras(&w);
+    pack_signs(&w, s);
+    {
+        /* the Stalk Market's week: Joan's price and Nook's buying prices, as the host's game decided them (without it
+         * the visitor's game kept its own town's week, or drew a new one) */
+        const Kabu_price_c* k = &s->kabu_price_schedule;
+        for (i = 0; i < lbRTC_WEEKDAYS_MAX; i++) {
+            mp_wr_u16(&w, k->daily_price[i]);
+        }
+        if (getenv("PC_MP_DEBUG") != NULL) {
+            printf("[mpdbg] turnips sent: %d %d %d %d %d %d %d\n", k->daily_price[0], k->daily_price[1],
+                   k->daily_price[2], k->daily_price[3], k->daily_price[4], k->daily_price[5], k->daily_price[6]);
+        }
+        mp_wr_u16(&w, k->trade_market);
+        mp_wr_u8(&w, k->update_time.sec);
+        mp_wr_u8(&w, k->update_time.min);
+        mp_wr_u8(&w, k->update_time.hour);
+        mp_wr_u8(&w, k->update_time.day);
+        mp_wr_u8(&w, k->update_time.weekday);
+        mp_wr_u8(&w, k->update_time.month);
+        mp_wr_u16(&w, k->update_time.year);
+    }
     return w.bad ? 0 : (int)w.pos;
 }
 
@@ -617,5 +723,27 @@ int pc_mp_town_unpack(const u8* in, int len, Save_t* s) {
         s->remove_animal_idx = 0xFF;
     }
     printf("[mp] town %.8s: %d ground and %d room items replaced\n", land_name, bad_fg, bad_room);
-    return unpack_extras(&r) && !r.bad && r.pos == r.len;
+    if (!unpack_extras(&r) || !unpack_signs(&r)) {
+        return 0;
+    }
+    {
+        /* the host's Stalk Market week (prices kept in the game's range; a date that makes no sense just has the
+         * visitor's game draw a new week, as for a stale one) */
+        Kabu_price_c* k = &s->kabu_price_schedule;
+        for (i = 0; i < lbRTC_WEEKDAYS_MAX; i++) {
+            u16 p = mp_rd_u16(&r);
+            k->daily_price[i] = p < Kabu_PRICE_MIN ? Kabu_PRICE_MIN : p > Kabu_PRICE_MAX ? Kabu_PRICE_MAX : p;
+        }
+        k->trade_market = mp_rd_u16(&r) % Kabu_TRADE_MARKET_TYPE_NUM;
+        k->update_time.sec = mp_rd_u8(&r) % 60;
+        k->update_time.min = mp_rd_u8(&r) % 60;
+        k->update_time.hour = mp_rd_u8(&r) % 24;
+        k->update_time.day = mp_rd_u8(&r) % 32;
+        k->update_time.weekday = mp_rd_u8(&r) % lbRTC_WEEKDAYS_MAX;
+        k->update_time.month = mp_rd_u8(&r) % 13;
+        k->update_time.year = mp_rd_u16(&r);
+        printf("[mp] town: turnips %d (Sunday), then %d %d %d %d %d %d\n", k->daily_price[0], k->daily_price[1],
+               k->daily_price[2], k->daily_price[3], k->daily_price[4], k->daily_price[5], k->daily_price[6]);
+    }
+    return !r.bad && r.pos == r.len;
 }

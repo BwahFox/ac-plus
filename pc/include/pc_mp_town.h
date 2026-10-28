@@ -20,6 +20,8 @@ int pc_mp_town_unpack(const u8* in, int len, Save_t* s);
 void pc_mp_town_apply_extras(void);
 /* on an online visit: the design on house `home`'s door, as the host sent it (FALSE: none, the plain mark) */
 int pc_mp_town_door(int home, u8* palette, u8** tex);
+/* visiting online: the design on the sign with that pc_pattern_sign_key, as the host sent it (ac_sign.c) */
+int pc_mp_town_sign(u32 key, u8* palette, u8** tex);
 
 /* item checks (pc_mp_items.c): TRUE if the game can safely hold this id there */
 int pc_mp_item_ok(mActor_name_t item);      /* an item a player could carry or a shop sell */

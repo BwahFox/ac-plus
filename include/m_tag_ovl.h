@@ -146,6 +146,7 @@ enum {
     mTG_TYPE_FIELD_FTR_BURY,
     mTG_TYPE_FIELD_CATCH_FTR,   /* a fish outdoors in the town: Grab, Place (its tank), Quit */
     mTG_TYPE_FIELD_RELEASE_FTR, /* a bug, or a fish by the water: Release as well */
+    mTG_TYPE_PC_GIVE_ALL_CURATOR, /* Blathers: Give All of the marked fossils */
 #endif
 
     mTG_TYPE_NUM

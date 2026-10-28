@@ -183,6 +183,7 @@ static const BindRow s_bind_rows[] = {
     BROW("D-Pad Down",  dpad_down,  dpad_down),
     BROW("D-Pad Left",  dpad_left,  dpad_left),
     BROW("D-Pad Right", dpad_right, dpad_right),
+    BROW("Chat (online)", chat, chat),
 };
 #define BIND_ROW_COUNT    ((int)(sizeof(s_bind_rows) / sizeof(s_bind_rows[0])))
 #define BIND_VISIBLE      9

@@ -50,9 +50,6 @@ int pc_nlr_current(int* size);
 /* The size of a house's extra room (0 when it has none yet), and growing or building one */
 int pc_nlr_room_size(int house, int room);
 void pc_nlr_set_room_size(int house, int room, int size);
-/* TRUE when Nook has built a room for house `house` and not yet billed it (the post office keeps the bank shut,
- * as it does for a house upgrade he hasn't billed) */
-int pc_nlr_unbilled(int house);
 
 /* Scene changes (m_scene.c, m_play.c) */
 struct door_data_s* pc_nlr_door_data(int scene, struct door_data_s* doors, int* num_doors);

@@ -9,9 +9,6 @@
 #include "m_house.h"
 #include "m_home_h.h"
 #include "m_player.h"
-#ifdef TARGET_PC
-#include "pc_nlrooms.h"
-#endif
 
 void aPG_Set_continue_msg_num(NPC_POSTGIRL_ACTOR *postgirl, int msg);
 void aPG_setupAction(NPC_POSTGIRL_ACTOR *postgirl, GAME_PLAY *play, int action);
@@ -62,12 +59,14 @@ void aPG_actor_ct(ACTOR *actorx, GAME *game) {
         postgirl->_9ac = (BG_POST_ITEM_ACTOR *)Actor_info_name_search(&play->actor_info, mAc_PROFILE_BGPOSTITEM, ACTOR_PART_ITEM);
         if (mLd_PlayerManKindCheck() == NATIVE) {
             mHm_rmsz_c *size_info = &Save_Get(homes)[mHS_get_arrange_idx(Common_Get(player_no))].size_info;
+#ifdef TARGET_PC
+            /* ac-plus: savings from the start, loan or not (the GameCube waited for the loan paid off and the
+             * house's last upgrade) */
+            (void)size_info;
+            postgirl->has_bank_account = TRUE;
+#else
             if (Now_Private->inventory.loan == 0 && size_info->size >= 3 && size_info->renew == FALSE) {
                 postgirl->has_bank_account = TRUE;
-            }
-#ifdef TARGET_PC
-            if (pc_nlr_unbilled(mHS_get_arrange_idx(Common_Get(player_no)))) {
-                postgirl->has_bank_account = FALSE;
             }
 #endif
         }

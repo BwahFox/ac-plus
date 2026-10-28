@@ -329,11 +329,15 @@ static int mMsg_LoadMsgData(mMsg_Data_c* msg_data, int index, int cut) {
         extern int pc_cf_lines_msg(int index, u8* buf, int buf_size, int* len);
         extern int pc_nlr_msg(int index, u8* buf, int buf_size, int* len); /* Nook on the extra rooms */
         extern int pc_skin_msg(int index, u8* buf, int buf_size, int* len); /* Rover on skin tones */
+        extern int pc_fossil_id_msg(int index, u8* buf, int buf_size, int* len); /* Blathers identifying fossils */
+        extern int pc_nook_paint_msg(int index, u8* buf, int buf_size, int* len); /* Nook: About my house */
         int len;
 
         if (msg_data != NULL && (pc_cf_lines_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len) ||
                                  pc_nlr_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len) ||
-                                 pc_skin_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len))) {
+                                 pc_skin_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len) ||
+                                 pc_fossil_id_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len) ||
+                                 pc_nook_paint_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len))) {
             msg_data->msg_no = index;
             msg_data->data_loaded = TRUE;
             msg_data->msg_len = mMsg_Count_MsgData(msg_data->text_buf.data);
@@ -381,6 +385,23 @@ static int mMsg_LoadMsgData(mMsg_Data_c* msg_data, int index, int cut) {
                         break;
                     }
                 }
+            }
+#endif
+#ifdef TARGET_PC
+            {
+                /* The post office offers savings next to the loan (ac_npc_post_girl.c_inc) */
+                extern int pc_aPG_bank_menu(u8 * buf, int size, int buf_size);
+                size = pc_aPG_bank_menu(msg_data->text_buf.data, size, mMsg_MSG_BUF_MAX);
+            }
+            {
+                /* Blathers' menu offers to identify fossils (pc_fossil_id.c) */
+                extern int pc_fossil_id_menu(u8 * buf, int size, int buf_size);
+                size = pc_fossil_id_menu(msg_data->text_buf.data, size, mMsg_MSG_BUF_MAX);
+            }
+            {
+                /* Nook's "other things" offer About my house (pc_nook_paint.c) */
+                extern int pc_nook_paint_menu(u8 * buf, int size, int buf_size);
+                size = pc_nook_paint_menu(msg_data->text_buf.data, size, mMsg_MSG_BUF_MAX);
             }
 #endif
 

@@ -119,10 +119,6 @@ int pc_nlr_room_size(int house, int room) {
     return l_nlr[house].size[room];
 }
 
-int pc_nlr_unbilled(int house) {
-    return house >= 0 && house < PLAYER_NUM && l_nlr[house].order.room >= 0 && l_nlr[house].order.built;
-}
-
 /* Keep furniture off the floor in front of a door, as the game does at its stairs. What's there already stays, for
  * the player to move (as in the later games); the floor's claimed again once it's clear (pc_nlr_door_data) */
 static void pc_nlr_reserve(mHm_flr_c* floor, int ux, int uz) {

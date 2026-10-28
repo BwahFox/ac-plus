@@ -1,3 +1,14 @@
+#ifdef TARGET_PC
+#include "pc_fossil_id.h"
+
+int pc_aCR_identify_mode; /* the pockets are open for fossils to identify: several can be marked (m_tag_ovl.c) */
+static int pc_aCR_menu4;  /* this talk's menu has Identify fossils */
+
+static int pc_aCR_identify_ok(void) {
+    return mMmd_CountDisplayedFossil() >= PC_FOSSIL_ID_DONATED_NEEDED;
+}
+#endif
+
 static void aCR_set_animation(NPC_CURATOR_ACTOR* curator, int action) {
     static int animeSeqNo[] = { aNPC_ANIM_WAIT1, aNPC_ANIM_WAIT1, aNPC_ANIM_WAIT_NEMU1 };
 
@@ -509,7 +520,21 @@ static void aCR_chk_request(NPC_CURATOR_ACTOR* curator, GAME_PLAY* play) {
     int talk_act;
 
     if (mMsg_Get_msg_num(msg_p) == 0x2F50 && mMsg_Check_MainNormalContinue(msg_p) == TRUE) {
-        switch (mChoice_Get_ChoseNum(mChoice_Get_base_window_p())) {
+        int choice = mChoice_Get_ChoseNum(mChoice_Get_base_window_p());
+
+#ifdef TARGET_PC
+        /* four choices: Donate, Identify fossils, What's this?, Nope */
+        pc_aCR_identify_mode = FALSE;
+        if (pc_aCR_menu4 && choice == mChoice_CHOICE1) {
+            pc_aCR_identify_mode = TRUE;
+            (*curator->setupTalkAction_proc)(curator, play, aCR_TALK_MENU_OPEN_WAIT);
+            return;
+        }
+        if (pc_aCR_menu4 && choice > mChoice_CHOICE1) {
+            choice--;
+        }
+#endif
+        switch (choice) {
             case mChoice_CHOICE0:
                 talk_act = aCR_TALK_MENU_OPEN_WAIT;
                 break;
@@ -587,6 +612,9 @@ static void aCR_menu_close_wait(NPC_CURATOR_ACTOR* curator, GAME_PLAY* play) {
 
     if (play->submenu.open_flag == FALSE) {
         talk_act = aCR_TALK_GET_DEMO_START_WAIT;
+#ifdef TARGET_PC
+        pc_aCR_identify_mode = FALSE;
+#endif
 
         if (play->submenu.item_p->item == EMPTY_NO) {
             talk_act = aCR_TALK_MSG_WIN_OPEN_WAIT;
@@ -665,14 +693,35 @@ static void aCR_msg_win_open_wait(NPC_CURATOR_ACTOR* curator, GAME_PLAY* play) {
 
         if (item != EMPTY_NO) {
 #ifdef TARGET_PC
-            /* Wild World style: identify the fossil on the spot instead of asking for
-             * it by mail. It then goes down the normal path for that fossil: donated
-             * if the museum still needs it, otherwise handed back identified. */
-            if (item == ITM_FOSSIL) {
-                item = mSP_RandomOneFossilSelect(RANDOM(2));
-                mPr_SetPossessionItem(Common_Get(now_private), play->submenu.item_p->slot_no, item,
-                                      mPr_ITEM_COND_NORMAL);
-                play->submenu.item_p->item = item;
+            /* certified: an unexamined fossil (or several marked together) is identified and handed back */
+            if (item == ITM_FOSSIL && pc_aCR_identify_ok()) {
+                Submenu_Item_c* sp = play->submenu.item_p;
+                int n = play->submenu.selected_item_num;
+                int done = 0;
+                int k;
+
+                for (k = 0; k < n && k < mPr_POCKETS_SLOT_COUNT; k++, sp++) {
+                    if (sp->item == ITM_FOSSIL &&
+                        Common_Get(now_private)->inventory.pockets[sp->slot_no] == ITM_FOSSIL) {
+                        sp->item = mSP_RandomOneFossilSelect(RANDOM(2));
+                        mPr_SetPossessionItem(Common_Get(now_private), sp->slot_no, sp->item, mPr_ITEM_COND_NORMAL);
+                        done++;
+                    }
+                }
+                if (done == 0) { /* the first is the one given, so this doesn't happen */
+                    play->submenu.item_p->item = mSP_RandomOneFossilSelect(RANDOM(2));
+                    mPr_SetPossessionItem(Common_Get(now_private), play->submenu.item_p->slot_no,
+                                          play->submenu.item_p->item, mPr_ITEM_COND_NORMAL);
+                    done = 1;
+                }
+                item = play->submenu.item_p->item;
+                pc_fossil_id_set_count(done);
+                aCR_set_item_name_str(item);
+                curator->donated_item = item;
+                mMsg_Set_continue_msg_num(msg_p, PC_FOSSIL_ID_MSG_DONE);
+                mMsg_Set_ForceNext(msg_p);
+                (*curator->setupTalkAction_proc)(curator, play, aCR_TALK_RETURN_DEMO_START_WAIT);
+                return;
             }
 #endif
             if (aCR_IS_FOSSIL(item) == TRUE) {
@@ -735,13 +784,26 @@ static void aCR_chk_continue_to_donate(NPC_CURATOR_ACTOR* curator, GAME_PLAY* pl
     mMsg_Window_c* msg_p = mMsg_Get_base_window_p();
     int donate_idx = curator->talk_act_idx - aCR_TALK_CHK_CONTINUE_TO_DONATE;
 
-    if (chk_msg_num[donate_idx] == mMsg_Get_msg_num(msg_p) && mMsg_Check_MainNormalContinue(msg_p)) {
+    int want = chk_msg_num[donate_idx];
+
+#ifdef TARGET_PC
+    if (mMsg_Get_msg_num(msg_p) == PC_FOSSIL_ID_MSG_MORE) { /* after identifying: any more fossils? */
+        want = PC_FOSSIL_ID_MSG_MORE;
+    }
+#endif
+    if (want == mMsg_Get_msg_num(msg_p) && mMsg_Check_MainNormalContinue(msg_p)) {
         int talk_act = aCR_TALK_END_WAIT;
         int msg_no;
 
         if (mChoice_Get_ChoseNum(mChoice_Get_base_window_p()) == mChoice_CHOICE0) {
             talk_act = aCR_TALK_MENU_OPEN_WAIT;
             msg_no = 0x2F62;
+#ifdef TARGET_PC
+            pc_aCR_identify_mode = want == PC_FOSSIL_ID_MSG_MORE;
+            if (pc_aCR_identify_mode) {
+                msg_no = PC_FOSSIL_ID_MSG_WHICH;
+            }
+#endif
         } else {
             msg_no = aCR_get_msg_no_after_talk();
         }
@@ -942,59 +1004,6 @@ static void aCR_setupTalkAction(NPC_CURATOR_ACTOR* curator, GAME_PLAY* play, int
     aCR_talk_init_proc(curator, play, talk_act);
 }
 
-#ifdef TARGET_PC
-/* Assess every unidentified fossil in the pockets as soon as Blathers is spoken
- * to, Wild World style, and leave them in the pockets identified. A notice says
- * what they were; donating stays up to the player through his usual menu. */
-static void aCR_pc_assess_fossils(void) {
-    extern void pc_quick_save_show_message(const char* msg);
-    static char notice[128];
-    Private_c* priv = Common_Get(now_private);
-    char names[3][mIN_ITEM_NAME_LEN + 1];
-    int count = 0;
-    int i;
-
-    if (priv == NULL) {
-        return;
-    }
-
-    for (i = 0; i < mPr_POCKETS_SLOT_COUNT; i++) {
-        if (priv->inventory.pockets[i] == ITM_FOSSIL &&
-            mPr_GET_ITEM_COND(priv->inventory.item_conditions, i) == mPr_ITEM_COND_NORMAL) {
-            mActor_name_t fossil = mSP_RandomOneFossilSelect(RANDOM(2));
-
-            mPr_SetPossessionItem(priv, i, fossil, mPr_ITEM_COND_NORMAL);
-            if (count < 3) {
-                u8 name[mIN_ITEM_NAME_LEN];
-                int len = mIN_ITEM_NAME_LEN;
-
-                mIN_copy_name_str(name, fossil);
-                while (len > 0 && name[len - 1] == ' ') {
-                    len--;
-                }
-                memcpy(names[count], name, len); /* item names are plain ASCII */
-                names[count][len] = '\0';
-            }
-            count++;
-        }
-    }
-
-    if (count == 0) {
-        return;
-    }
-    if (count == 1) {
-        snprintf(notice, sizeof(notice), "Blathers identified your fossil: %s", names[0]);
-    } else if (count == 2) {
-        snprintf(notice, sizeof(notice), "Blathers identified: %s, %s", names[0], names[1]);
-    } else if (count == 3) {
-        snprintf(notice, sizeof(notice), "Blathers identified: %s, %s, %s", names[0], names[1], names[2]);
-    } else {
-        snprintf(notice, sizeof(notice), "Blathers identified %d fossils. Check your pockets!", count);
-    }
-    pc_quick_save_show_message(notice);
-}
-#endif
-
 static void aCR_set_talk_info(ACTOR* actorx) {
     static int msg_no[2][2][2][3] = { { { { 0x2F8B, 0x2F8C, 0x2F8C }, { 0x2F8D, 0x2F95, 0x2F8E } },
                                         { { 0x2F4E, 0x2F4F, 0x2F4F }, { 0x2F51, 0x2F96, 0x2F52 } } },
@@ -1007,7 +1016,8 @@ static void aCR_set_talk_info(ACTOR* actorx) {
     int sel_msg_no;
 
 #ifdef TARGET_PC
-    aCR_pc_assess_fossils();
+    pc_aCR_menu4 = FALSE;
+    pc_aCR_identify_mode = FALSE;
 #endif
 
     if (Common_Get(clip).aprilfool_control_clip != NULL &&
@@ -1051,6 +1061,20 @@ static void aCR_set_talk_info(ACTOR* actorx) {
 
         sel_msg_no = msg_no[completed][not_foreigner][not_first_talk][action_idx];
     }
+
+#ifdef TARGET_PC
+    /* certified to identify fossils: he says so once to each player, then his menu offers it (pc_fossil_id.c) */
+    if (talk_act == aCR_TALK_CHK_REQUEST && pc_aCR_identify_ok()) {
+        if (!pc_fossil_id_told()) {
+            pc_fossil_id_set_told();
+            sel_msg_no = PC_FOSSIL_ID_MSG_TOLD;
+            talk_act = aCR_TALK_END_WAIT;
+        } else {
+            pc_aCR_menu4 = TRUE;
+        }
+    }
+    pc_fossil_id_set_menu(pc_aCR_menu4);
+#endif
 
     mDemo_Set_msg_num(sel_msg_no);
     curator->talk_act_idx = talk_act;

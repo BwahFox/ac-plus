@@ -59,9 +59,27 @@ static void aROD_walk_one_unit(ACTOR* actor, GAME* game) {
     GAME_PLAY* play = (GAME_PLAY*)game;
     PLAYER_ACTOR* player = GET_PLAYER_ACTOR_GAME(game);
 
+#ifdef TARGET_PC
+    /* the last step off the platform can be blocked (someone standing there, online), and the demo only ended on
+     * reaching it: the player was left frozen. After a few seconds it ends where they are. */
+    static int pc_walk_frames;
+    if (ride_off->_188 != 2) {
+        ride_off->_188 = 2;
+        pc_walk_frames = 0;
+    }
+    pc_walk_frames++;
+#endif
     if (player != NULL) {
-        if (player->actor_class.world.position.z >= aROD_OFF_UT_Z_POS) {
-            if (F32_IS_ZERO(ride_off->station_master_actor->speed)) {
+        if (player->actor_class.world.position.z >= aROD_OFF_UT_Z_POS
+#ifdef TARGET_PC
+            || pc_walk_frames > 180
+#endif
+        ) {
+            if (F32_IS_ZERO(ride_off->station_master_actor->speed)
+#ifdef TARGET_PC
+                || pc_walk_frames > 300
+#endif
+            ) {
                 mPlib_request_main_wait_type3(game);
                 Camera2_request_main_normal(play, 0, 9);
                 Actor_delete(actor);

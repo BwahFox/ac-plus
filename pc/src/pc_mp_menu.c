@@ -1,7 +1,10 @@
 /* pc_mp_menu.c - pause menu > Online Play: host this town, visit one by its address or invite code, browse the
  * server's open towns, leave; while hosting, each visitor's own page (trust, send home). pc_mp.c does it.
  * Typing the address works like the settings' text fields: A or Enter keeps it, B or Escape puts back what was
- * there, Ctrl+V pastes; on the Steam Deck, Steam + X brings up the keyboard. */
+ * there, Ctrl+V pastes; on the Steam Deck, Steam + X brings up the keyboard. The chat button (Chat in the
+ * keybindings: T, or LB on a controller) opens the menu straight onto the Say line and closes it once said.
+ * Going online starts at the station: hosting and visiting are only offered when Porter opened the menu (his
+ * "Online"); a visit then leaves on his train (pc_mp.c). Once online, the pause menu's page has it all. */
 #include "pc_mp.h"
 
 #include <stdio.h>
@@ -17,7 +20,7 @@
 
 enum {
     ROW_HOST, ROW_ADDRESS, ROW_GO, ROW_BROWSE, ROW_STOP, ROW_BACK,
-    ROW_TRUST, ROW_HOME, ROW_REFRESH, ROW_SAY, ROW_FRIENDS,
+    ROW_TRUST, ROW_HOME, ROW_REFRESH, ROW_SAY, ROW_FRIENDS, ROW_PORTER,
     ROW_FRIEND = 40, /* + index in the list */
     ROW_VISITOR = 10, /* + slot */
     ROW_TOWN = 20,    /* + index in the list */
@@ -35,6 +38,9 @@ static char s_before[128];
 static char s_say[33];       /* a line to say (MP_CHAT_LEN) */
 static char* s_buf;          /* what's being typed: s_address or s_say */
 static size_t s_buf_size;
+static int s_quick;          /* opened by the chat button: close the menu when the line is done */
+static int s_porter;         /* opened by Porter: hosting and visiting offered */
+static Uint32 s_quick_ticks; /* when, to drop the chat key's own letter */
 
 int pc_mp_menu_active(void) {
     return s_active;
@@ -44,8 +50,22 @@ int pc_mp_menu_typing(void) {
     return s_active && s_typing;
 }
 
+/* Porter's "Online" (pc_pause_menu_open_online) */
+void pc_mp_menu_enter_porter(void) {
+    extern void pc_mp_menu_enter(void);
+    pc_mp_menu_enter();
+    s_porter = 1;
+}
+
+/* pc_mp.c: a visit started from here leaves on Porter's train */
+int pc_mp_menu_from_porter(void) {
+    return s_active && s_porter;
+}
+
 void pc_mp_menu_enter(void) {
     s_active = 1;
+    s_quick = 0;
+    s_porter = 0;
     s_view = VIEW_MAIN;
     s_sel = 0;
     s_typing = 0;
@@ -80,6 +100,8 @@ static int rows(int* out) {
             }
         }
         out[n++] = ROW_STOP;
+    } else if (!s_porter) {
+        out[n++] = ROW_PORTER; /* going online starts at the station */
     } else {
         out[n++] = ROW_HOST;
         out[n++] = ROW_ADDRESS;
@@ -118,6 +140,19 @@ static void type_end(int keep) {
     }
     s_typing = 0;
     SDL_StopTextInput();
+    if (s_quick) {
+        extern void pc_pause_menu_toggle(void);
+        s_quick = 0;
+        pc_pause_menu_toggle(); /* back to the game */
+    }
+}
+
+/* The chat button (pc_pause_menu_quick_say): the Say line, typing at once */
+void pc_mp_menu_quick_say(void) {
+    pc_mp_menu_enter();
+    s_quick = 1;
+    s_quick_ticks = SDL_GetTicks();
+    type_begin(s_say, sizeof(s_say));
 }
 
 /* an address is a host name or IP and maybe :port; a line said is plain letters, digits, spaces and punctuation */
@@ -145,6 +180,12 @@ int pc_mp_menu_text_event(const SDL_Event* e) {
 
     switch (e->type) {
         case SDL_TEXTINPUT:
+            /* a chat key that types (T) can still send its letter just after typing starts */
+            if (s_quick && s_buf == s_say && s_say[0] == '\0' && SDL_GetTicks() - s_quick_ticks < 150 &&
+                e->text.text[0] != '\0' && e->text.text[1] == '\0') {
+                s_quick_ticks = 0;
+                break;
+            }
             type_add(e->text.text);
             break;
         case SDL_KEYDOWN:
@@ -338,8 +379,18 @@ static void draw_info(struct game_s* game, f32 y) {
 }
 
 void pc_mp_menu_draw(struct game_s* game) {
+    extern int pc_mp_train_ready(void);
     int list[24];
-    int n = rows(list);
+    int n;
+
+    if (s_porter && !s_typing && pc_mp_train_ready()) {
+        /* the host's town is here: back to the game, where Porter calls the train */
+        extern void pc_pause_menu_toggle(void);
+        s_porter = 0;
+        pc_pause_menu_toggle();
+        return;
+    }
+    n = rows(list);
     char line[160];
     char name[16], code[8], town[16];
     int trusted;
@@ -371,6 +422,9 @@ void pc_mp_menu_draw(struct game_s* game) {
         switch (list[i]) {
             case ROW_HOST:
                 label = "Host my town";
+                break;
+            case ROW_PORTER:
+                label = "Talk to Porter at the station to go online";
                 break;
             case ROW_ADDRESS:
                 snprintf(line, sizeof(line), "Visit: %s%s", s_address[0] ? s_address : (s_typing ? "" : "(an address or invite code)"),

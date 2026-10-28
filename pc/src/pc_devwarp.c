@@ -84,6 +84,11 @@ void pc_dev_warp(void* playv, int which) {
         door.exit_orientation = mSc_DIRECT_SOUTH;
         door.exit_position.x = (s16)GET_PLAYER_ACTOR(play)->actor_class.world.position.x;
         door.exit_position.z = (s16)GET_PLAYER_ACTOR(play)->actor_class.world.position.z;
+    } else if (scene != NULL && atoi(scene) == 14) {
+        /* the post office, inside its door */
+        door.next_scene_id = SCENE_POST_OFFICE;
+        door.exit_orientation = mSc_DIRECT_NORTH;
+        door.exit_position.x = 160, door.exit_position.z = 240;
     } else if (scene != NULL && atoi(scene) == 3) {
         door.next_scene_id = SCENE_MUSEUM_CAFE;
         door.exit_orientation = mSc_DIRECT_WEST;
@@ -109,6 +114,15 @@ void pc_dev_teleport(void* playv, const char* pos) {
     if ((c = strchr(c + 1, ',')) != NULL) {
         player->actor_class.world.angle.y = DEG2SHORT_ANGLE((f32)atof(c + 1));
         player->actor_class.shape_info.rotation.y = player->actor_class.world.angle.y;
+    }
+    if (play->scene_id == SCENE_FG && mFI_CheckFieldData()) {
+        /* into another acre: the game's own idea of where the player is (walking does this, m_player_common.c_inc);
+         * the train, for one, only comes to the acre the player is in */
+        int bx, bz;
+        mFI_Wpos2BlockNum(&bx, &bz, player->actor_class.world.position);
+        if (bx != play->block_table.block_x || bz != play->block_table.block_z) {
+            mFI_SetBearActor(play, player->actor_class.world.position, TRUE);
+        }
     }
 }
 
@@ -550,5 +564,35 @@ void pc_dev_npc_away(int idx) {
 void pc_dev_wallet(int bells) {
     if (Now_Private != NULL) {
         Now_Private->inventory.wallet = (u32)bells;
+    }
+}
+
+/* ctl "pstate": the player's main state, the demo going on and where they are */
+void pc_dev_pstate(void) {
+    GAME_PLAY* play = (GAME_PLAY*)gamePT;
+    PLAYER_ACTOR* player = play != NULL ? GET_PLAYER_ACTOR(play) : NULL;
+
+    if (player != NULL) {
+        printf("[ctl] pstate main %d talk %p demo %d pos %.0f,%.0f\n", mPlib_get_player_actor_main_index((GAME*)play),
+               (void*)mDemo_Get_talk_actor(), mDemo_CheckDemoType(), player->actor_class.world.position.x,
+               player->actor_class.world.position.z);
+    }
+}
+
+/* ctl "pocket SLOT ITEM": an item in the player's pockets */
+void pc_dev_pocket(int slot, int item) {
+    if (Common_Get(now_private) != NULL && slot >= 0 && slot < mPr_POCKETS_SLOT_COUNT) {
+        mPr_SetPossessionItem(Common_Get(now_private), slot, (mActor_name_t)item, mPr_ITEM_COND_NORMAL);
+    }
+}
+
+/* ctl "homelog": each house's size and roof colour, now and ordered */
+void pc_dev_home_log(void) {
+    int i;
+
+    for (i = 0; i < PLAYER_NUM; i++) {
+        mHm_hs_c* h = Save_GetPointer(homes[i]);
+        printf("[ctl] home %d size %d next %d roof %d next %d ordered %d\n", i, h->size_info.size,
+               h->size_info.next_size, h->outlook_pal, h->next_outlook_pal, h->ordered_outlook_pal);
     }
 }

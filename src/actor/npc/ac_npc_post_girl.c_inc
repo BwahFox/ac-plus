@@ -1,3 +1,11 @@
+#ifdef TARGET_PC
+/* Pelly's or Phyllis's (0/1) menus with "Pay loan" get "Savings" too while this isn't -1 */
+static int pc_aPG_bank_menu_draw_type = -1;
+/* choice strings past the game's 607 and City Folk's (pc_cf_lines.h, 607 + 4 per line) */
+#define PC_aPG_CHOICE_LOAN 0x7E0
+#define PC_aPG_CHOICE_SAVINGS 0x7E1
+#endif
+
 void aPG_Set_continue_msg_num(NPC_POSTGIRL_ACTOR *postgirl, int msg) {
     mMsg_Set_continue_msg_num(mMsg_Get_base_window_p(), msg + postgirl->npc_class.draw.draw_type);
 }
@@ -42,6 +50,17 @@ void aPG_set_post_status(NPC_POSTGIRL_ACTOR *postgirl) {
     if (mPO_get_keep_mail_sum() >= mPO_MAIL_STORAGE_SIZE) {
         status |= aPG_STATUS_DESK_FULL; 
     }
+#ifdef TARGET_PC
+    /* Savings and the loan side by side: both flags give the five-choice menu (pc_aPG_bank_menu) */
+    if (Now_Private->inventory.loan != 0 && mEv_CheckFirstJob() == FALSE) {
+        status |= aPG_STATUS_DONE_FIRST_JOB;
+        aPG_set_loan_balance();
+    }
+    if (postgirl->has_bank_account == TRUE) {
+        status |= aPG_HAS_BANK_ACCOUNT;
+    }
+    pc_aPG_bank_menu_draw_type = (status & aPG_LOAN_AND_BANK) == aPG_LOAN_AND_BANK ? postgirl->npc_class.draw.draw_type : -1;
+#else
     if (Now_Private->inventory.loan != 0) {
         if (mEv_CheckFirstJob() == FALSE) {
             status |= aPG_STATUS_DONE_FIRST_JOB;
@@ -52,8 +71,83 @@ void aPG_set_post_status(NPC_POSTGIRL_ACTOR *postgirl) {
             status |= aPG_HAS_BANK_ACCOUNT;
         }
     }
+#endif
     postgirl->status = status;
 }
+
+#ifdef TARGET_PC
+
+/* The loan menus (Pay loan in the second place, four choices) as five: Savings after Pay loan, and the
+ * deposit talk as its next message. Called on every message the game loads; returns the new size */
+int pc_aPG_bank_menu(u8* buf, int size, int buf_size) {
+    static const u8 loan_choices[] = { CHAR_CONTROL_CODE, mFont_CONT_CODE_SET_SELECT_STRING_4,
+                                       0x00, 0x5B, 0x00, 0x5D, 0x00, 0x9D, 0x00, 0x15 };
+    int i;
+    int next3 = -1;
+
+    if (pc_aPG_bank_menu_draw_type < 0 || size + 6 > buf_size) {
+        return size;
+    }
+    for (i = 0; i + (int)sizeof(loan_choices) <= size; i++) {
+        if (memcmp(buf + i, loan_choices, sizeof(loan_choices)) == 0) {
+            break;
+        }
+    }
+    if (i + (int)sizeof(loan_choices) > size) {
+        return size;
+    }
+
+    /* the choices: send, pay loan, savings, save, never mind. The game's own two read "Deposit" and "Make a
+     * deposit" side by side, so these two get names of their own (pc_aPG_choice) */
+    memmove(buf + i + 8, buf + i + 6, size - (i + 6));
+    size += 2;
+    buf[i + 1] = mFont_CONT_CODE_SET_SELECT_STRING_5;
+    buf[i + 4] = PC_aPG_CHOICE_LOAN >> 8;
+    buf[i + 5] = PC_aPG_CHOICE_LOAN & 0xFF;
+    buf[i + 6] = PC_aPG_CHOICE_SAVINGS >> 8;
+    buf[i + 7] = PC_aPG_CHOICE_SAVINGS & 0xFF;
+
+    /* next messages: 2 (save) and 3 (never mind) move up one, savings goes in at 2 */
+    for (i += sizeof(loan_choices) + 2; i + 3 < size; i++) {
+        if (buf[i] == CHAR_CONTROL_CODE && buf[i + 1] == mFont_CONT_CODE_SET_NEXT_MESSAGE_3) {
+            next3 = i;
+            break;
+        }
+    }
+    if (next3 < 0 || buf[next3 - 4] != CHAR_CONTROL_CODE || buf[next3 - 3] != mFont_CONT_CODE_SET_NEXT_MESSAGE_2) {
+        return size; /* not the layout seen; four choices still work as the loan menu */
+    }
+    memmove(buf + next3 + 8, buf + next3 + 4, size - (next3 + 4));
+    size += 4;
+    buf[next3 + 4] = CHAR_CONTROL_CODE;
+    buf[next3 + 5] = mFont_CONT_CODE_SET_NEXT_MESSAGE_4;
+    buf[next3 + 6] = buf[next3 + 2];
+    buf[next3 + 7] = buf[next3 + 3];
+    buf[next3 + 2] = buf[next3 - 2];
+    buf[next3 + 3] = buf[next3 - 1];
+    buf[next3 - 2] = (0x2DE0 + pc_aPG_bank_menu_draw_type) >> 8;
+    buf[next3 - 1] = (0x2DE0 + pc_aPG_bank_menu_draw_type) & 0xFF;
+    return size;
+}
+
+/* The five-choice menu's own option names (mChoice_Load_ChoseStringFromRom) */
+int pc_aPG_choice(int str_no, u8* str, int len) {
+    const char* name;
+    int i;
+
+    if (str_no == PC_aPG_CHOICE_LOAN) {
+        name = "Pay loan";
+    } else if (str_no == PC_aPG_CHOICE_SAVINGS) {
+        name = "Savings";
+    } else {
+        return FALSE;
+    }
+    for (i = 0; i < len; i++) {
+        str[i] = *name != '\0' ? (u8)*name++ : CHAR_SPACE;
+    }
+    return TRUE;
+}
+#endif
 
 void aPG_office_space_check(NPC_POSTGIRL_ACTOR *postgirl, GAME_PLAY *play) {
     static int msg_no[2] = {0x8bd, 0x8bb};
@@ -117,6 +211,20 @@ void aPG_ask_for_business(NPC_POSTGIRL_ACTOR *postgirl, GAME_PLAY *play) {
             }
             break;
         }
+#ifdef TARGET_PC
+        /* five choices with both: send, pay loan, savings, save, never mind */
+        if ((postgirl->status & aPG_LOAN_AND_BANK) == aPG_LOAN_AND_BANK) {
+            if (choice == mChoice_CHOICE2) {
+                choice = -1;
+                action = aPG_ACTION_DEPOSIT_BEFORE;
+            } else if (choice > mChoice_CHOICE2) {
+                choice -= 1;
+            } else if (choice == mChoice_CHOICE1) {
+                choice = -1;
+                action = aPG_ACTION_REPAY_BEFORE;
+            }
+        }
+#endif
         switch (choice) {
         case mChoice_CHOICE0:
             if ((postgirl->status & aPG_STATUS_DESK_FULL) != 0) {

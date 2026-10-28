@@ -6,6 +6,7 @@
 #include "pc_pattern_qr.h"
 #include "pc_constellation_edit.h"
 #include "pc_skin.h"
+#include "pc_mp.h"
 
 #include "m_font.h"
 #include "m_rcp.h"
@@ -96,9 +97,23 @@ void pc_pause_menu_open_const(void) {
 
 /* Porter's "Online" (pc_mp.c): straight to Online Play */
 void pc_pause_menu_open_online(void) {
+    extern void pc_mp_menu_enter_porter(void);
     g_pc_paused = 1;
     cur_page = PAGE_ONLINE;
-    pc_mp_menu_enter();
+    pc_mp_menu_enter_porter();
+}
+
+/* The chat button (pc_main.c): straight to Online Play's Say line while in an online visit. TRUE if it opened */
+int pc_pause_menu_quick_say(void) {
+    extern void pc_mp_menu_quick_say(void);
+
+    if (g_pc_paused || g_pc_title_main_menu_visible || g_pc_nes_active || !(pc_mp_hosting() || pc_mp_visiting())) {
+        return 0;
+    }
+    g_pc_paused = 1;
+    cur_page = PAGE_ONLINE;
+    pc_mp_menu_quick_say();
+    return 1;
 }
 
 void pc_pause_menu_toggle(void) {

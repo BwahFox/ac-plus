@@ -394,7 +394,7 @@ extern void play_cleanup(GAME* game) {
 #ifdef TARGET_PC
     {
         extern void pc_mcd_online_after_swap(void);
-        pc_mcd_online_after_swap(); /* online visits arrive without the train (pc_m_card.c) */
+        pc_mcd_online_after_swap(); /* online visits: the town swap the train ride would do (pc_m_card.c) */
     }
 #endif
     mEA_CleanCardDLProgram();

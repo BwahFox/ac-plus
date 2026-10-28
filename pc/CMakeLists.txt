@@ -348,6 +348,9 @@ set(PC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/mp/mp_mm.c
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/monocypher/monocypher.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_skin.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_fossil_id.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_msg_text.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_nook_paint.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_museum_rooms.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_settings.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_profiler.c

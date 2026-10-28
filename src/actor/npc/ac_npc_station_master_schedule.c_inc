@@ -275,6 +275,23 @@ static aSTM_THINK_PROC proc_table[] = {
 static void aSTM_think_main_proc(NPC_ACTOR* nactorx, GAME_PLAY* play) {
     NPC_STATION_MASTER_ACTOR* actor = (NPC_STATION_MASTER_ACTOR*)nactorx;
 
+#ifdef TARGET_PC
+    {
+        /* PC_MP_DEBUG: Porter's steps and the train's, as an online trip boards */
+        static int debug = -1, last = -1, last_step = -1, last_train = -1;
+        int train = Common_Get(train_action) * 100 + Common_Get(train_coming_flag) * 10 + Common_Get(train_control_state);
+        if (debug < 0) {
+            debug = getenv("PC_MP_DEBUG") != NULL;
+        }
+        if (debug &&
+            (actor->think_idx != last || nactorx->action.step != last_step || train != last_train)) {
+            printf("[mpdbg] porter think %d step %d train action %d coming %d control %d\n", actor->think_idx,
+                   nactorx->action.step, Common_Get(train_action), Common_Get(train_coming_flag),
+                   Common_Get(train_control_state));
+            last = actor->think_idx, last_step = nactorx->action.step, last_train = train;
+        }
+    }
+#endif
     if (nactorx->action.step == aNPC_ACTION_END_STEP || actor->think_idx == aSTM_THINK_SEE_OFF) {
         (*proc_table[actor->think_proc_idx])(actor, play);
     }
@@ -369,6 +386,16 @@ static void aSTM_see_off_init(NPC_STATION_MASTER_ACTOR* actor, GAME_PLAY* play) 
 }
 
 static void aSTM_game_end_init(NPC_STATION_MASTER_ACTOR* actor, GAME_PLAY* play) {
+#ifdef TARGET_PC
+    {
+        /* an online trip's train has left (pc_mp.c). Not the game-end sound mode (11): it stops the sound effects'
+         * sequence, and only the title or the train ride start it again, so coming home would leave them silent */
+        extern int pc_mp_train_left(GAME_PLAY* play);
+        if (pc_mp_train_left(play)) {
+            return;
+        }
+    }
+#endif
     if (actor->station_check_res == TRUE) {
         aNPS2_setup_game_start(play);
     } else {
