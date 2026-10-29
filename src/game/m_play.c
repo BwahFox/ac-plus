@@ -922,6 +922,8 @@ extern void play_main(GAME* game) {
         pc_quick_save_tick(game);
         extern void pc_mp_play_tick(GAME* game);
         pc_mp_play_tick(game); /* online multiplayer (pc_mp.c) */
+        extern void pc_sit_outdoors_tick(GAME* game);
+        pc_sit_outdoors_tick(game); /* sitting on stumps and rocks (pc_sit_outdoors.c) */
     }
 #endif
     game->doing_point = 0;

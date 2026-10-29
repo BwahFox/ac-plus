@@ -331,17 +331,22 @@ static int mMsg_LoadMsgData(mMsg_Data_c* msg_data, int index, int cut) {
         extern int pc_skin_msg(int index, u8* buf, int buf_size, int* len); /* Rover on skin tones */
         extern int pc_fossil_id_msg(int index, u8* buf, int buf_size, int* len); /* Blathers identifying fossils */
         extern int pc_nook_paint_msg(int index, u8* buf, int buf_size, int* len); /* Nook: About my house */
+        extern int pc_town_map_msg(int index, u8* buf, int buf_size, int* len); /* Rover: the town's map */
         int len;
 
         if (msg_data != NULL && (pc_cf_lines_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len) ||
                                  pc_nlr_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len) ||
                                  pc_skin_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len) ||
                                  pc_fossil_id_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len) ||
-                                 pc_nook_paint_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len))) {
+                                 pc_nook_paint_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len) ||
+                                 pc_town_map_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len))) {
             msg_data->msg_no = index;
             msg_data->data_loaded = TRUE;
             msg_data->msg_len = mMsg_Count_MsgData(msg_data->text_buf.data);
             msg_data->cut = cut;
+            if (getenv("PC_MSG_DUMP") != NULL) {
+                printf("[MsgDump] %d: (ac-plus line, %d bytes)\n", index, len); /* dev, as below */
+            }
             return TRUE;
         }
     }
@@ -402,6 +407,11 @@ static int mMsg_LoadMsgData(mMsg_Data_c* msg_data, int index, int cut) {
                 /* Nook's "other things" offer About my house (pc_nook_paint.c) */
                 extern int pc_nook_paint_menu(u8 * buf, int size, int buf_size);
                 size = pc_nook_paint_menu(msg_data->text_buf.data, size, mMsg_MSG_BUF_MAX);
+            }
+            {
+                /* Rover shows the new town's map once it's named (pc_town_map.c) */
+                extern int pc_town_map_ride(int index, u8 * buf, int size, int buf_size);
+                size = pc_town_map_ride(index, msg_data->text_buf.data, size, mMsg_MSG_BUF_MAX);
             }
 #endif
 

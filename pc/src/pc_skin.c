@@ -19,6 +19,7 @@
 #include "graph.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Face palette entries 1-5 per tone, RGB, darkest first (Deluxe's values) */
@@ -184,6 +185,9 @@ static void pc_skin_preview(int tone) {
 }
 
 void pc_skin_pick_open(int player, int can_cancel) {
+    if (getenv("PC_MSG_DUMP") != NULL) {
+        printf("[skin] picker open\n"); /* dev: tests wait for it */
+    }
     l_pick.active = TRUE;
     l_pick.player = player;
     l_pick.can_cancel = can_cancel;

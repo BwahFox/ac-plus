@@ -2,6 +2,7 @@
 /* ac-plus: the way to get up off a seat, as an angle: where the stick points (forward, either side, or back), if
  * there's room to land there; else forward, else either side, else back, else forward anyway as before */
 int pc_myroom_unit_free(xyz_t pos);
+int pc_sit_outdoor_unit_free(xyz_t pos, f32 y); /* outdoors: stumps and rocks (pc_sit_outdoors.c) */
 static s16 l_pc_standup_angle;
 
 static s16 Player_actor_pc_standup_angle(GAME* game, PLAYER_ACTOR* player) {
@@ -17,7 +18,8 @@ static s16 Player_actor_pc_standup_angle(GAME* game, PLAYER_ACTOR* player) {
 
         pos.x += 35.0f * sin_s(order[i]);
         pos.z += 35.0f * cos_s(order[i]);
-        if (pc_myroom_unit_free(pos)) {
+        if (mFI_CheckFieldData() ? pc_sit_outdoor_unit_free(pos, player->actor_class.world.position.y)
+                                 : pc_myroom_unit_free(pos)) {
             return order[i];
         }
     }

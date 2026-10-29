@@ -1,6 +1,7 @@
 #include "ac_npc_guide2.h"
 #ifdef TARGET_PC
 #include "pc_skin.h"
+#include "pc_town_map.h"
 #endif
 
 #include "m_play.h"

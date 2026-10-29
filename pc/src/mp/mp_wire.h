@@ -71,6 +71,11 @@ typedef struct {
     uint8_t umbrella;   /* umbrella kind + 1, 0 = none */
     float item_frame;
     uint16_t catch_item; /* a fish they hold up having caught it (its item), 0 = none */
+    /* the body's root held still while an animation plays (sitting, lying in bed: cKF animation_enabled) */
+    uint8_t root_flags;
+    int16_t root_rot[3];
+    int16_t tilt_x, tilt_z; /* the whole body tipped over (lying in bed: shape_info.rotation) */
+    float root_trans[3];
     uint32_t tick;      /* sender's frame counter, for ordering */
 } mp_pstate;
 

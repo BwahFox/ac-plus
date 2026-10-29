@@ -572,10 +572,14 @@ void pc_dev_pstate(void) {
     GAME_PLAY* play = (GAME_PLAY*)gamePT;
     PLAYER_ACTOR* player = play != NULL ? GET_PLAYER_ACTOR(play) : NULL;
 
+    if (play != NULL && player == NULL) {
+        printf("[state] noplayer submenu %d/%d\n", play->submenu.menu_type, play->submenu.process_status);
+    }
     if (player != NULL) {
-        printf("[ctl] pstate main %d talk %p demo %d pos %.0f,%.0f\n", mPlib_get_player_actor_main_index((GAME*)play),
-               (void*)mDemo_Get_talk_actor(), mDemo_CheckDemoType(), player->actor_class.world.position.x,
-               player->actor_class.world.position.z);
+        printf("[state] main %d talk %p demo %d pos %.0f,%.0f submenu %d/%d\n",
+               mPlib_get_player_actor_main_index((GAME*)play), (void*)mDemo_Get_talk_actor(), mDemo_CheckDemoType(),
+               player->actor_class.world.position.x, player->actor_class.world.position.z, play->submenu.menu_type,
+               play->submenu.process_status);
     }
 }
 
@@ -592,7 +596,7 @@ void pc_dev_home_log(void) {
 
     for (i = 0; i < PLAYER_NUM; i++) {
         mHm_hs_c* h = Save_GetPointer(homes[i]);
-        printf("[ctl] home %d size %d next %d roof %d next %d ordered %d\n", i, h->size_info.size,
+        printf("[state] home %d size %d next %d roof %d next %d ordered %d\n", i, h->size_info.size,
                h->size_info.next_size, h->outlook_pal, h->next_outlook_pal, h->ordered_outlook_pal);
     }
 }

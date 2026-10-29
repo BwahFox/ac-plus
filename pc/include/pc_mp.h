@@ -35,6 +35,10 @@ typedef struct {
     int item_main, item_shape, item_anim, umbrella;
     f32 item_frame;
     int catch_item; /* a fish they hold up (its item), 0 = none */
+    int root_flags; /* their body's root held still (sitting, in bed), at root_rot / root_trans */
+    s16 root_rot[3];
+    s16 tilt_x, tilt_z; /* their body tipped over (lying down) */
+    f32 root_trans[3];
     /* look, ready to draw */
     int gender;
     u8 name[8];

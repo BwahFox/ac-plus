@@ -202,6 +202,8 @@ static void aMPP_actor_move(ACTOR* actorx, GAME* game) {
         pos->x += dx * 0.5f, pos->y += dy * 0.5f, pos->z += dz * 0.5f;
     }
     actorx->shape_info.rotation.y = r->angle_y;
+    actorx->shape_info.rotation.x = r->tilt_x; /* lying in bed: the body tipped over */
+    actorx->shape_info.rotation.z = r->tilt_z;
     actorx->world.angle.y = r->angle_y;
 
     /* the same animations and frames as the real player shows (indices were checked in pc_mp.c) */
@@ -224,6 +226,15 @@ static void aMPP_actor_move(ACTOR* actorx, GAME* game) {
     pp->kf0.frame_control.speed = 0.0f;
     pp->kf1.frame_control.speed = 0.0f;
     cKF_SkeletonInfo_R_combine_play(&pp->kf0, &pp->kf1, pp->part_table);
+    /* the body's root as theirs is: held still while they sit or lie in bed (the animation moves the player
+     * there, which the position already has), else the animation's own */
+    pp->kf0.animation_enabled = r->root_flags;
+    pp->kf0.base_model_translation.x = r->root_trans[0];
+    pp->kf0.base_model_translation.y = r->root_trans[1];
+    pp->kf0.base_model_translation.z = r->root_trans[2];
+    pp->kf0.base_model_rotation.x = r->root_rot[0];
+    pp->kf0.updated_base_model_rotation.y = r->root_rot[1];
+    pp->kf0.updated_base_model_rotation.z = r->root_rot[2];
     pp->posed = TRUE;
     aMPP_item_pose(pp, r);
     aMPP_umbrella(pp, r, game);

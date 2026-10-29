@@ -608,8 +608,36 @@ extern int mSDI_StartInitBefore(GAME* game, int player_no, int init_mode, int ma
                                                             &mSDI_StartInitErr };
 
     mEv_UnSetGateway();
+#ifdef TARGET_PC
+    {
+        /* a brand-new town: Rover will show its map on the train (pc_town_map.c) */
+        extern void pc_town_map_new_town(int on);
+        pc_town_map_new_town(init_mode == mSDI_INIT_MODE_NEW);
+    }
+#endif
     return (*init_proc[init_mode])(game, player_no, malloc_flag);
 }
+
+#ifdef TARGET_PC
+/* ac-plus: another town for the one being started, as Rover's "what about this map?" on the train
+ * (pc_town_map.c). The whole new town is made again (land, villagers and their houses, the station, everything
+ * StartInitNew sets), keeping what the player has told Rover: their name, gender and the town's name. */
+extern void pc_sdi_reroll_town(GAME* game) {
+    int player_no = Common_Get(player_no);
+    Private_c keep = *Save_GetPointer(private_data[player_no]);
+    u8 land_name[LAND_NAME_SIZE];
+
+    bcopy(Save_Get(land_info).name, land_name, LAND_NAME_SIZE);
+    if (mSDI_StartInitBefore(game, player_no, mSDI_INIT_MODE_NEW, mSDI_MALLOC_FLAG_ZELDA) == TRUE) {
+        mSDI_StartInitAfter(game, TRUE, mSDI_MALLOC_FLAG_ZELDA);
+    }
+    bcopy(land_name, Save_Get(land_info).name, LAND_NAME_SIZE);
+    bcopy(land_name, keep.player_ID.land_name, LAND_NAME_SIZE);
+    keep.player_ID.land_id = Save_Get(land_info).id;
+    *Save_GetPointer(private_data[player_no]) = keep;
+    Common_Set(now_private, Save_GetPointer(private_data[player_no]));
+}
+#endif
 
 extern int mSDI_StartDataInit(GAME* game, int player_no, int init_mode) {
     static int renew_reserve_mode_table[mSDI_INIT_MODE_NUM] = { TRUE, FALSE, FALSE, FALSE, FALSE };

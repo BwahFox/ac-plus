@@ -147,7 +147,7 @@ static int mp_frame_ok(float v) {
 }
 
 /* fixed body sizes; 0 = variable (checked by the decoder) */
-#define MP_PSTATE_SIZE (1 + 2 + 2 + 1 + 12 + 2 + 4 + 8 + 4 + 3 + 4 + 4 + 2 + 4)
+#define MP_PSTATE_SIZE (1 + 2 + 2 + 1 + 12 + 2 + 4 + 8 + 4 + 3 + 4 + 4 + 2 + 1 + 6 + 4 + 12 + 4)
 #define MP_LOOK_SIZE (1 + MP_NAME_LEN * 2 + 4 + 2 + MP_DESIGN_BYTES + 32)
 #define MP_JOIN_SIZE_OLD (2 + 1 + MP_LOOK_SIZE) /* before MP_JOIN_VERSION 9 */
 #define MP_JOIN_SIZE (MP_JOIN_SIZE_OLD + MP_RELEASE_LEN)
@@ -285,6 +285,15 @@ int mp_wire_encode_msg(mp_wr* w, const mp_msg* m) {
             mp_wr_u8(w, s->umbrella);
             mp_wr_f32(w, s->item_frame);
             mp_wr_u16(w, s->catch_item);
+            mp_wr_u8(w, s->root_flags);
+            mp_wr_u16(w, (uint16_t)s->root_rot[0]);
+            mp_wr_u16(w, (uint16_t)s->root_rot[1]);
+            mp_wr_u16(w, (uint16_t)s->root_rot[2]);
+            mp_wr_u16(w, (uint16_t)s->tilt_x);
+            mp_wr_u16(w, (uint16_t)s->tilt_z);
+            mp_wr_f32(w, s->root_trans[0]);
+            mp_wr_f32(w, s->root_trans[1]);
+            mp_wr_f32(w, s->root_trans[2]);
             mp_wr_u32(w, s->tick);
             break;
         }
@@ -431,7 +440,21 @@ static int mp_decode_body(mp_rd* r, mp_msg* m, size_t body_len) {
             s->umbrella = mp_rd_u8(r);
             s->item_frame = mp_rd_f32(r);
             s->catch_item = mp_rd_u16(r); /* (pc_mp.c checks it's a fish) */
+            s->root_flags = mp_rd_u8(r) & 7; /* cKF_ANIMATION_TRANS_XZ | _TRANS_Y | _ROT_Y */
+            s->root_rot[0] = (int16_t)mp_rd_u16(r);
+            s->root_rot[1] = (int16_t)mp_rd_u16(r);
+            s->root_rot[2] = (int16_t)mp_rd_u16(r);
+            s->tilt_x = (int16_t)mp_rd_u16(r);
+            s->tilt_z = (int16_t)mp_rd_u16(r);
+            s->root_trans[0] = mp_rd_f32(r);
+            s->root_trans[1] = mp_rd_f32(r);
+            s->root_trans[2] = mp_rd_f32(r);
             s->tick = mp_rd_u32(r);
+            if (!(isfinite(s->root_trans[0]) && isfinite(s->root_trans[1]) && isfinite(s->root_trans[2]) &&
+                  fabsf(s->root_trans[0]) < 100000.0f && fabsf(s->root_trans[1]) < 100000.0f &&
+                  fabsf(s->root_trans[2]) < 100000.0f)) {
+                s->root_flags = 0; /* nonsense: the animation's own root */
+            }
             return s->player < 4 && (s->flags & ~MP_PS_FLAGS_MASK) == 0 && mp_pos_ok(s->x) && mp_pos_ok(s->y) &&
                    mp_pos_ok(s->z) && mp_frame_ok(s->frame0) && mp_frame_ok(s->frame1) && mp_frame_ok(s->item_frame) && isfinite(s->speed) &&
                    s->speed >= -4.0f && s->speed <= 4.0f;

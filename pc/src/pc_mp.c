@@ -982,6 +982,10 @@ static void mp_apply_state(int slot, const mp_pstate* s) {
     r->frame0 = s->frame0, r->frame1 = s->frame1;
     r->speed = s->speed;
     r->part_table = s->part_table;
+    r->root_flags = s->root_flags;
+    r->tilt_x = s->tilt_x, r->tilt_z = s->tilt_z;
+    r->root_rot[0] = s->root_rot[0], r->root_rot[1] = s->root_rot[1], r->root_rot[2] = s->root_rot[2];
+    r->root_trans[0] = s->root_trans[0], r->root_trans[1] = s->root_trans[1], r->root_trans[2] = s->root_trans[2];
     r->eye = s->eye, r->mouth = s->mouth;
     r->tick = s->tick;
     r->has_state = 1;
@@ -1068,6 +1072,15 @@ static int mp_my_state(GAME* game, mp_pstate* s) {
     s->frame1 = p->keyframe1.frame_control.current_frame;
     s->speed = p->keyframe0.frame_control.speed;
     s->part_table = (uint8_t)p->part_table_idx;
+    s->root_flags = (uint8_t)(p->keyframe0.animation_enabled & 7);
+    s->tilt_x = p->actor_class.shape_info.rotation.x;
+    s->tilt_z = p->actor_class.shape_info.rotation.z;
+    s->root_rot[0] = p->keyframe0.base_model_rotation.x;
+    s->root_rot[1] = p->keyframe0.updated_base_model_rotation.y;
+    s->root_rot[2] = p->keyframe0.updated_base_model_rotation.z;
+    s->root_trans[0] = p->keyframe0.base_model_translation.x;
+    s->root_trans[1] = p->keyframe0.base_model_translation.y;
+    s->root_trans[2] = p->keyframe0.base_model_translation.z;
     mp_my_item(p, s);
     if (pc_mp_test_catch_frames > 0) {
         pc_mp_test_catch_frames--;

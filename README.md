@@ -212,7 +212,11 @@ mouse, controllers), ac-plus adds:
 - Fish and insects you've donated get the map's museum marker in your collection pages.
 - At the Roost, A by the stool always sits you down, without starting a chat with Brewster first.
 
+**New towns**
+- Pick your town's map on the train, as in Animal Crossing Deluxe: once you name your town, Rover shows you its map. Say no and he finds another, as many times as you like.
+
 **Home**
+- Sit on tree stumps and rocks: press A facing one with nothing in your hands (a tool in hand still chops, digs or swings). Push the stick to get up.
 - Ask Tom Nook to repaint your roof any time: "Other things" → "About my house". It costs what a can of his paint does, and the new color is there the next day.
 - **New Leaf style extra rooms:** once your house is fully paid off (big main room, upstairs and
   basement), Tom Nook offers more: a room off the left, the right and the back of the main room,

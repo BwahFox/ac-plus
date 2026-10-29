@@ -1742,6 +1742,17 @@ extern void Player_actor_move(ACTOR* actorx, GAME* game) {
 
     (*proc[idx])(actorx, game);
     Player_actor_move_other_func2(actorx, game); //
+#ifdef TARGET_PC
+    {
+        /* seated on something taller than a chair (a rock, pc_sit_outdoors.c): at its top */
+        extern int pc_player_seat_raised;
+        extern f32 pc_player_seat_y;
+
+        if (pc_player_seat_raised && (idx == mPlayer_INDEX_SITDOWN || idx == mPlayer_INDEX_SITDOWN_WAIT)) {
+            actorx->world.position.y = pc_player_seat_y;
+        }
+    }
+#endif
 
 #ifdef PC_ENHANCEMENTS
     Player_actor_check_and_switch_tool(game);

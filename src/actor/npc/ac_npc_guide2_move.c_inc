@@ -850,7 +850,8 @@ static void aNG2_actor_move(ACTOR* actorx, GAME* game) {
     aNG2_talk_demo_proc(actorx);
     aNG2_check_talk_msg_no(guide2);
 #ifdef TARGET_PC
-    if (!pc_skin_ask_busy()) /* he's asking about skin tones (pc_skin.c) */
+    if (!pc_skin_ask_busy() && /* he's asking about skin tones (pc_skin.c) */
+        !pc_town_map_busy())   /* or showing the town's map (pc_town_map.c) */
 #endif
     (*guide2->proc)(guide2, play);
     Common_Get(clip).npc_clip->move_after_proc(actorx, game);

@@ -351,6 +351,8 @@ set(PC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_fossil_id.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_msg_text.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_nook_paint.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_sit_outdoors.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_town_map.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_museum_rooms.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_settings.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_profiler.c
