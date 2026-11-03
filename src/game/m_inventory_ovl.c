@@ -1,3 +1,6 @@
+#ifdef TARGET_PC
+#include "pc_cf_creature.h"
+#endif
 #include "m_inventory_ovl.h"
 
 #include "m_player_lib.h"
@@ -113,7 +116,17 @@ static int mIV_Get_pl_main_anime_index(int type) {
     return -1;
 }
 
+#ifdef TARGET_PC
+/* The fish and bug pages' second page: City Folk's (pc_cf_creature.c). Down past the last row, up past the first */
+int g_mIV_pc_collect_second = FALSE;
+#endif
+
 static mActor_name_t mIV_set_collect_itemNo(int type, int page) {
+#ifdef TARGET_PC
+    if (g_mIV_pc_collect_second) {
+        return pc_cf_creature_collected_nth(page != mIV_PAGE_INSECT_COLLECTION, type);
+    }
+#endif
     if (page == mIV_PAGE_INSECT_COLLECTION) {
         int insect_no = mIV_insect_collect_list[type];
         int bit = mRmTp_FtrItemNo2FtrIdx(FTR_INSECT_START + FTR_NO_2_IDX(insect_no));
@@ -1943,6 +1956,9 @@ static void mIV_pc_draw_donated(GRAPH* graph, f32 x, f32 y) {
 }
 
 static int mIV_pc_donated(int type, int page) {
+    if (g_mIV_pc_collect_second) {
+        return pc_cf_museum_donor(mIV_set_collect_itemNo(type, page)) != 0;
+    }
     if (page == mIV_PAGE_INSECT_COLLECTION) {
         return mMmd_InsectInfo(mIV_insect_collect_list[type]) != 0;
     }
@@ -1995,6 +2011,20 @@ static void mIV_set_collect_dl(Submenu* submenu, mSM_MenuInfo_c* menu_info, GAME
 #endif
             }
         }
+#ifdef TARGET_PC
+        /* which page this is, and that there's another */
+        if (pc_cf_creature_item(PC_CF_FISH_ITEM) && submenu->overlay->inventory_ovl->page_order[0] == page) {
+            static u8 first[] = "Page 1 of 2"; /* (this font has a music note for a slash) */
+            static u8 second[] = "Page 2 of 2";
+            u8* str = g_mIV_pc_collect_second ? second : first;
+            int len = g_mIV_pc_collect_second ? sizeof(second) - 1 : sizeof(first) - 1;
+            f32 width = (f32)mFont_GetStringWidth(str, len, TRUE) * 0.75f;
+
+            submenu->overlay->set_char_matrix_proc(graph);
+            mFont_SetLineStrings(game, str, len, pos_x + 160.0f - width * 0.5f, -pos_y + 190.0f, 60, 60, 130, 255, FALSE,
+                                 TRUE, 0.75f, 0.75f, mFont_MODE_POLY);
+        }
+#endif
     }
 }
 
@@ -2180,6 +2210,9 @@ static void mIV_inventory_ovl_init(Submenu* submenu, mSM_MenuInfo_c* menu_info, 
         inv_ovl->shovel_flag = FALSE;
     }
 
+#ifdef TARGET_PC
+    g_mIV_pc_collect_second = FALSE;
+#endif
     inv_ovl->page_order[0] = mIV_PAGE_INVENTORY;
     inv_ovl->page_order[1] = mIV_PAGE_FISH_COLLECTION;
     inv_ovl->page_order[2] = mIV_PAGE_INSECT_COLLECTION;

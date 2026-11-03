@@ -1,6 +1,11 @@
 #include "m_shop.h"
 #ifdef TARGET_PC
+#include "pc_cf_ftr.h" /* City Folk furniture */
+#include "pc_cf_creature.h" /* and fish and bugs */
+#endif
+#ifdef TARGET_PC
 #include "pc_basement.h"
+#include "pc_cf_decor.h"
 #endif
 
 #include "game.h"
@@ -227,6 +232,11 @@ extern int mSP_CollectCheck(mActor_name_t item) {
     switch (ITEM_NAME_GET_TYPE(ftr_item)) {
         case NAME_TYPE_FTR0:
         case NAME_TYPE_FTR1: {
+#ifdef TARGET_PC
+            if (pc_cf_ftr_item(ftr_item)) {
+                return pc_cf_ftr_collected(ftr_item); /* City Folk's (pc_cf_ftr.c) */
+            }
+#endif
             bitfield = Common_Get(now_private)->furniture_collected_bitfield;
             idx = mRmTp_FtrItemNo2FtrIdx(ftr_item);
             break;
@@ -278,38 +288,43 @@ static int mSP_CountElementInCommonList(mActor_name_t* list) {
     return count;
 }
 
+/* PC: City Folk's furniture (pc_cf_ftr.c) is rarer than the GameCube's: in any pick from a list each of its pieces
+ * is this many times less likely than one of the GameCube's (lists A-C are about half City Folk's, so about 1 piece
+ * in 5 picked is one of theirs) */
+#define mSP_PC_CF_FTR_RARITY 4
+
+static int mSP_pc_pick_weight(mActor_name_t item) {
+    return pc_cf_ftr_item(item) ? 1 : mSP_PC_CF_FTR_RARITY;
+}
+
 static int mSP_CountElementInCommonList_collect(mActor_name_t* list, int* selected_idx, int uncollected_only) {
     int count = 0;
+    int total = 0;
     int selected;
-    mActor_name_t* list_p;
+    int i;
 
-    if (uncollected_only == FALSE) {
-        count = mSP_CountElementInCommonList(list);
-        selected_idx[0] = RANDOM(count);
-
-        return count;
-    }
-
-    /* Count all uncollected items in the list */
-    for (list_p = list; list_p[0] != EMPTY_NO; list_p++) {
-        if (mSP_CollectCheck(list_p[0]) == FALSE) {
+    /* Count the items it may pick (all, or the uncollected ones), and their weights */
+    for (i = 0; list[i] != EMPTY_NO; i++) {
+        if (uncollected_only == FALSE || mSP_CollectCheck(list[i]) == FALSE) {
             count++;
+            total += mSP_pc_pick_weight(list[i]);
         }
     }
 
+    selected_idx[0] = 0;
     if (count == 0) {
-        selected_idx[0] = 0;
         return 0;
     }
 
-    selected = RANDOM(count);
-    selected_idx[0] = 0;
-    for (list_p = list; list_p[0] != EMPTY_NO && selected > 0; list_p++) {
-        if (mSP_CollectCheck(list_p[0]) == FALSE) {
-            selected--;
+    selected = RANDOM(total);
+    for (i = 0; list[i] != EMPTY_NO; i++) {
+        if (uncollected_only == FALSE || mSP_CollectCheck(list[i]) == FALSE) {
+            selected -= mSP_pc_pick_weight(list[i]);
+            if (selected < 0) {
+                selected_idx[0] = i;
+                break;
+            }
         }
-
-        selected_idx[0]++;
     }
 
     return count;
@@ -666,6 +681,15 @@ extern u32 mSP_ItemNo2ItemPrice(mActor_name_t item_no) {
 #ifdef TARGET_PC
     if (PC_ITEM_IS_BASEMENT_LOOK(item_no)) {
         return PC_BASEMENT_LOOK_PRICE;
+    }
+    if (pc_cf_decor_item(item_no)) {
+        return pc_cf_decor_price(item_no); /* City Folk's wallpaper and carpets */
+    }
+    if (pc_cf_ftr_item(item_no)) {
+        return pc_cf_ftr_price(item_no & ~3); /* City Folk's furniture (pc_cf_ftr.c) */
+    }
+    if (pc_cf_creature_item(item_no)) {
+        return pc_cf_creature_price(item_no); /* City Folk's fish and bugs (pc_cf_creature.c) */
     }
 #endif
 

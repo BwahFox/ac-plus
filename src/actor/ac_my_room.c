@@ -179,7 +179,14 @@ typedef struct my_room_work_s {
 } aMR_work_c;
 
 static aMR_work_c l_aMR_work;
-static aMR_bank_idx_t l_bank_index_table[FTR_NUM];
+#ifdef TARGET_PC
+/* City Folk's furniture (pc_cf_ftr.c) has indices past the GameCube's: the table covers every index there can be */
+#include "pc_cf_ftr.h"
+#define aMR_FTR_IDX_NUM PC_FTR_IDX_NUM
+#else
+#define aMR_FTR_IDX_NUM FTR_NUM
+#endif
+static aMR_bank_idx_t l_bank_index_table[aMR_FTR_IDX_NUM];
 static u8* l_bank_address_table[aMR_FTR_BANK_NUM];
 
 // clang-format off
@@ -263,6 +270,11 @@ static int aMR_GetPlayerDirect(const f32* normal_xz);
 static int aMR_Get3dDirectStatus(int direct);
 
 static aFTR_PROFILE* aMR_GetFurnitureProfile(u16 ftr_no) {
+#ifdef TARGET_PC
+    if (ftr_no >= FTR_NUM && pc_cf_ftr_idx(ftr_no)) {
+        return pc_cf_ftr_profile(ftr_no); /* City Folk's (pc_cf_ftr.c) */
+    }
+#endif
     if (ftr_no < FTR_NUM) {
         if (furniture_quality[ftr_no] != NULL) {
             return furniture_quality[ftr_no];
@@ -634,7 +646,7 @@ static int aMR_WeightPossible(ACTOR* actorx, int type) {
 }
 
 static int aMR_CheckFurnitureBankExist(u16 idx) {
-    if (l_bank_index_table[idx] != aMR_NO_BANK) {
+    if (idx < aMR_FTR_IDX_NUM && l_bank_index_table[idx] != aMR_NO_BANK) {
         return TRUE;
     }
 
@@ -642,7 +654,7 @@ static int aMR_CheckFurnitureBankExist(u16 idx) {
 }
 
 static int aMR_GetFtrBankID(u16 idx) {
-    if (l_bank_index_table[idx] == aMR_NO_BANK) {
+    if (idx >= aMR_FTR_IDX_NUM || l_bank_index_table[idx] == aMR_NO_BANK) {
         return -1;
     }
 
@@ -665,7 +677,7 @@ static int aMR_SearchFurnitureBankVacancy(void) {
     int i;
     int count = 0;
 
-    for (i = 0; i < FTR_NUM; i++) {
+    for (i = 0; i < aMR_FTR_IDX_NUM; i++) {
         if (aMR_CheckFurnitureBankExist(i)) {
             count++;
         }
@@ -688,7 +700,7 @@ static int aMR_SearchFreeFurnitureBankIdx(void) {
         int banks = l_aMR_work.list_size < aMR_FTR_BANK_NUM ? l_aMR_work.list_size : aMR_FTR_BANK_NUM;
 
         memset(in_use, 0, sizeof(in_use));
-        for (i = 0; i < FTR_NUM; i++) {
+        for (i = 0; i < aMR_FTR_IDX_NUM; i++) {
             if (l_bank_index_table[i] < aMR_FTR_BANK_NUM) {
                 in_use[l_bank_index_table[i]] = TRUE;
             }
@@ -706,7 +718,7 @@ static int aMR_SearchFreeFurnitureBankIdx(void) {
         int j;
         int count = 0;
 
-        for (j = 0; j < FTR_NUM; j++) {
+        for (j = 0; j < aMR_FTR_IDX_NUM; j++) {
             if (l_bank_index_table[j] == i) {
                 count++;
             }
@@ -929,7 +941,7 @@ static void aMR_SetFirstScale(FTR_ACTOR* ftr_actor) {
 }
 
 static void aMR_DeleteFurnitureBank(u16 ftr_no) {
-    if (aMR_CountAppointFurniture(ftr_no) == 0) {
+    if (ftr_no < aMR_FTR_IDX_NUM && aMR_CountAppointFurniture(ftr_no) == 0) {
         l_bank_index_table[ftr_no] = aMR_NO_BANK;
     }
 }
@@ -1404,7 +1416,7 @@ static int aMR_DmaFurniture_Common(u16 ftr_id, mActor_name_t item, u8* bank_addr
     if (bank_addr != NULL) {
         aFTR_PROFILE* profile = aMR_GetFurnitureProfile(ftr_id);
 
-        if (bank_idx != -1) {
+        if (bank_idx != -1 && ftr_id < aMR_FTR_IDX_NUM) {
             l_bank_index_table[ftr_id] = bank_idx;
         }
 
@@ -1497,7 +1509,7 @@ static void aMR_InitFurnitureActorExistTable(void) {
 static void aMR_InitFurnitureBankTable(void) {
     int i;
 
-    for (i = 0; i < FTR_NUM; i++) {
+    for (i = 0; i < aMR_FTR_IDX_NUM; i++) {
         l_bank_index_table[i] = aMR_NO_BANK;
     }
 }
@@ -2324,7 +2336,7 @@ static void My_Room_Actor_dt(ACTOR* actorx, GAME* game) {
 static void aMR_RedmaFtrBank(void) {
     int i;
 
-    for (i = 0; i < FTR_NUM; i++) {
+    for (i = 0; i < aMR_FTR_IDX_NUM; i++) {
         if (l_bank_index_table[i] != aMR_NO_BANK) {
             u8* bank_addr = aMR_BankNo2BankAddress(l_bank_index_table[i]);
             mActor_name_t item = mRmTp_FtrIdx2FtrItemNo(i, mRmTp_DIRECT_SOUTH);
@@ -3196,7 +3208,8 @@ void pc_aMR_switch_each(void (*fn)(void* user, int idx, u16 name, int ut_x, int 
         FTR_ACTOR* ftr_actor = &l_aMR_work.ftr_actor_list[i];
         int ut_x, ut_z;
 
-        if (l_aMR_work.used_list[i] == TRUE && ftr_actor->name < FTR_NUM && aMR_pc_switch_shared(ftr_actor->name) &&
+        if (l_aMR_work.used_list[i] == TRUE && (ftr_actor->name < FTR_NUM || pc_cf_ftr_idx(ftr_actor->name)) &&
+            aMR_pc_switch_shared(ftr_actor->name) &&
             mFI_Wpos2UtNum(&ut_x, &ut_z, ftr_actor->position)) {
             fn(user, i, ftr_actor->name, ut_x, ut_z, ftr_actor->layer, ftr_actor->switch_bit != FALSE);
         }

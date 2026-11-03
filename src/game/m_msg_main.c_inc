@@ -329,17 +329,23 @@ static int mMsg_LoadMsgData(mMsg_Data_c* msg_data, int index, int cut) {
         extern int pc_cf_lines_msg(int index, u8* buf, int buf_size, int* len);
         extern int pc_nlr_msg(int index, u8* buf, int buf_size, int* len); /* Nook on the extra rooms */
         extern int pc_skin_msg(int index, u8* buf, int buf_size, int* len); /* Rover on skin tones */
+        extern int pc_const_villager_msg(int index, u8* buf, int buf_size, int* len); /* villagers on constellations */
+        extern int pc_cf_creature_msg(int index, u8* buf, int buf_size, int* len); /* City Folk's fish and bugs */
         extern int pc_fossil_id_msg(int index, u8* buf, int buf_size, int* len); /* Blathers identifying fossils */
         extern int pc_nook_paint_msg(int index, u8* buf, int buf_size, int* len); /* Nook: About my house */
         extern int pc_town_map_msg(int index, u8* buf, int buf_size, int* len); /* Rover: the town's map */
+        extern int pc_season_island_msg(int index, u8* buf, int buf_size, int* len); /* Nook: islands */
         int len;
 
         if (msg_data != NULL && (pc_cf_lines_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len) ||
                                  pc_nlr_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len) ||
                                  pc_skin_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len) ||
+                                 pc_const_villager_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len) ||
+                                 pc_cf_creature_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len) ||
                                  pc_fossil_id_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len) ||
                                  pc_nook_paint_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len) ||
-                                 pc_town_map_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len))) {
+                                 pc_town_map_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len) ||
+                                 pc_season_island_msg(index, msg_data->text_buf.data, mMsg_MSG_BUF_MAX, &len))) {
             msg_data->msg_no = index;
             msg_data->data_loaded = TRUE;
             msg_data->msg_len = mMsg_Count_MsgData(msg_data->text_buf.data);

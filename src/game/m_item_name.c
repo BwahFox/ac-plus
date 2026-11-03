@@ -1,6 +1,11 @@
 #include "m_item_name.h"
 #ifdef TARGET_PC
+#include "pc_cf_ftr.h" /* City Folk furniture */
+#include "pc_cf_creature.h" /* and fish and bugs */
+#endif
+#ifdef TARGET_PC
 #include "pc_basement.h"
+#include "pc_cf_decor.h"
 #include <string.h>
 #endif
 
@@ -508,6 +513,15 @@ extern void mIN_copy_name_str(u8* dst, mActor_name_t item) {
                                                       CHAR_SPACE, CHAR_SPACE, CHAR_SPACE, CHAR_SPACE };
 
 #ifdef TARGET_PC
+    if (pc_cf_decor_name(item, dst, mIN_ITEM_NAME_LEN)) {
+        return; /* City Folk's wallpaper and carpets (pc_cf_decor.c) */
+    }
+    if (pc_cf_ftr_name(item, dst, mIN_ITEM_NAME_LEN)) {
+        return; /* City Folk's furniture (pc_cf_ftr.c) */
+    }
+    if (pc_cf_creature_name(item, dst, mIN_ITEM_NAME_LEN)) {
+        return; /* City Folk's fish and bugs (pc_cf_creature.c) */
+    }
     if (PC_ITEM_IS_BASEMENT_LOOK(item)) {
         static const char* names[] = { "basement floor", "basement wall" };
         const char* name = names[item == PC_ITM_BASEMENT_WALL];
@@ -607,6 +621,17 @@ extern int mIN_get_item_article(mActor_name_t item) {
     int index = item_no & 0xFF;
 
 #ifdef TARGET_PC
+    if (pc_cf_decor_item(item_no) || pc_cf_ftr_item(item_no) || pc_cf_creature_item(item_no)) {
+        u8 name[mIN_ITEM_NAME_LEN];
+
+        if (!pc_cf_decor_name(item_no, name, mIN_ITEM_NAME_LEN) && !pc_cf_creature_name(item_no, name, mIN_ITEM_NAME_LEN)) {
+            pc_cf_ftr_name(item_no, name, mIN_ITEM_NAME_LEN);
+        }
+        /* City Folk's: "an" before a vowel */
+        return (name[0] == 'a' || name[0] == 'e' || name[0] == 'i' || name[0] == 'o' || name[0] == 'u')
+                   ? mIN_ARTICLE_AN
+                   : mIN_ARTICLE_A;
+    }
     if (PC_ITEM_IS_BASEMENT_LOOK(item_no)) {
         return itemArt_Carpet[0]; /* as the carpets and wallpapers: past the end of their tables */
     }

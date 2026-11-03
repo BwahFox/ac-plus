@@ -398,3 +398,11 @@ static aGYO_DL_c* aGYO_displayList[45] = {
   &aGYO_taiya_dl,
   NULL
 };
+
+#ifdef TARGET_PC
+/* A fish's three bends, City Folk's too (pc_cf_creature.c) */
+#include "pc_cf_creature.h"
+#define aGYO_PC_DL(type) ((type) >= aGYO_TYPE_PC_CF ? pc_cf_fish_dl(type) : (Gfx**)aGYO_displayList[type])
+#else
+#define aGYO_PC_DL(type) ((Gfx**)aGYO_displayList[type])
+#endif

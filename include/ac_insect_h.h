@@ -229,6 +229,9 @@ typedef struct insect_actor_s {
     int light_flag;
     s16 light_counter;
     s16 light_step;
+#ifdef TARGET_PC
+    int pc_cf; /* City Folk's: which of theirs it is (pc_cf_creature.h), its type standing for how it moves; 0 not */
+#endif
 } aINS_INSECT_ACTOR;
 
 /* sizeof(aINS_CTRL_ACTOR) == 0x183C */

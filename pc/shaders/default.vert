@@ -18,8 +18,10 @@ out vec2 v_texcoord1;
 out vec3 v_normal;
 out float v_fog_z;
 out float v_curve_drop;  /* how far the curve lowered this point (ahead of the flat point only) */
+out vec3 v_eye_flat;     /* the point in eye space before the curve: the fragment shader curves it exactly */
 void main() {
     vec4 eyePos = u_modelview * vec4(a_position, 1.0);
+    v_eye_flat = eyePos.xyz;
     v_curve_drop = 0.0;
     if (u_curve_up.w != 0.0) {
         /* rolling log: drop by k*u^2 with u the distance ahead of/behind the flat point */

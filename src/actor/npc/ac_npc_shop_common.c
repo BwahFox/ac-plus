@@ -90,6 +90,7 @@ static void aNSC_BGcheck(ACTOR* actor) {
 
 #if defined(TARGET_PC) && !defined(aNSC_MAMEDANUKI)
 #include "pc_nook_paint.h"
+#include "pc_season_island.h"
 
 static int pc_aNSC_paint_only; /* the roof colour being picked is a repaint (About my house), not an upgrade's */
 
@@ -2084,6 +2085,7 @@ static void aNSC_request_Q_answer_wait(NPC_SHOP_COMMON_ACTOR* shop_common, GAME_
             /* the "other things" menu offers About my house to a resident (pc_nook_paint.c) */
             pc_aNSC_paint_only = FALSE;
             pc_nook_paint_set_menu(next == 0 && mLd_PlayerManKindCheck() == FALSE);
+            pc_season_island_set_menu(next == 0 && mLd_PlayerManKindCheck() == FALSE); /* and Islands */
 #endif
             mDemo_Set_OrderValue(mDemo_ORDER_NPC0, 0x9, 0x0);
             aNSC_Set_continue_msg_num(msg_p, shop_common, aNSC_get_msg_no(msg_no[next]));
@@ -2133,7 +2135,17 @@ static void aNSC_request_Q_answer_wait2(NPC_SHOP_COMMON_ACTOR* shop_common, GAME
                 aNSC_setupAction(shop_common, play, aNSC_ACTION_CHECK_ROOF_COL_ORDER);
                 return;
             }
+            if (pc_season_island_menu_on() && mChoice_Get_ChoseNum(mChoice_Get_base_window_p()) == mChoice_CHOICE4) {
+                /* Islands: his question, and what follows, are messages of their own (pc_season_island.c) */
+                pc_nook_paint_set_menu(FALSE);
+                pc_season_island_set_menu(FALSE);
+                mDemo_Set_OrderValue(mDemo_ORDER_NPC0, 0x9, 0x0);
+                mMsg_Set_continue_msg_num(msg_p, PC_ISL_MSG_WHICH);
+                aNSC_setupAction(shop_common, play, aNSC_ACTION_REQUEST_Q_END_WAIT);
+                return;
+            }
             pc_nook_paint_set_menu(FALSE);
+            pc_season_island_set_menu(FALSE);
 #endif
             switch (mChoice_Get_ChoseNum(mChoice_Get_base_window_p())) {
                 case mChoice_CHOICE0:

@@ -8,6 +8,9 @@ City Folk.
 It's built on [ACGC-PC-Port](https://github.com/flyngmt/ACGC-PC-Port), which runs the
 [ac-decomp](https://github.com/ACreTeam/ac-decomp) decompilation natively on PC.
 
+**This is a beta:** everything planned for 1.0 is in, but it hasn't had the testing a 1.0 should
+have. Keep a copy of your save.
+
 This repository contains no game files. To play, you need your own copies of **both** games:
 
 - **Animal Crossing** for GameCube, **USA version (GAFE01, revision 0)**, as a disc image (`.iso`,
@@ -117,6 +120,7 @@ disc-preservation database.
 - **The museum's observatory**, upstairs from the lobby. Celeste is there, with her City Folk
   look and lines, and her telescope for drawing your own constellations in the night sky (with
   the mouse too: click stars to link them, the wheel or the screen's edge to look around).
+  Villagers now and then talk about the town's constellations.
 - **The Roost**, the café downstairs from the lobby. It has Brewster, his City Folk lines and
   music, and coffee once a day, made and drunk with City Folk's own animations. Brewster warms up
   to you as you keep coming back.
@@ -124,6 +128,20 @@ disc-preservation database.
   on the stage with the lights down.
 - **Villagers at the Roost:** one or two of your villagers drop in each day for an hour or two of
   coffee. You can chat with them and do their favors there, as anywhere else.
+- **Furniture:** the 289 pieces of City Folk furniture (and paintings) the GameCube doesn't have,
+  made from your disc's own models. Tom Nook sells them, in his shop and his catalog, the Happy Room
+  Academy counts them (in their series where the GameCube has one), and his secret codes work for
+  them. Dressers store things, clocks tell the time, TVs show the programs, the egg stereo and the
+  music box play K.K.'s songs, and the metal guitar, upright piano and Japanese drum play your town
+  tune. What moves in City Folk moves here, and it all works outdoors and online too. Nothing the
+  GameCube already has is changed.
+- **Fish and bugs:** the 28 fish and 30 bugs the GameCube doesn't have, made from your disc's own
+  models. Bugs are 3D in town and fish are flat pictures on the line, as the GameCube's are; pockets
+  have icons, and a second page on the fish and insect lists shows those you've caught. In your
+  house they're City Folk's tanks and cages. They come out by season and hour among the GameCube's,
+  and Blathers takes them: fish swim in the museum's tanks and bugs sit about its garden. They don't
+  count towards completing the museum's collection. Bugs move like the nearest GameCube bug, so
+  tarantulas and scorpions don't chase you, and a flea lives on the ground, not on your villagers.
 - **Fishing:** City Folk's plop when a fish takes the float.
 - **TV programs:** switched-on TVs show City Folk's programs on its weekly schedule: the news,
   the weather report with a forecast of the coming hours, a hero show, soccer, a movie on weekend
@@ -224,6 +242,22 @@ mouse, controllers), ac-plus adds:
   outside, and is paid off like any other loan. The statue comes after the last one. If something
   is in a doorway's way, it stays where it is for you to move. The Happy Room Academy and feng
   shui count them like the upstairs.
+- **(Experimental) Basement rooms:** once those three are all 8×8, Nook builds the same three off
+  the basement (left, right and back), with the basement's wall and floor, before the statue. They
+  don't count for the Happy Room Academy, like the basement itself.
+- **(Experimental) Season islands:** besides the summer island, Tom Nook sells a spring, a fall and a
+  winter island for 1,000,000 Bells each, out of your savings ("Other things" → "Islands"). Each
+  is an island of its own, with an islander no other island has, and you name it on your first
+  trip, as with the summer island. Kapp'n asks which island you'd like before he sets sail, and
+  it's that season there (the winter island has snow).
+- **(Experimental) City Folk wallpaper and carpets:** the 22 wallpapers and 23 carpets from City Folk
+  that the GameCube doesn't have, converted from your City Folk disc. They're always in the
+  catalog to order at their City Folk prices, and Nook's secret codes work for them.
+- **(Experimental) Somewhere new:** once your house is paid off
+  (your statue is up), Porter's trip question has "Somewhere new": his train takes you
+  to a town made just for the trip, with its own villagers and layout, on the GameCube's whole train
+  ride, as to a friend's town on another memory card. Visit as long as you like, then tell Porter
+  you're leaving. These towns aren't kept: each trip finds another.
 - City Folk style storage: each of your dressers, wardrobes and closets has its own large storage
   (up to 128 in a town). Storage from older versions turns up in the first one you open.
 - With the HD texture pack, wallpaper no longer stretches after you've browsed the catalog.
@@ -254,9 +288,10 @@ mouse, controllers), ac-plus adds:
 **Saving and music**
 - Save anywhere with **Z + Start** (where the game allows it).
 - Save on quit, and an optional autosave every few minutes.
-- The `.acplus` file carries a checksum, and the last three copies are kept. A damaged one is set
-  aside and the newest good copy is loaded instead.
-- Quick load: returning players start straight in town.
+- **One save file per town** (`town.acplus`), with a checksum, and the last three copies kept. A
+  damaged one is set aside and the newest good copy is loaded instead.
+- Quick load: returning players start straight in town. In a town with several residents, it's the
+  one who saved last; hold B as the game starts to choose with Rover instead.
 - **Custom music** (Settings → Audio) switches between your music pack and the game's own music,
   and **Rain music** picks the rain song or the hour's spring arrangement in the rain.
 - **Save syncing built in:** with your own small ac-plus-server (one Python file, see
@@ -273,6 +308,14 @@ mouse, controllers), ac-plus adds:
 - At the Roost, getting up just as Brewster started talking left you free to walk during the talk.
 - On Linux with an NVIDIA card, the game's memory no longer creeps up while it runs (from the
   second start: the first one switches Wine to the steadier way of drawing for this game).
+- **Curved world:** things no longer seem to float above the ground or sink into it, decals (paths,
+  mats, shadows, patterns) no longer flicker against the ground, and the land and its trees reach
+  farther out on wide screens.
+- The sea beside Kapp'n's island no longer shows a dark wedge.
+- You can no longer walk out of the front of an extra side room.
+- Villagers in a "Somewhere new" town no longer say they moved there "from ."
+- Kapp'n asks which island after you say you'll cross, and "Never mind" lets you stay.
+- Your skin tone goes with you on train trips and online visits.
 - **Custom hourly music:** replace the 24 hourly tracks with your own files (see
   [the music guide](docs/MUSIC.md)).
 
@@ -314,18 +357,23 @@ default back.
 
 ## Saves
 
-- **Where they are:** your town is in `save/card_a/`, as two files:
-  - `DobutsunomoriP_MURA.gci`, a normal GameCube save that Dolphin and save editors understand;
-  - `DobutsunomoriP_MURA.gci.acplus`, with everything ac-plus adds: ground patterns, storage,
-    pattern IDs, constellations, the Roost, basement wallpaper and carpets, the extra rooms, skin tones, 90,000 Bells money trees. Its last three copies
-    are kept as `.acplus.bak1` to `.bak3`.
-
-  **Always copy or back up the two files together.**
+- **Where they are:** your town is one file, `save/card_a/town.acplus`: its GameCube save and
+  everything ac-plus adds (ground patterns, storage, patterns, constellations, the Roost, the extra
+  rooms, islands, skin tones, City Folk furniture you've had…). Its last three copies are kept as
+  `town.acplus.bak1` to `.bak3`.
+- **From older versions:** Alpha 9 and older kept a `.gci` and a `.gci.acplus`. The first start of a
+  newer version moves them into `town.acplus` by itself, and keeps the old two in
+  `save/card_a/before-town-file-<date>/`. Older versions can't read `town.acplus` (Alpha 6 and later
+  say so and quit, rather than start a new town), so update every machine you play or sync on.
 - **Saves and older versions:** a town saved by a newer ac-plus warns you before an older one plays
   it. If you play on anyway, what the older version doesn't know is kept, not thrown away. (This
   works from Alpha 6 on: older releases don't warn.)
-- **Bringing a Dolphin save:** export it from Dolphin's Memory Card Manager as a `.gci` and put it
-  in `save/card_a/`. The `.acplus` file is created the next time you save.
+- **Bringing a Dolphin or GameCube save:** export it as a `.gci` (Dolphin's Memory Card Manager) and
+  put it in `save/card_a/` while there's no `town.acplus` there: the game makes its town file from
+  it.
+- **Taking your town to Dolphin or a GameCube:** start the game once with `--export-gci town.gci`.
+  It writes your town as a `.gci` and quits. What only ac-plus has (City Folk furniture, wallpaper
+  and carpets, the extra rooms, patterns on the ground…) is left out, so the GameCube loads it.
 - **Syncing through a folder:** set `cloud_save = 1` and `cloud_save_folder` to a folder that
   Syncthing, Nextcloud or similar keeps in sync. Any save that gets replaced is kept as a
   `.cloudbak` file.
@@ -355,30 +403,24 @@ default back.
   covers you if you forget.
 
 **Saving and patterns**
-- **Quick load** only works for the town's first resident.
 - **Outdoor furniture:** up to 128 pieces per acre. A town saved by Alpha 5 or older loses its
   outdoor furniture, so update every machine you sync between.
-- **Skin tones:** on a train trip to another town, your character shows the default skin there.
 
 **Sky**
-- **The curved world** makes far-off acres look emptier: like the original game, it only shows
-  trees in the acres around you.
-- **Sky events:** the UFO and balloons haven't been checked against the City Folk sky yet.
+- **The curved world:** trees and rocks show two acres to each side and three ahead; past that the
+  land is bare until you come closer.
 
 **Online visits**
-- **Experimental:** expect rough edges, and back up both save files before hosting.
+- **Experimental:** expect rough edges, and back up your save before hosting.
 - Every player needs the same ac-plus version, down to the point release (Alpha 9.1 can't visit
   Alpha 9.2). The game says so when they differ.
-- Some things aren't shown to the other players yet: their footsteps and tool sounds, trees
-  falling, and the dust of digging. Online trips skip the ride inside the train: you board at home
-  and step off at your friend's station.
-- A signboard design the host puts up during a visit shows for players who arrive after that.
+- Online trips skip the ride inside the train: you board at home and step off at your friend's
+  station.
 - **Over the internet:** visits between different home networks work, but have had less testing.
   If a visit won't connect, a VPN such as Tailscale or ZeroTier puts everyone on one network: then
   visit by the host's VPN address.
 
 **Museum and Roost**
-- **Celeste:** she has no bow, and villagers don't mention constellations yet.
 - **The Roost:** K.K. Slider can't be talked to there, and he doesn't take song requests.
 
 ## Building on Windows without a container

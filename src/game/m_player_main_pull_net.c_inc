@@ -36,6 +36,11 @@ static void Player_actor_setup_main_Pull_net(ACTOR* actor, GAME* game) {
             main_pull->already_collected = FALSE;
         } else {
             main_pull->already_collected = mSM_CHECK_LAST_INSECT_GET(idx);
+#ifdef TARGET_PC
+            if (player->item_net_catch_type == 0 && ((aINS_INSECT_ACTOR*)player->item_net_catch_label)->pc_cf != 0) {
+                main_pull->already_collected = FALSE; /* City Folk's: not one of the GameCube's collection */
+            }
+#endif
         }
     } else {
         main_pull->already_collected = FALSE;
@@ -152,6 +157,12 @@ static void Player_actor_Pull_net_demo_ct(ACTOR* actor) {
             msg_no = Player_actor_Get_mushi_msg_num(idx);
         }
     }
+#ifdef TARGET_PC
+    if (label != 0 && type == 0 && ((aINS_INSECT_ACTOR*)label)->pc_cf != 0) {
+        msg_no = 0xA2C; /* (the first bug's: the line itself stands in, City Folk's have none) */
+        pc_cf_creature_say_caught(((aINS_INSECT_ACTOR*)label)->item, msg_no);
+    }
+#endif
     mDemo_Set_msg_num(msg_no);
     mDemo_Set_talk_display_name(FALSE);
     mDemo_Set_camera(CAMERA2_PROCESS_ITEM);

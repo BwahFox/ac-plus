@@ -1,10 +1,14 @@
 #include "m_room_type.h"
+#ifdef TARGET_PC
+#include "pc_cf_creature.h"
+#endif
 
 #include "m_name_table.h"
 #include "m_common_data.h"
 #ifdef TARGET_PC
 #include "pc_pattern.h"
 #include "pc_basement.h"
+#include "pc_cf_decor.h"
 #endif
 #include "ac_my_room.h"
 #include "m_melody.h"
@@ -1822,6 +1826,9 @@ extern int mRmTp_GetFloorIdx() {
         if (floor == PC_BASEMENT_LOOK_IDX) {
             return FLOOR_BASEMENT; /* the stone floor sounds as it does downstairs (not the post office's, its index) */
         }
+        if (floor >= PC_CF_DECOR_FIRST) {
+            return 0; /* City Folk's carpets: footsteps as on a carpet */
+        }
 #endif
         if (floor >= 0 && floor < FLOOR_ETC_END) {
             return floor;
@@ -1931,6 +1938,11 @@ extern int mRmTp_GetWallIdx() {
 }
 
 extern mActor_name_t mRmTp_Item1ItemNo2FtrItemNo_AtPlayerRoom(mActor_name_t item1_no, int no_convert_tools) {
+#ifdef TARGET_PC
+    if (pc_cf_creature_item(item1_no)) {
+        return pc_cf_creature_placed(item1_no); /* City Folk's fish and bugs (pc_cf_creature.c) */
+    }
+#endif
     if (item1_no >= ITM_CLOTH_START && item1_no < ITM_CLOTH_END) {
         int is_valid = item1_no >= ITM_CLOTH_START && item1_no < ITM_CLOTH_END; // this is some kind of macro for sure
 
@@ -1973,6 +1985,12 @@ extern mActor_name_t mRmTp_Item1ItemNo2FtrItemNo_AtPlayerRoom(mActor_name_t item
 
 extern mActor_name_t mRmTp_FtrItemNo2Item1ItemNo(mActor_name_t ftr_no, int no_convert_tools) {
     int ftr_idx;
+
+#ifdef TARGET_PC
+    if (pc_cf_creature_of_placed(ftr_no) != 0) {
+        return pc_cf_creature_of_placed(ftr_no); /* City Folk's fish and bugs (pc_cf_creature.c) */
+    }
+#endif
 
     if (ftr_no >= FTR_CLOTH_START && ftr_no <= FTR_CLOTH_END) {
         int is_valid = ftr_no >= FTR_CLOTH_START && ftr_no <= FTR_CLOTH_END; // this is some kind of macro for sure
@@ -2113,6 +2131,17 @@ extern int mRmTp_FurnitureIdx2FurnitureKind(int ftr_idx) {
     if (ftr_idx >= 0 && ftr_idx < FTR_NUM) {
         return mRmTp_birth_type[ftr_idx];
     }
+#ifdef TARGET_PC
+    {
+        /* City Folk's furniture (pc_cf_ftr.c): its shop group, so codes and gifts treat it as Nook's own */
+        extern int pc_cf_ftr_group(int ftr_idx);
+        int group = pc_cf_ftr_group(ftr_idx);
+
+        if (group >= 0) {
+            return group == 0 ? mRmTp_BIRTH_TYPE_GRP_A : group == 1 ? mRmTp_BIRTH_TYPE_GRP_B : mRmTp_BIRTH_TYPE_GRP_C;
+        }
+    }
+#endif
 
     return mRmTp_BIRTH_TYPE_UNOBTAINABLE;
 }
@@ -2128,6 +2157,9 @@ extern void mRmTp_CopyWallData(u8* dst, int wall_no) {
     if (dst != NULL && wall_no == PC_BASEMENT_LOOK_IDX) {
         pc_basement_copy_look(dst, PC_BASEMENT_WALL); /* the basement's rock wall, as wallpaper */
         return;
+    }
+    if (pc_cf_decor_copy(dst, TRUE, wall_no)) {
+        return; /* City Folk's wallpaper (pc_cf_decor.c) */
     }
 #endif
     if (dst != NULL) {
@@ -2171,6 +2203,9 @@ extern void mRmTp_CopyFloorData(u8* dst, int floor_no) {
     if (dst != NULL && floor_no == PC_BASEMENT_LOOK_IDX) {
         pc_basement_copy_look(dst, PC_BASEMENT_FLOOR); /* the basement's stone floor, as a carpet */
         return;
+    }
+    if (pc_cf_decor_copy(dst, FALSE, floor_no)) {
+        return; /* City Folk's carpets */
     }
 #endif
     if (dst != NULL) {

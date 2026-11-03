@@ -7,6 +7,7 @@
 #include "m_common_data.h"
 #ifdef TARGET_PC
 #include "pc_basement.h"
+#include "pc_cf_decor.h"
 #endif
 #include "m_rcp.h"
 #include "m_mark_room.h"
@@ -252,6 +253,10 @@ static void aNI_SetFloorSE(s16 floor_idx) {
         Common_Set(floor_idx, FLOOR_BASEMENT); /* the stone floor's steps, as downstairs */
         return;
     }
+    if (floor_idx >= PC_CF_DECOR_FIRST) {
+        Common_Set(floor_idx, 0); /* City Folk's carpets: steps as on a carpet */
+        return;
+    }
 #endif
     if (!(floor_idx >= 0 && floor_idx < FLOOR_PLAYER_ROOM_END) == FALSE) {
         Common_Set(floor_idx, floor_idx);
@@ -339,11 +344,19 @@ static void aMI_CheckFloorWallIndex(s16* wall_idx, s16* floor_idx) {
 #else
 #define aMI_PC_LOOK(idx) FALSE
 #endif
-    if (!(*floor_idx >= 0 && *floor_idx < FLOOR_ETC_START) && !FLOOR_IS_MY_ORIG(*floor_idx) && !aMI_PC_LOOK(*floor_idx)) {
+    if (!(*floor_idx >= 0 && *floor_idx < FLOOR_ETC_START) && !FLOOR_IS_MY_ORIG(*floor_idx) && !aMI_PC_LOOK(*floor_idx)
+#ifdef TARGET_PC
+        && !pc_cf_decor_is(FALSE, *floor_idx) /* City Folk's carpets (pc_cf_decor.c) */
+#endif
+    ) {
         *floor_idx = 0;
     }
 
-    if (!(*wall_idx >= 0 && *wall_idx < WALL_ETC_START) && !WALL_IS_MY_ORIG(*wall_idx) && !aMI_PC_LOOK(*wall_idx)) {
+    if (!(*wall_idx >= 0 && *wall_idx < WALL_ETC_START) && !WALL_IS_MY_ORIG(*wall_idx) && !aMI_PC_LOOK(*wall_idx)
+#ifdef TARGET_PC
+        && !pc_cf_decor_is(TRUE, *wall_idx)
+#endif
+    ) {
         *wall_idx = 0;
     }
 }
@@ -927,6 +940,7 @@ static mActor_name_t aMI_ChangeCarpet(mActor_name_t item) {
         ((item >= ITM_CARPET00 && item < (ITM_CARPET00 + FLOOR_PLAYER_ROOM_END))
 #ifdef TARGET_PC
          || item == PC_ITM_BASEMENT_FLOOR /* the stone floor, outside the basement */
+         || pc_cf_decor_item(item)        /* City Folk's carpets */
 #endif
          )) {
         MY_INDOOR_ACTOR* my_indoor = Common_Get(clip).my_indoor_clip->my_indoor_actor_p;
@@ -1005,6 +1019,7 @@ static mActor_name_t aMI_ChangeWall(mActor_name_t item) {
             ((item >= ITM_WALL00 && item < (ITM_WALL00 + WALL_ETC_END))
 #ifdef TARGET_PC
              || item == PC_ITM_BASEMENT_WALL /* the rock wall, outside the basement */
+             || pc_cf_decor_item(item)       /* City Folk's wallpaper */
 #endif
              ) &&
             my_indoor->wall_reserve.reserve_flag == FALSE) {

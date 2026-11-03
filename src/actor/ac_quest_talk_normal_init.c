@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include "ac_quest_talk_normal_init.h"
 #ifdef TARGET_PC
 #include "pc_basement.h"
@@ -1337,6 +1338,13 @@ static int aQMgr_decide_msg_normal_3_msg_no(QUEST_MANAGER_ACTOR* manager, int lo
 
     if (idx >= 0 && idx < aQMgr_DECIDE_MSG_NORMAL_3_NUM) {
         ret_msg = (*msg_proc[idx])(manager, looks);
+#ifdef TARGET_PC
+        {
+            /* now and then a line on a constellation in the town's sky instead of this small talk (pc_constellation.c) */
+            extern int pc_const_villager_talk(int msg_no);
+            pc_const_villager_talk(ret_msg);
+        }
+#endif
     }
 
     return ret_msg;
@@ -1583,6 +1591,11 @@ static int aQMgr_decide_normal_msg_no(QUEST_MANAGER_ACTOR* manager, int looks) {
     int idx;
     int ret_msg; // @BUG -- should be initialized to -1
 
+#ifdef TARGET_PC
+    if (getenv("PC_CONST_TALK_ALWAYS") != NULL) {
+        return aQMgr_decide_msg_normal_3_msg_no(manager, looks); /* dev: small talk, to try the constellation lines */
+    }
+#endif
     idx = aQMgr_decide_idx_prob_table(l_normal_1_prob, aQMgr_DECIDE_MSG_NORMAL_MSG_NUM);
     if (idx >= 0 && idx < aQMgr_DECIDE_MSG_NORMAL_MSG_NUM) {
         ret_msg = (*msg_proc[idx])(manager, looks);

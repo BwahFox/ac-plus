@@ -48,6 +48,12 @@ extern int aTRC_clip_fish_rndsize(int size_rank) {
 }
 
 extern int aTRC_clip_get_msgno(mActor_name_t item) {
+#ifdef TARGET_PC
+    if (PC_CF_ITEM_IS_FISH(item)) { /* City Folk's: the first fish's line stands in, with their own words */
+        pc_cf_creature_say_chip(item, 0x10F6);
+        return 0x10F6;
+    }
+#endif
     switch (item) {
         case ITM_FISH00:
             return 0x10F6;

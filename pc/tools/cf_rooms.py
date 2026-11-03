@@ -4,7 +4,7 @@
 Part of extract_cf_sky.py: reads a room's BRRES (files/BgData/BgModel/*.brres on the
 City Folk disc), and writes its textures and triangles in a simple form the game draws
 with its own shader. Only what rooms use is handled: one bone, float or fixed-point
-vertex arrays, CI4/CI8/I4/I8/IA4/IA8/RGB565/RGB5A3 textures.
+vertex arrays, CI4/CI8/CI14/I4/I8/IA4/IA8/RGB565/RGB5A3/CMPR textures.
 
 .cfroom, little-endian:
     "CFRM" u32 version (3)
@@ -39,13 +39,44 @@ def palette_any(b, off):
     return [rgb5a3(u16(b, data + 2 * i)) for i in range(n)]
 
 
-BLOCKS = {0: (8, 8, 4), 1: (8, 4, 8), 2: (8, 4, 8), 3: (4, 4, 16), 4: (4, 4, 16), 5: (4, 4, 16), 8: (8, 8, 4), 9: (8, 4, 8)}
+# format: (block width, block height, bits per texel); 10 is C14X2 (a 14-bit palette index in 16 bits)
+BLOCKS = {0: (8, 8, 4), 1: (8, 4, 8), 2: (8, 4, 8), 3: (4, 4, 16), 4: (4, 4, 16), 5: (4, 4, 16), 8: (8, 8, 4), 9: (8, 4, 8),
+          10: (4, 4, 16)}
+
+
+def decode_cmpr(b, data, w, h):
+    """CMPR: 8x8 blocks of four 4x4 DXT1 sub-blocks (big-endian colours, index bits from the top)."""
+    out = bytearray(w * h * 4)
+    p = data
+    for by in range(0, h, 8):
+        for bx in range(0, w, 8):
+            for sy in (0, 4):
+                for sx in (0, 4):
+                    c0, c1 = u16(b, p), u16(b, p + 2)
+                    bits = u32(b, p + 4)
+                    p += 8
+                    a, bb = rgb565(c0), rgb565(c1)
+                    if c0 > c1:
+                        cols = [a, bb, tuple((2 * a[k] + bb[k]) // 3 for k in range(3)) + (255,),
+                                tuple((a[k] + 2 * bb[k]) // 3 for k in range(3)) + (255,)]
+                    else:
+                        cols = [a, bb, tuple((a[k] + bb[k]) // 2 for k in range(3)) + (255,), (0, 0, 0, 0)]
+                    for y in range(4):
+                        for x in range(4):
+                            c = cols[(bits >> (30 - 2 * (y * 4 + x))) & 3]
+                            px, py = bx + sx + x, by + sy + y
+                            if px < w and py < h:
+                                o = (py * w + px) * 4
+                                out[o:o + 4] = bytes(c)
+    return w, h, bytes(out)
 
 
 def decode_texture(b, off, pal=None):
     """TEX0 at off -> (w, h, bytes RGBA)."""
     w, h, fmt = u16(b, off + 0x1c), u16(b, off + 0x1e), u32(b, off + 0x20)
     data = off + u32(b, off + 0x10)
+    if fmt == 14:
+        return decode_cmpr(b, data, w, h)
     if fmt not in BLOCKS:
         raise ValueError('texture format %d not handled' % fmt)
     bw, bh, bpp = BLOCKS[fmt]
@@ -78,6 +109,8 @@ def decode_texture(b, off, pal=None):
                     else:
                         if pal is None:
                             raise ValueError('no palette')
+                        if fmt == 10:
+                            v &= 0x3FFF
                         c = pal[v] if v < len(pal) else (0, 0, 0, 0)
                     if x < w and y < h:
                         o = (y * w + x) * 4

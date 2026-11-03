@@ -9,8 +9,8 @@
  *   - on quitting, waits for an upload still on its way (a few seconds at most).
  * Steam's "Exit Game" kills the game outright, so nothing is left for the end: every save is already up.
  *
- * What's synced: every .gci in save/card_a with its .acplus (the town and travel passports), as ac-sync.sh does,
- * sent together as one bundle ("ACSB", u32 1, u32 count, then per file u16 name length, name, u32 size, data), so
+ * What's synced: the town file in save/card_a (town.acplus; an older version's .gci and its .gci.acplus, as
+ * ac-sync.sh does), sent together as one bundle ("ACSB", u32 1, u32 count, then per file u16 name length, name, u32 size, data), so
  * the server never holds a .gci from one save and an .acplus from another. A download first copies what it
  * replaces to save/sync-backups/<time>-before-download/; the server keeps its own history. */
 #include "pc_platform.h"
@@ -82,7 +82,9 @@ static int sync_name_cmp(const void* a, const void* b) {
 static int sync_wanted(const char* name) {
     size_t n = strlen(name);
 
-    return (n > 4 && strcmp(name + n - 4, ".gci") == 0) || (n > 11 && strcmp(name + n - 11, ".gci.acplus") == 0);
+    /* the town file (town.acplus); .gci and .gci.acplus are an older version's save, still taken from a server
+     * that has one: the game moves it into a town file when it loads */
+    return (n > 4 && strcmp(name + n - 4, ".gci") == 0) || (n > 7 && strcmp(name + n - 7, ".acplus") == 0);
 }
 
 /* The save files, sorted (the bundle and its hash don't depend on the folder's order) */

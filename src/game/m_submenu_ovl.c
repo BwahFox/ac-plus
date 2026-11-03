@@ -1,4 +1,7 @@
 #include "m_submenu_ovl.h"
+#ifdef TARGET_PC
+#include "pc_cf_creature.h"
+#endif
 
 #include "m_font.h"
 #include "m_play.h"
@@ -454,12 +457,23 @@ static void mSM_set_dl_item(GRAPH* graph, f32 x, f32 y, f32 scale, mSM_inventory
     }
 
     gDPPipeSync(POLY_OPA_DISP++);
+#ifdef TARGET_PC
+    if (icon_info->pal == NULL) { /* City Folk's fish and bugs: a bigger picture, no palette (pc_cf_creature.c) */
+        gDPSetTextureLUT(POLY_OPA_DISP++, G_TT_NONE);
+        gDPSetTexturePersp(POLY_OPA_DISP++, G_TP_NONE);
+        gDPSetTextureImage_Dolphin(POLY_OPA_DISP++, G_IM_FMT_RGBA, G_IM_SIZ_16b, 128, 128, icon_info->tex);
+        gDPSetTile_Dolphin(POLY_OPA_DISP++, G_DOLPHIN_TLUT_DEFAULT_MODE, G_TX_RENDERTILE, 0, GX_CLAMP, GX_CLAMP, 0, 0);
+    } else
+#endif
+    {
     gDPSetTextureLUT(POLY_OPA_DISP++, G_TT_RGBA16);
     gDPSetTexturePersp(POLY_OPA_DISP++, G_TP_NONE);
     gDPLoadTLUT_Dolphin(POLY_OPA_DISP++, 15, 16, 1, palette);
     gDPSetTextureImage_Dolphin(POLY_OPA_DISP++, G_IM_FMT_CI, G_IM_SIZ_4b, 32, 32, icon_info->tex);
     gDPSetTile_Dolphin(POLY_OPA_DISP++, G_DOLPHIN_TLUT_DEFAULT_MODE, G_TX_RENDERTILE, 15, GX_MIRROR, GX_MIRROR,
                        GX_CLAMP, GX_CLAMP);
+
+    }
 
     t = (int)(x * 0.975f);
     x = (160.0f + (f32)t) - scale * 12.0f;
@@ -474,7 +488,13 @@ static void mSM_set_dl_item(GRAPH* graph, f32 x, f32 y, f32 scale, mSM_inventory
         rect_yh = y + mod;
 
         POLY_OPA_DISP = gfx_gSPScisTextureRectangle1(POLY_OPA_DISP, x * 4.0f, y * 4.0f, rect_xh * 4.0f, rect_yh * 4.0f,
-                                                     G_TX_RENDERTILE, 0, 0, scale_factor, scale_factor);
+                                                     G_TX_RENDERTILE, 0, 0,
+#ifdef TARGET_PC
+                                                     icon_info->pal == NULL ? scale_factor * 4 : scale_factor,
+                                                     icon_info->pal == NULL ? scale_factor * 4 : scale_factor);
+#else
+                                                     scale_factor, scale_factor);
+#endif
     }
 
     if (draw_mark) {
@@ -1450,6 +1470,14 @@ static void mSM_draw_item(GRAPH* graph, f32 pos_x, f32 pos_y, f32 scale, mActor_
             icon = &present_tex_data[anim_frame];
         }
     } else {
+#ifdef TARGET_PC
+        static mSM_inventory_icon_info_c pc_cf_icon;
+        if ((pc_cf_icon.tex = pc_cf_creature_icon(item)) != NULL) {
+            pc_cf_icon.pal = NULL; /* (no palette: mSM_set_dl_item draws its bigger picture) */
+            icon = &pc_cf_icon; /* City Folk's fish and bugs (pc_cf_creature.c) */
+            category = ITEM_NAME_GET_CAT(item);
+        } else
+#endif
         if (item >= HANIWA_START && item <= HANIWA_END) {
             icon = &haniwa_tex_data;
         } else if (item >= FTR_DINO_START && item <= FTR_DINO_END) {

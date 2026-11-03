@@ -90,7 +90,7 @@ typedef struct {
 /* Uniform locations for one GL program */
 typedef struct {
     GLint projection, modelview, normal_mtx;
-    GLint curve_up, curve_fwd, curve_haze;
+    GLint curve_up, curve_fwd, curve_haze, depth_bias;
     GLint tev_prev, tev_reg0, tev_reg1, tev_reg2;
     GLint num_tev_stages;
     GLint tev_color_in[PC_GX_MAX_TEV_STAGES], tev_alpha_in[PC_GX_MAX_TEV_STAGES];
@@ -122,6 +122,7 @@ typedef struct {
     int vertex_count;
     int expected_vertex_count;
     int in_begin;
+    float ground_bias;
     PCGXVertex vertex_buffer[PC_GX_MAX_VERTS];
     int current_vertex_idx;
     PCGXVertex current_vertex;

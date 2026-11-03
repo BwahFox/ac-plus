@@ -342,6 +342,100 @@ static void pack_signs(mp_wr* w, const Save_t* s) {
     }
 }
 
+/* --- signboard designs during a visit (stream 2): one sign's key, palette and design --- */
+#define SIGN_BLOB (4 + 1 + mNW_DESIGN_TEX_SIZE)
+static u32 l_sent_key[SIGNS_MAX], l_sent_sum[SIGNS_MAX];
+static int l_sent_n;
+
+static u32 sign_sum(u8 pal, const u8* tex) {
+    u32 h = 2166136261u ^ pal;
+    int i;
+
+    for (i = 0; i < mNW_DESIGN_TEX_SIZE; i++) {
+        h = (h ^ tex[i]) * 16777619u;
+    }
+    return h;
+}
+
+/* host, once a second: each sign showing a resident's design that the visitors haven't been sent as it is now goes
+ * to send (blob of SIGN_BLOB bytes); at the start of a visit (fresh) what the town pack carried counts as sent */
+void pc_mp_town_signs_check(int fresh, void (*send)(const u8* blob, int len)) {
+    const Save_t* s = Common_GetPointer(save.save);
+    int x, z, k, i;
+
+    if (fresh) {
+        l_sent_n = 0;
+    }
+    for (z = 0; z < FG_BLOCK_Z_NUM; z++) {
+        for (x = 0; x < FG_BLOCK_X_NUM; x++) {
+            for (k = 0; k < UT_TOTAL_NUM; k++) {
+                mActor_name_t it = s->fg[z][x].items[k / UT_X_NUM][k % UT_X_NUM];
+                int d = it - SIGNBOARD_START, pl, org;
+                u32 key = pc_pattern_sign_key(x + 1, z + 1, k % UT_X_NUM, k / UT_X_NUM), sum;
+                const mNW_original_design_c* kept;
+                u8 pal;
+                const u8* tex;
+
+                if (!ITEM_IS_SIGNBOARD(it) || ((d >> 5) & 1)) {
+                    continue;
+                }
+                pl = (d >> 3) & 3, org = d & 7;
+                pal = s->private_data[pl].my_org[org].palette;
+                tex = s->private_data[pl].my_org[org].design.data;
+                if ((kept = pc_pattern_use(PC_PAT_USE_SIGN, key, pl, org)) != NULL) {
+                    pal = kept->palette;
+                    tex = kept->design.data;
+                }
+                sum = sign_sum(pal, tex);
+                for (i = 0; i < l_sent_n && l_sent_key[i] != key; i++) {
+                }
+                if (i < l_sent_n && l_sent_sum[i] == sum) {
+                    continue; /* they have it */
+                }
+                if (i == l_sent_n) {
+                    if (l_sent_n == SIGNS_MAX) {
+                        continue;
+                    }
+                    l_sent_n++;
+                }
+                l_sent_key[i] = key;
+                l_sent_sum[i] = sum;
+                if (!fresh && send != NULL) {
+                    u8 blob[SIGN_BLOB];
+
+                    blob[0] = (u8)key, blob[1] = (u8)(key >> 8), blob[2] = (u8)(key >> 16), blob[3] = (u8)(key >> 24);
+                    blob[4] = pal;
+                    memcpy(blob + 5, tex, mNW_DESIGN_TEX_SIZE);
+                    send(blob, SIGN_BLOB);
+                }
+            }
+        }
+    }
+}
+
+/* visitor: a sign's design the host put up during the visit (stream 2) */
+void pc_mp_town_sign_received(const u8* blob, int len) {
+    u32 key;
+    int i;
+
+    if (len != SIGN_BLOB) {
+        return;
+    }
+    key = blob[0] | blob[1] << 8 | blob[2] << 16 | (u32)blob[3] << 24;
+    for (i = 0; i < l_signs_n && l_signs[i].key != key; i++) {
+    }
+    if (i == l_signs_n) {
+        if (l_signs_n == SIGNS_MAX) {
+            return;
+        }
+        l_signs_n++;
+    }
+    l_signs[i].key = key;
+    l_signs[i].palette = blob[4] % mNW_PALETTE_NUM;
+    memcpy(l_signs[i].tex, blob + 5, mNW_DESIGN_TEX_SIZE);
+    printf("[mp] signboard design %08X arrived\n", (unsigned)key);
+}
+
 static int unpack_signs(mp_rd* r) {
     u32 n = mp_rd_u16(r), i;
 

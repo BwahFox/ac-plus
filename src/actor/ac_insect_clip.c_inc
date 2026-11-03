@@ -220,7 +220,12 @@ static void aINS_setupActor(ACTOR* actorx, aINS_Init_c* init) {
     f32 shadow_size;
 
     insect->exist_flag = TRUE;
+#ifdef TARGET_PC
+    insect->pc_cf = init->insect_type >= aINS_TYPE_PC_CF ? init->insect_type : 0; /* City Folk's (pc_cf_creature.c) */
+    insect->type = pc_cf_bug_base(init->insect_type);
+#else
     insect->type = init->insect_type;
+#endif
     insect->action_proc = (aINS_ACTION_PROC)&none_proc1;
     insect->life_time = 216000;
     insect->alpha0 = 255;

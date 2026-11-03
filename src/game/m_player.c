@@ -1,3 +1,6 @@
+#ifdef TARGET_PC
+#include "pc_cf_creature.h"
+#endif
 #include "m_player_lib.h"
 
 #include "libultra/libultra.h"
@@ -1751,6 +1754,12 @@ extern void Player_actor_move(ACTOR* actorx, GAME* game) {
         if (pc_player_seat_raised && (idx == mPlayer_INDEX_SITDOWN || idx == mPlayer_INDEX_SITDOWN_WAIT)) {
             actorx->world.position.y = pc_player_seat_y;
         }
+    }
+    {
+        /* not into a side room's sealed front-door alcove (pc_nlrooms.c) */
+        extern void pc_nlr_keep_in_room(xyz_t* pos);
+
+        pc_nlr_keep_in_room(&actorx->world.position);
     }
 #endif
 

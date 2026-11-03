@@ -509,7 +509,7 @@ static int mp_decode_body(mp_rd* r, mp_msg* m, size_t body_len) {
             b->offset = mp_rd_u32(r);
             b->len = mp_rd_u16(r);
             if (b->len != body_len - MP_BULK_HEAD || b->total > MP_BULK_MAX || b->offset > b->total ||
-                b->len > b->total - b->offset || b->stream != 1) {
+                b->len > b->total - b->offset || (b->stream != 1 && b->stream != 2)) {
                 return 0;
             }
             mp_rd_bytes(r, b->data, b->len);

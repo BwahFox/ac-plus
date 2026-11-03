@@ -8,7 +8,13 @@
 extern "C" {
 #endif
 
+#ifdef TARGET_PC
+/* the acres around the player that are drawn: the GameCube's 3x3 covers a 4:3 screen; widescreen and the curved
+ * world (whose horizon is farther) see past it, onto the sky's sea behind (ac_field_draw.c) */
+#define aFD_BLOCK_DRAW_NUM 25
+#else
 #define aFD_BLOCK_DRAW_NUM 9
+#endif
 
 typedef struct field_draw_s FIELD_DRAW_ACTOR;
 

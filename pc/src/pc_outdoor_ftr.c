@@ -6,6 +6,7 @@
  * drops or gets buried under it; the piece brings its own collision. A save opened by a build without this
  * keeps the chunk (pc_ext_save.c keeps unknown chunks) and just shows those units as empty ground.
  * Only in the home town: the island and visited towns have their own fg. */
+#include "pc_cf_ftr.h"
 #include "pc_outdoor_ftr.h"
 #include "m_common_data.h"
 #include "m_field_info.h"
@@ -270,7 +271,7 @@ static int oftr_item_ok(mActor_name_t item) {
     if (ITEM_IS_FTR(item)) {
         int idx = mRmTp_FtrItemNo2FtrIdx(item);
 
-        return idx >= 0 && idx < FTR_NUM;
+        return idx >= 0 && (idx < FTR_NUM || pc_cf_ftr_idx(idx));
     }
     return item == RSV_FE1F || ITEM_IS_ITEM1(item);
 }

@@ -360,6 +360,10 @@ void pc_sky_curve_uniforms(int perspective, float up[4], float fwd[4], float haz
     fwd[3] = s_sky.pivot;
 }
 
+float pc_sky_curve_now(int perspective) {
+    return s_sky.active && perspective ? s_sky.k : 0.0f;
+}
+
 void pc_sky_curve_point(int perspective, float* x, float* y, float* z) {
     float u, drop;
 

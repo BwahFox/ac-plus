@@ -353,6 +353,11 @@ set(PC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_nook_paint.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_sit_outdoors.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_town_map.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_season_island.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_cf_decor.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_cf_ftr.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_cf_creature.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_random_town.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_museum_rooms.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_settings.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/pc_profiler.c

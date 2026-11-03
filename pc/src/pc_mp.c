@@ -7,6 +7,7 @@
  *
  * Prototype controls (no menus yet): PC_MP_HOST=port (or 1 for the default port) hosts this town,
  * PC_MP_JOIN=address[:port] visits one. */
+#include "pc_cf_ftr.h"
 #include "pc_mp.h"
 #include "pc_cf_anim.h"
 
@@ -22,6 +23,9 @@
 #include "m_shop.h"
 #include "m_kabu_manager.h"
 #include "m_train_control.h"
+#include "pc_random_town.h"
+#include "m_card.h"
+#include "m_choice.h"
 #include "m_demo.h"
 #include "m_msg.h"
 #include "ac_effectbg.h"
@@ -96,6 +100,7 @@ static struct {
     Save_t* board_town; /* visitor: the host's town, checked, until the train has left */
     int board_told;     /* "go to the station" said */
     int board_stopped;  /* going home: our train has stood at the station (so its pulling out is ours leaving) */
+    int random_trip;    /* on Porter's train to a town nobody lives in (pc_random_town.c), no link: to it or there */
     /* keeping the town the same (pc_mp_world.c) */
     int trusted[PC_MP_SLOTS]; /* host: may this visitor dig, chop, ... */
     f32 act_tokens[PC_MP_SLOTS];          /* host: each visitor's changes, rate-limited */
@@ -968,7 +973,7 @@ static void mp_apply_state(int slot, const mp_pstate* s) {
     if (getenv("PC_MP_DEBUG") != NULL && s->catch_item != (uint16_t)r->catch_item) {
         printf("[mpdbg] slot %d holds up %04X\n", slot, s->catch_item);
     }
-    r->catch_item = s->catch_item >= ITM_FISH_START && s->catch_item < ITM_FISH_END ? s->catch_item : 0;
+    r->catch_item = ITEM_IS_FISH(s->catch_item) && s->catch_item != ITM_FISH_END ? s->catch_item : 0;
     if (r->has_state && (s32)(s->tick - r->tick) <= 0) {
         return; /* older than what we have */
     }
@@ -1089,7 +1094,7 @@ static int mp_my_state(GAME* game, mp_pstate* s) {
         /* holding up a fish they caught: the others see it in their hands */
         UKI_ACTOR* uki = (UKI_ACTOR*)p->fishing_rod_actor_p;
         mActor_name_t fish = uki->get_fish_type_proc != NULL ? uki->get_fish_type_proc(&uki->actor_class) : EMPTY_NO;
-        s->catch_item = fish >= ITM_FISH_START && fish < ITM_FISH_END ? fish : 0;
+        s->catch_item = ITEM_IS_FISH(fish) && fish != ITM_FISH_END ? fish : 0;
     }
     s->eye = (uint8_t)(p->eye_tex_idx >= 0 ? p->eye_tex_idx : 0);
     s->mouth = (uint8_t)(p->mouth_tex_idx >= 0 ? p->mouth_tex_idx : 0);
@@ -1194,7 +1199,7 @@ static void mp_host_on_action(int peer, int slot, const mp_action* in) {
                    l_mp.remote[slot].scene);
         }
         /* a furniture switch: harmless, so anyone may; only checked for sense and rate, then passed on */
-        if (in->item < FTR_NUM && (in->new_item >> 8) == (l_mp.remote[slot].scene & 255) &&
+        if ((in->item < FTR_NUM || pc_cf_ftr_idx(in->item)) && (in->new_item >> 8) == (l_mp.remote[slot].scene & 255) &&
             mp_action_plausible(slot, in)) {
             out.ok = 1;
             mp_switch_apply(&out);
@@ -1643,7 +1648,8 @@ void pc_mp_send_home(int slot) {
  * isn't for a visitor). What was chosen happens once the talk has ended. --- */
 static int l_porter_mode;   /* 0: the GameCube's choices, 1: with "Online", 2: "Go home" */
 int pc_porter_talk_act = -1; /* Porter's talk step (ac_station_clip.c_inc) */
-static int l_porter_action; /* 1: open Online Play, 2: go home */
+static int l_porter_action; /* 1: open Online Play, 2: go home, 3: somewhere new */
+static int l_porter_new;    /* "Somewhere new" is among the choices (pc_random_town_unlocked) */
 
 static void mp_choice_text(u8* out, const char* text) {
     int i;
@@ -1662,18 +1668,25 @@ int pc_mp_porter_choices(ACTOR* actor, int msg_no, u8 (*str)[16], int count) {
         count != 2) {
         return count;
     }
-    if (l_mp.link != NULL && !l_mp.host && l_mp.travelling == 2) {
+    if ((l_mp.link != NULL || l_mp.random_trip) && !l_mp.host && l_mp.travelling == 2) {
         mp_choice_text(str[0], "Go home");
         l_porter_mode = 2;
         return 2;
     }
-    if (l_mp.link != NULL || l_mp.travelling != 0) {
-        return count; /* hosting, or on the way: as on the GameCube */
+    if (l_mp.link != NULL || l_mp.travelling != 0 || Common_Get(player_no) == mPr_FOREIGNER) {
+        return count; /* hosting, on the way, or visiting another card's town (a random town too): as on the GameCube */
     }
-    memcpy(str[2], str[1], 16);
-    mp_choice_text(str[1], "Online");
     l_porter_mode = 1;
-    return 3;
+    l_porter_new = pc_random_town_unlocked();
+    if (!l_porter_new) {
+        memcpy(str[2], str[1], 16);
+        mp_choice_text(str[1], "Online");
+        return 3;
+    }
+    memcpy(str[3], str[1], 16);
+    mp_choice_text(str[1], "Online");
+    mp_choice_text(str[2], "Somewhere new"); /* a town nobody lives in yet (pc_random_town.c) */
+    return 4;
 }
 
 /* ac_station_clip.c_inc: the choice made; -1 when it's the GameCube's to handle */
@@ -1686,6 +1699,23 @@ int pc_mp_porter_chosen(int chosen) {
     if (mode == 1) {
         if (chosen == 0) {
             return -1; /* the card trip */
+        }
+        if (chosen == 2 && l_porter_new) {
+            /* somewhere new: a town made now and put where Card B's town would be, then the GameCube's own trip to
+             * another memory card's town, as "Taking a trip!" is: his talk, the ride, the swap, the way home */
+            extern int pc_mcd_write_town_gci(const Save_t* town, const char* path);
+            extern void pc_mcd_card_b_override(const char* path);
+            Save_t* town = pc_random_town_make((GAME*)gamePT);
+            int ok = town != NULL && pc_mcd_write_town_gci(town, PC_RANDOM_TOWN_PATH);
+
+            free(town);
+            if (ok) {
+                pc_mcd_card_b_override(PC_RANDOM_TOWN_PATH);
+                mChoice_Get_base_window_p()->data.selected_choice_idx = mChoice_CHOICE0;
+                return -1;
+            }
+            mp_status("The train couldn't go somewhere new.");
+            return chosen;
         }
         l_porter_action = chosen == 1 ? 1 : 0;
         return chosen;
@@ -1713,7 +1743,9 @@ static void mp_porter_tick(GAME* game) {
         pc_pause_menu_open_online();
     } else if (l_porter_action == 2) {
         /* home on his train; if he can't (he's busy), as before */
-        if (l_mp.boarding == 0 && pc_aSTM_online_board((GAME_PLAY*)game)) {
+        if (l_mp.random_trip) {
+            l_mp.go_home = 1; /* from a town nobody lives in: home straight away, as when a visit ends */
+        } else if (l_mp.boarding == 0 && pc_aSTM_online_board((GAME_PLAY*)game)) {
             l_mp.boarding = 2;
             l_mp.board_stopped = 0;
         } else {
@@ -2081,6 +2113,12 @@ static void mp_on_event(void* user, const mp_event* ev) {
                 }
             } else if (!l_mp.welcomed) {
                 break;
+            } else if (m->type == MP_MSG_BULK && m->u.bulk.stream == 2) {
+                /* a signboard's design put up during the visit (pc_mp_town.c) */
+                extern void pc_mp_town_sign_received(const u8* blob, int len);
+                if (m->u.bulk.offset == 0 && m->u.bulk.len == m->u.bulk.total) {
+                    pc_mp_town_sign_received(m->u.bulk.data, m->u.bulk.len);
+                }
             } else if (m->type == MP_MSG_BULK) {
                 const mp_bulk* b = &m->u.bulk;
                 /* in order (reliable), each piece right after the last, all inside the size the host gave */
@@ -2159,6 +2197,28 @@ static void mp_visitor_quit(const char* why) {
 
 /* --- the town --- */
 
+/* a signboard's design, to every visitor in the town (stream 2) */
+static void mp_host_send_sign(const u8* blob, int len) {
+    int i;
+
+    for (i = 0; i <= MP_LINK_PEERS; i++) {
+        mp_msg m;
+
+        if (l_mp.peer_slot[i] == 0 || l_mp.town_sent[i] >= 0) {
+            continue; /* nobody there, or still getting the town (which has it) */
+        }
+        memset(&m, 0, sizeof(m));
+        m.type = MP_MSG_BULK;
+        m.u.bulk.stream = 2;
+        m.u.bulk.total = (uint32_t)len;
+        m.u.bulk.offset = 0;
+        m.u.bulk.len = (uint16_t)len;
+        memcpy(m.u.bulk.data, blob, (size_t)len);
+        mp_link_send(l_mp.link, i, &m);
+    }
+    printf("[mp] signboard design sent\n");
+}
+
 static void mp_host_send_towns(void) {
     int i;
     for (i = 0; i <= MP_LINK_PEERS; i++) {
@@ -2212,7 +2272,18 @@ int pc_mp_train_left(GAME_PLAY* play) {
         return FALSE;
     }
     l_mp.boarding = 0;
-    if (mode == 1) {
+    if (mode == 1 && l_mp.random_trip && l_mp.link == NULL) {
+        /* somewhere new: a town made now, as the scene changes anyway (pc_random_town.c) */
+        Save_t* town = pc_random_town_make((GAME*)play);
+
+        if (town != NULL && pc_mcd_online_depart(play, town)) {
+            l_mp.travelling = 1;
+        } else {
+            l_mp.random_trip = 0;
+            mp_status("The train couldn't go: it brings you back.");
+        }
+        free(town);
+    } else if (mode == 1) {
         if (l_mp.link != NULL && l_mp.board_town != NULL && pc_mcd_online_depart(play, l_mp.board_town)) {
             l_mp.travelling = 1;
             mp_visitor_use_clock();
@@ -2271,6 +2342,9 @@ static void mp_visitor_travel(GAME_PLAY* play) {
         }
         l_mp.early_n = 0;
         mp_status("Visiting %.8s.", (const char*)mLd_GetLandName());
+        if (l_mp.random_trip) {
+            return; /* nobody's town: no host to remember */
+        }
         if (getenv("PC_MP_DEBUG") != NULL) {
             const Kabu_price_c* k = Save_GetPointer(kabu_price_schedule);
             printf("[mpdbg] turnips here: %d %d %d %d %d %d %d\n", k->daily_price[0], k->daily_price[1], k->daily_price[2],
@@ -2279,6 +2353,7 @@ static void mp_visitor_travel(GAME_PLAY* play) {
         mp_friends_remember(l_mp.host_key, mLd_GetLandName(), l_mp.remote[0].name);
     } else if (l_mp.travelling == 3 && !pc_mcd_online_visiting() && Common_Get(player_no) < mPr_PLAYER_NUM) {
         l_mp.travelling = 0;
+        l_mp.random_trip = 0;
         mp_status("Back home.");
     }
     if (l_mp.town_ready && l_mp.travelling == 0 && mp_can_travel(play)) {
@@ -2603,6 +2678,23 @@ void pc_mp_play_tick(GAME* game) {
             any |= l_mp.peer_slot[i] != 0;
         }
         mp_host_send_towns();
+        {
+            /* signboard designs put up during the visit go to everyone there (pc_mp_town.c), once a second */
+            extern void pc_mp_town_signs_check(int fresh, void (*send)(const u8* blob, int len));
+            static u32 last_check;
+            static int had_visitors;
+
+            if (!any) {
+                had_visitors = FALSE;
+            } else if (!had_visitors) {
+                had_visitors = TRUE;
+                pc_mp_town_signs_check(TRUE, NULL); /* the town pack had them as they are now */
+                last_check = now;
+            } else if (mp_since(now, last_check) > 1000) {
+                last_check = now;
+                pc_mp_town_signs_check(FALSE, mp_host_send_sign);
+            }
+        }
         for (i = 0; i <= MP_LINK_PEERS; i++) {
             /* connected but never said who they are: the slot goes to someone else */
             if (l_mp.peer_slot[i] == 0 && mp_link_peer_live(l_mp.link, i) && mp_since(now, l_mp.peer_since[i]) > 30000) {

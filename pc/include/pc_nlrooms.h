@@ -17,8 +17,11 @@
  * written into the house's own furniture grid. The back room's front door leads back to the main room; the side
  * rooms have none.
  *
- * dev: PC_NLR_GRANT=a,b,c gives every fully upgraded house the left, right and back rooms at sizes a, b, c
- * (0, 6 or 8). */
+ * The basement can have the same three rooms (rooms 3-5, floors 6-8), with the same doors in its walls, once
+ * the main room's are all 8x8. They're shown with the same scenes and start with the basement's walls and floor.
+ *
+ * dev: PC_NLR_GRANT=a,b,c[,d,e,f] gives every fully upgraded house the left, right and back rooms at sizes a, b, c
+ * (0, 6 or 8), and the basement's at d, e, f. */
 
 #include "types.h"
 #include "m_home_h.h"
@@ -27,8 +30,10 @@
 extern "C" {
 #endif
 
-#define PC_NLR_ROOMS 3      /* left, right, back: the order Nook offers them */
-#define PC_NLR_FLOOR_FIRST 3 /* the GameCube's floors are 0-2 */
+#define PC_NLR_ROOMS 3      /* off the main room: left, right, back, the order Nook offers them (with wings outside) */
+#define PC_NLR_ALL_ROOMS 6  /* and the same three off the basement (experimental), rooms 3-5 */
+#define PC_NLR_BASEMENT_FIRST 3
+#define PC_NLR_FLOOR_FIRST 3 /* the GameCube's floors are 0-2; the extra rooms are floors 3-8 */
 
 enum {
     PC_NLR_LEFT,
@@ -39,7 +44,7 @@ enum {
 struct door_data_s;
 struct xyz_s;
 
-/* The floor data for house `house`, floor `floor_no` (the extra rooms are floors 3-5) */
+/* The floor data for house `house`, floor `floor_no` (the extra rooms are floors 3-8) */
 mHm_flr_c* mHm_GetFloorP(int house, int floor_no);
 
 /* The floor an extra room shown in `scene` is, or -1 when the player isn't in one */
@@ -57,6 +62,8 @@ void pc_nlr_scene_left(struct door_data_s* door); /* a door was taken: which roo
 void pc_nlr_play_init(void);
 
 /* The player is looking at `item` at `probe` (m_player_other_func.c_inc): what's really there */
+/* After the player moves: kept off a side room's sealed front-door alcove. */
+void pc_nlr_keep_in_room(xyz_t* pos);
 int pc_nlr_door_in_front(const struct xyz_s* probe, int item);
 /* One of the doors above, which work from flat floor */
 int pc_nlr_is_door(int item);

@@ -2,8 +2,14 @@
 #include "pc_constellation.h"
 
 #include "m_common_data.h"
+#include "m_msg.h"
+#include "m_font.h"
+#include "sys_math.h"
+#include "m_private.h"
+#include "pc_msg_text.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -181,4 +187,66 @@ int pc_const_write_chunk(FILE* f) {
 
     return fwrite("CONS", 1, 4, f) == 4 && fwrite(&size, 4, 1, f) == 1 && fwrite(l_const, 1, size, f) == size &&
            fwrite("CELE", 1, 4, f) == 4 && fwrite(&cele, 4, 1, f) == 1 && fwrite(l_celeste, 1, cele, f) == cele;
+}
+
+/* --- villagers on constellations: now and then, a villager's everyday line is one about a constellation in the
+ * town's sky (ac_quest_talk_normal_init.c asks with the line it chose; the message loader then shows ours) --- */
+static int l_vt_msg = -1;        /* the line to replace, while one is coming */
+static u8 l_vt_name[PC_CONST_NAME_LEN];
+static int l_vt_owner;
+
+static const char* const l_vt_text[] = {
+    /* {7f}{2c} free string 8: the constellation, {7f}{2d} free string 9: who drew it, {7f}{1c} the catchphrase */
+    "Have you seen {7f}{2c}|up in the night sky, {7f}{1c}?{7f}{03}{0c} Celeste|says {7f}{2d} made it!|{7f}{00}",
+    "I spotted {7f}{2c} last|night, {7f}{1c}!{7f}{03}{0c} Looking up at it|makes me feel kinda small.|{7f}{00}",
+    "Do you ever stay up to look at|{7f}{2c}, {7f}{1c}?{7f}{03}{0c}|I heard {7f}{2d} drew it.|{7f}{00}",
+};
+
+int pc_const_villager_talk(int msg_no) {
+    int n = 0, pick, i;
+
+    if (getenv("PC_CONST_TALK_ALWAYS") != NULL) {
+        printf("[const] villager chat %04X\n", msg_no);
+        fflush(stdout);
+    }
+
+    for (i = 0; i < PC_CONST_MAX; i++) {
+        n += pc_const_get(i) != NULL && pc_const_get(i)->used;
+    }
+    /* about as often as any one of the game's own small talk lines: the plainest group is 49% of small talk over 10
+     * lines, so one in twenty (dev: every time) */
+    if (n == 0 || (RANDOM(20) != 0 && getenv("PC_CONST_TALK_ALWAYS") == NULL)) {
+        return FALSE; /* the GameCube's line */
+    }
+    pick = RANDOM(n);
+    for (i = 0; i < PC_CONST_MAX; i++) {
+        pc_constellation_c* c = pc_const_get(i);
+
+        if (c != NULL && c->used && pick-- == 0) {
+            memcpy(l_vt_name, c->name, PC_CONST_NAME_LEN);
+            l_vt_owner = c->owner;
+            break;
+        }
+    }
+    l_vt_msg = msg_no;
+    return TRUE;
+}
+
+int pc_const_villager_msg(int index, u8* buf, int buf_size, int* len) {
+    mMsg_Window_c* win = mMsg_Get_base_window_p();
+    int owner = l_vt_owner;
+    int n;
+
+    if (l_vt_msg < 0 || index != l_vt_msg) {
+        return FALSE;
+    }
+    l_vt_msg = -1;
+    for (n = PC_CONST_NAME_LEN; n > 0 && l_vt_name[n - 1] == CHAR_SPACE; n--) {
+    }
+    mMsg_Set_free_str(win, mMsg_FREE_STR8, l_vt_name, n);
+    if (owner >= 0 && owner < PLAYER_NUM) {
+        mMsg_Set_free_str(win, mMsg_FREE_STR9, Save_Get(private_data[owner]).player_ID.player_name, PLAYER_NAME_LEN);
+    }
+    *len = pc_msg_text(l_vt_text[RANDOM(3)], buf, buf_size);
+    return TRUE;
 }

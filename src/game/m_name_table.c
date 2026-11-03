@@ -1,6 +1,11 @@
 #include "m_name_table.h"
 #ifdef TARGET_PC
+#include "pc_cf_ftr.h" /* City Folk furniture */
+#include "pc_cf_creature.h" /* and fish and bugs */
+#endif
+#ifdef TARGET_PC
 #include "pc_basement.h"
+#include "pc_cf_decor.h"
 #endif
 
 #include "m_actor.h"
@@ -419,6 +424,15 @@ extern int mNT_check_unknown(mActor_name_t item_no) {
 #ifdef TARGET_PC
     if (PC_ITEM_IS_BASEMENT_LOOK(item_no)) {
         return FALSE; /* the basement's rock wall/floor items, just past the GameCube's (pc_basement.h) */
+    }
+    if (pc_cf_decor_item(item_no)) {
+        return FALSE; /* City Folk's wallpaper and carpets (pc_cf_decor.c) */
+    }
+    if (pc_cf_ftr_item(item_no)) {
+        return FALSE; /* City Folk's furniture (pc_cf_ftr.c) */
+    }
+    if (pc_cf_creature_item(item_no)) {
+        return FALSE; /* City Folk's fish and bugs (pc_cf_creature.c) */
     }
 #endif
 

@@ -1,3 +1,6 @@
+#ifdef TARGET_PC
+#include "pc_cf_creature.h"
+#endif
 #include "m_museum_display.h"
 
 #include "m_name_table.h"
@@ -90,6 +93,11 @@ extern void mMmd_SetFish(int fish_no) {
 }
 
 extern int mMmd_GetDisplayInfo(mActor_name_t item) {
+#ifdef TARGET_PC
+  if (pc_cf_creature_item(item)) { /* City Folk's fish and bugs (pc_cf_creature.c) */
+    return pc_cf_museum_donor(item) != 0 ? mMmd_DISPLAY_ALREADY_DONATED : mMmd_DISPLAY_CAN_DONATE;
+  }
+#endif
   if (item >= FTR_START(FTR_DIN_TRIKERA_HEAD) && item <= FTR_END(FTR_DIN_TRILOBITE)) {
     int fossil_idx;
     int valid = FALSE;
@@ -163,6 +171,15 @@ extern int mMmd_GetDisplayInfo(mActor_name_t item) {
 }
 
 extern int mMmd_RequestMuseumDisplay(mActor_name_t item) {
+#ifdef TARGET_PC
+  if (pc_cf_creature_item(item)) { /* City Folk's fish and bugs (pc_cf_creature.c) */
+    if (pc_cf_museum_donor(item) == 0 && mLd_PlayerManKindCheck() == FALSE) {
+      pc_cf_museum_donate(item, Common_Get(player_no));
+      return TRUE;
+    }
+    return FALSE;
+  }
+#endif
   if (mLd_PlayerManKindCheck() == FALSE) {
     if (item >= FTR_START(FTR_DIN_TRIKERA_HEAD) && item <= FTR_END(FTR_DIN_TRILOBITE)) {
       int fossil_idx;

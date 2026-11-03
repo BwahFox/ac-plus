@@ -71,6 +71,8 @@ void pc_sky_frame_reset(void);
 void pc_sky_curve_uniforms(int perspective, float up[4], float fwd[4], float haze[4]);
 /* Bends an eye-space point the same way the vertex shader does */
 void pc_sky_curve_point(int perspective, float* x, float* y, float* z);
+/* The curve's strength now (0: flat, or not drawn in perspective) */
+float pc_sky_curve_now(int perspective);
 
 #ifdef __cplusplus
 }

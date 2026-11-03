@@ -6,6 +6,7 @@
 #include "m_private.h"
 #include "m_event.h"
 #include "m_common_data.h"
+#include <stdlib.h>
 
 int fuusen_DEBUG_mode_flag;
 
@@ -72,6 +73,20 @@ extern void Balloon_move(GAME_PLAY* play) {
       return;
   }
 
+#ifdef TARGET_PC
+  {
+    /* dev: PC_BALLOON_NOW=1 sends one over straight away (and again once it's gone) */
+    static int now = -1;
+
+    if (now < 0) {
+      now = getenv("PC_BALLOON_NOW") != NULL;
+    }
+    if (now) {
+      Balloon_make_fuusen(play);
+      return;
+    }
+  }
+#endif
   min = Common_Get(time.rtc_time.min);
   if ((min % 5) == 3 && min != Common_Get(balloon_last_spawn_min)) {
     Common_Set(balloon_last_spawn_min, min);

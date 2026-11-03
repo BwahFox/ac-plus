@@ -1,3 +1,8 @@
+#ifdef TARGET_PC
+#include "pc_cf_creature.h"
+#include "pc_mouse.h"
+extern int g_mIV_pc_collect_second;
+#endif
 #include "m_tag_ovl.h"
 
 #include "m_common_data.h"
@@ -6518,6 +6523,13 @@ static int mTG_move_cursol_between_table_inventory_right(Submenu* submenu, mTG_t
 }
 
 static int mTG_move_cursol_between_table_inventory_upper(Submenu* submenu, mTG_tag_c* tag) {
+#ifdef TARGET_PC
+    if (tag->table == mTG_TABLE_COLLECT && g_mIV_pc_collect_second) { /* (up past the first row) */
+        g_mIV_pc_collect_second = FALSE;
+        tag->tag_row = 4;
+        return TRUE;
+    }
+#endif
     if (tag->table == mTG_TABLE_BG) {
         tag->table = mTG_TABLE_ITEM;
         tag->tag_col = 4;
@@ -6568,6 +6580,14 @@ static int mTG_move_cursol_between_table_inventory_upper(Submenu* submenu, mTG_t
 }
 
 static int mTG_move_cursol_between_table_inventory_lower(Submenu* submenu, mTG_tag_c* tag) {
+#ifdef TARGET_PC
+    /* (down past the last row) City Folk's fish or bugs (m_inventory_ovl.c) */
+    if (tag->table == mTG_TABLE_COLLECT && !g_mIV_pc_collect_second && pc_cf_creature_item(PC_CF_FISH_ITEM)) {
+        g_mIV_pc_collect_second = TRUE;
+        tag->tag_row = 0;
+        return TRUE;
+    }
+#endif
     if (tag->table == mTG_TABLE_ITEM) {
         if (tag->tag_col == 4) {
             if (mTG_move_check_hand_item(submenu, mTG_TABLE_BG)) {
@@ -6918,6 +6938,18 @@ static int mTG_move_cursol_between_table_inventory(Submenu* submenu, mTG_tag_c* 
 static int mTG_move_cursol_base(Submenu* submenu, mTG_tag_c* tag, mSM_MenuInfo_c* menu_info) {
     u32 trigger = submenu->overlay->menu_control.trigger;
     int res = FALSE;
+
+#ifdef TARGET_PC
+    /* the mouse wheel flips the fish and bug pages too */
+    if (tag->table == mTG_TABLE_COLLECT && pc_cf_creature_item(PC_CF_FISH_ITEM)) {
+        s32 wheel = pc_mouse_scroll_wheel();
+
+        if (wheel != 0 && (wheel < 0) != g_mIV_pc_collect_second) {
+            g_mIV_pc_collect_second = !g_mIV_pc_collect_second;
+            return TRUE;
+        }
+    }
+#endif
 
     if ((trigger & (BUTTON_CLEFT | BUTTON_CDOWN | BUTTON_CUP | BUTTON_CRIGHT)) != 0 ||
         (tag->table == mTG_TABLE_CATALOG &&
@@ -7407,6 +7439,9 @@ static int mTG_select_tag_decide_wchange(Submenu* submenu, mSM_MenuInfo_c* menu_
     if (inv_ovl->page_order[0] != tag->tag_row) {
         mTG_mark_main_CLR(submenu, menu_info);
         inv_ovl->next_page_id = tag->tag_row;
+#ifdef TARGET_PC
+        g_mIV_pc_collect_second = FALSE;
+#endif
         inv_ovl->page_move_timer = 40;
         submenu->overlay->hand_ovl->nop_hand_func(submenu);
         sAdo_SysTrgStart(NA_SE_41C);

@@ -1,4 +1,7 @@
 #include "m_mail_password_check.h"
+#ifdef TARGET_PC
+#include "pc_cf_decor.h"
+#endif
 
 #include "m_font.h"
 #include "m_room_type.h"
@@ -1043,6 +1046,12 @@ extern int mMpswd_check_present_user(mActor_name_t item) {
                     }
 
                     case ITEM1_CAT_WALL: {
+#ifdef TARGET_PC
+                        if (pc_cf_decor_item(item)) {
+                            price = pc_cf_decor_price(item); /* City Folk's (pc_cf_decor.c): a code works for them */
+                            break;
+                        }
+#endif
                         if (mSP_SearchItemCategoryPriority(item, mSP_KIND_WALLPAPER, mSP_LISTTYPE_COMMON, NULL) ||
                             mSP_SearchItemCategoryPriority(item, mSP_KIND_WALLPAPER, mSP_LISTTYPE_UNCOMMON, NULL) ||
                             mSP_SearchItemCategoryPriority(item, mSP_KIND_WALLPAPER, mSP_LISTTYPE_RARE, NULL)) {
@@ -1053,6 +1062,12 @@ extern int mMpswd_check_present_user(mActor_name_t item) {
                     }
 
                     case ITEM1_CAT_CARPET: {
+#ifdef TARGET_PC
+                        if (pc_cf_decor_item(item)) {
+                            price = pc_cf_decor_price(item); /* City Folk's (pc_cf_decor.c): a code works for them */
+                            break;
+                        }
+#endif
                         if (mSP_SearchItemCategoryPriority(item, mSP_KIND_CARPET, mSP_LISTTYPE_COMMON, NULL) ||
                             mSP_SearchItemCategoryPriority(item, mSP_KIND_CARPET, mSP_LISTTYPE_UNCOMMON, NULL) ||
                             mSP_SearchItemCategoryPriority(item, mSP_KIND_CARPET, mSP_LISTTYPE_RARE, NULL)) {
@@ -1259,3 +1274,51 @@ extern int mMpswd_check_name(mMpswd_password_c* password) {
 
     return res;
 }
+
+#ifdef TARGET_PC
+/* dev (PC_CTL "code"): a code (its 28 font codes as hex, as the generator's MakePassword gives them) through Nook's
+ * checks (ac_npc_shop_common.c's) */
+#include <stdio.h>
+#include <string.h>
+void pc_dev_secret_code(const char* hex) {
+    u8 str[mMpswd_PASSWORD_STR_LEN];
+    u8 buff[24];
+    mMpswd_password_c password;
+    unsigned int v;
+    int n, ok;
+
+    memset(str, CHAR_SPACE, sizeof(str));
+    for (n = 0; n < mMpswd_PASSWORD_STR_LEN && sscanf(hex + n * 2, "%2x", &v) == 1; n++) {
+        str[n] = (u8)v;
+    }
+    ok = mMpswd_decode_code(buff, str);
+    memset(&password, 0, sizeof(password));
+    if (ok) {
+        mMpswd_password(buff, &password);
+    }
+    printf("[code] decoded %d item %04X type %d zuru %d present %d\n", ok, password.item, password.type,
+           ok ? mMpswd_password_zuru_check(&password) : -1, ok ? mMpswd_check_present(&password) : -1);
+    fflush(stdout);
+}
+
+/* dev (PC_CTL "codemake ITEM"): the game's own code for item (a magazine code, for Player/Town), as hex, and it
+ * decoded again */
+void pc_dev_secret_code_make(int item) {
+    static const char s0[] = "Player  ", s1[] = "Town    ";
+    u8 str0[PLAYER_NAME_LEN], str1[PLAYER_NAME_LEN];
+    u8 pw[mMpswd_PASSWORD_STR_LEN];
+    char hex[mMpswd_PASSWORD_STR_LEN * 2 + 1];
+    int i;
+
+    for (i = 0; i < PLAYER_NAME_LEN; i++) {
+        str0[i] = (u8)s0[i];
+        str1[i] = (u8)s1[i];
+    }
+    mMpswd_make_password(pw, mMpswd_CODETYPE_MAGAZINE, 4, str0, str1, (mActor_name_t)item, 0, 0);
+    for (i = 0; i < mMpswd_PASSWORD_STR_LEN; i++) {
+        snprintf(hex + i * 2, 3, "%02x", pw[i]);
+    }
+    printf("[code] made %04X: %s\n", item, hex);
+    pc_dev_secret_code(hex);
+}
+#endif

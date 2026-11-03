@@ -116,7 +116,7 @@ typedef struct {
 #define MP_PERM_MASK 0x01
 
 typedef struct {
-    uint8_t stream; /* 1 = town */
+    uint8_t stream; /* 1 = town, 2 = a signboard's design put up during the visit (pc_mp_town.c) */
     uint32_t total;
     uint32_t offset;
     uint16_t len;

@@ -104,7 +104,16 @@ static void aGYO_setupActor(aGYO_Init_c* init_data, int idx) {
     {
         mActor_proc* init_proc;
 
+#ifdef TARGET_PC
+        /* City Folk's sea fish, as the GameCube's (pc_cf_creature.c) */
+        int pc_cf_sea = pc_cf_fish_in_sea(ctrl->gyo_type);
+#endif
+
+        #ifdef TARGET_PC
+        switch (pc_cf_sea ? aGYO_TYPE_SEA_BASS : ctrl->gyo_type) {
+#else
         switch (ctrl->gyo_type) {
+#endif
             case aGYO_TYPE_SALMON2:
                 ctrl->gyo_type = aGYO_TYPE_SALMON;
             // fallthrough

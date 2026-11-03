@@ -1,4 +1,7 @@
 #include "m_catalog_ovl.h"
+#ifdef TARGET_PC
+#include "pc_cf_ftr.h" /* City Folk furniture */
+#endif
 
 #include "f_furniture.h"
 #include "m_room_type.h"
@@ -15,6 +18,7 @@
 #include "m_malloc.h"
 #ifdef TARGET_PC
 #include "pc_basement.h"
+#include "pc_cf_decor.h"
 #endif
 
 enum {
@@ -170,6 +174,15 @@ static mCL_win_data_c mCL_win_data[] = {
 static u8 not_sell[12] = "Not for Sale";
 
 static void mCL_dma_furniture_program(mCL_Item_c* item) {
+#ifdef TARGET_PC
+    if (item->ftr_actor.name >= FTR_NUM) {
+        extern aFTR_PROFILE iam_dummy;
+        aFTR_PROFILE* cf = pc_cf_ftr_profile(item->ftr_actor.name); /* City Folk's (pc_cf_ftr.c) */
+
+        item->profile = cf != NULL ? cf : &iam_dummy;
+        return;
+    }
+#endif
     item->profile = furniture_quality[item->ftr_actor.name];
 }
 
@@ -346,6 +359,11 @@ static void mCL_furniture_init(mCL_Item_c* item, mActor_name_t item_no) {
             item->scale = furniture_draw_data[0].scale;
         }
 
+#ifdef TARGET_PC
+        if (pc_cf_ftr_item(item_no)) {
+            item->price = pc_cf_ftr_price(item_no); /* City Folk's: Nook sells them all (pc_cf_ftr.c) */
+        } else
+#endif
         if (mSP_SearchItemCategoryPriority(item_no, mSP_KIND_FURNITURE, mSP_LISTTYPE_COMMON, NULL) ||
             mSP_SearchItemCategoryPriority(item_no, mSP_KIND_FURNITURE, mSP_LISTTYPE_UNCOMMON, NULL) ||
             mSP_SearchItemCategoryPriority(item_no, mSP_KIND_FURNITURE, mSP_LISTTYPE_RARE, NULL) ||
@@ -388,6 +406,8 @@ static void mCL_wall_init(mCL_Item_c* item, mActor_name_t item_no) {
 #ifdef TARGET_PC
     if (PC_ITEM_IS_BASEMENT_LOOK(item_no)) {
         item->price = PC_BASEMENT_LOOK_PRICE; /* orderable, though no shop sells it */
+    } else if (pc_cf_decor_item(item_no)) {
+        item->price = pc_cf_decor_price(item_no); /* City Folk's: its price there */
     } else
 #endif
     if (mSP_SearchItemCategoryPriority(item_no, mSP_KIND_WALLPAPER, mSP_LISTTYPE_COMMON, NULL) ||
@@ -411,6 +431,8 @@ static void mCL_carpet_init(mCL_Item_c* item, mActor_name_t item_no) {
 #ifdef TARGET_PC
     if (PC_ITEM_IS_BASEMENT_LOOK(item_no)) {
         item->price = PC_BASEMENT_LOOK_PRICE;
+    } else if (pc_cf_decor_item(item_no)) {
+        item->price = pc_cf_decor_price(item_no);
     } else
 #endif
     if (mSP_SearchItemCategoryPriority(item_no, mSP_KIND_CARPET, mSP_LISTTYPE_COMMON, NULL) ||
@@ -1376,6 +1398,21 @@ static void mCL_catalog_ovl_init(Submenu* submenu) {
 
         ftr_info++;
     }
+#ifdef TARGET_PC
+    {
+        /* City Folk's furniture each resident has had (pc_cf_ftr.c), after the GameCube's */
+        int n = pc_cf_ftr_count();
+
+        for (i = 0; i < n && menu->item_count < mCL_MENU_ITEM_MAX; i++) {
+            mActor_name_t cf = pc_cf_ftr_nth(i);
+
+            if (pc_cf_ftr_collected(cf)) {
+                *item_list++ = cf;
+                menu->item_count++;
+            }
+        }
+    }
+#endif
 
     menu++;
     item_info = &mCL_item_idx_data[mCL_MENU_WALL];
@@ -1399,6 +1436,14 @@ static void mCL_catalog_ovl_init(Submenu* submenu) {
 #ifdef TARGET_PC
             /* the basement's rock wall and stone floor are always there to order (pc_basement.h) */
             int pc_always = (k == mCL_MENU_WALL || k == mCL_MENU_CARPET) && *idx_list == PC_BASEMENT_LOOK_IDX;
+
+            if ((k == mCL_MENU_WALL || k == mCL_MENU_CARPET) && *idx_list >= PC_CF_DECOR_FIRST) {
+                /* City Folk's: always there to order, when they were converted (pc_cf_decor.c) */
+                if (!pc_cf_decor_is(k == mCL_MENU_WALL, *idx_list)) {
+                    continue;
+                }
+                pc_always = TRUE;
+            }
 #else
             int pc_always = FALSE;
 #endif

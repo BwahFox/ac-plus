@@ -1745,7 +1745,12 @@ extern mActor_name_t mFM_GetReseveName(int bx, int bz) {
 }
 
 extern void mFM_toSummer() {
+#ifdef TARGET_PC
+    extern int pc_season_island_term(void);
+    mTM_set_season_com(pc_season_island_term()); /* the season island's season (pc_season_island.c) */
+#else
     mTM_set_season_com(7);
+#endif
 
     if (g_fdinfo != NULL) {
         mFM_LoadBGCommonTex(FALSE, Save_Get(island).grass_tex_type);

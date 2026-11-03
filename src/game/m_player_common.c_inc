@@ -4604,6 +4604,11 @@ static int Player_actor_Change_item_net_catch_label(ACTOR* actorx, u32 label, s8
                 player->item_net_catch_type = insect_type;
                 if (insect_type == 0 && insect_actor != NULL) {
                     player->item_net_catch_insect_idx = insect_actor->type;
+#ifdef TARGET_PC
+                    if (insect_actor->pc_cf != 0) {
+                        insect_actor->item = (mActor_name_t)(ITM_INSECT_START + insect_actor->pc_cf); /* City Folk's */
+                    }
+#endif
                 } else if (insect_actor != NULL) {
                     if (insect_actor->tools_actor.actor_class.id == mAc_PROFILE_BEE) {
                         player->item_net_catch_insect_idx = aINS_INSECT_TYPE_BEE;
@@ -6197,6 +6202,69 @@ static void Player_actor_Set_EffectBgTree(GAME* game, mActor_name_t item, s16 bg
 }
 
 #ifdef TARGET_PC
+/* online (ac_mp_puppet.c): another player's puppet makes the sounds and dust their player makes, at the same frames
+ * of the same animations: footsteps, the axe's swing, the shovel digging and filling. prev and cur are its body
+ * animation's frame last time and now; end its last frame. */
+void pc_mp_puppet_sounds(ACTOR* actorx, GAME* game, int anim, f32 prev, f32 cur, f32 end) {
+    f32 dt = (f32)game->graph->dt_num_60fps_frames;
+    f32 delta = cur - prev;
+    f32 speed;
+    xyz_t* pos = &actorx->world.position;
+
+    if (delta < -0.5f) {
+        delta += end - 1.0f; /* went round to the start */
+    }
+    if (delta <= 0.0f || delta > 12.0f) {
+        return; /* still, or a jump (a new animation, a late packet): nothing to hear */
+    }
+    speed = delta / (dt > 0.0f ? dt : 1.0f);
+    {
+        static int dbg = -1;
+
+        if (dbg < 0) {
+            dbg = getenv("PC_MP_DEBUG") != NULL;
+        }
+        if (dbg && (Player_actor_Check_RightFootMark_AnimeFrame_fromAnimeIndex(cur, speed, end, anim) ||
+                    Player_actor_Check_LeftFootMark_AnimeFrame_fromAnimeIndex(cur, speed, end, anim) ||
+                    ((anim == mPlayer_ANIM_DIG1 || anim == mPlayer_ANIM_AXE_SWING1) &&
+                     (Player_actor_Check_AnimationFrame_Common(cur, speed, end, 15.0f) ||
+                      Player_actor_Check_AnimationFrame_Common(cur, speed, end, 10.0f))))) {
+            printf("[mpdbg] puppet sound anim %d frame %.1f\n", anim, cur);
+        }
+    }
+#define PC_AT(frame) Player_actor_Check_AnimationFrame_Common(cur, speed, end, (frame))
+    if (Player_actor_Check_RightFootMark_AnimeFrame_fromAnimeIndex(cur, speed, end, anim) ||
+        Player_actor_Check_LeftFootMark_AnimeFrame_fromAnimeIndex(cur, speed, end, anim)) {
+        if (Common_Get(floor_idx) >= 0) {
+            Player_actor_sound_FootStep2(actorx); /* indoors: by the floor */
+        } else {
+            Player_actor_sound_FootStep1(actorx, sAdo_Get_WalkLabel(mCoBG_Wpos2Attribute(*pos, NULL)));
+        }
+    }
+    if ((anim == mPlayer_ANIM_AXE_SWING1 || anim == mPlayer_ANIM_AXE_HANE1 || anim == mPlayer_ANIM_AXE_SUKA1) &&
+        PC_AT(10.0f)) {
+        Player_actor_sound_AXE_FURI(actorx);
+    }
+    if (anim == mPlayer_ANIM_DIG1 || anim == mPlayer_ANIM_DIG_SUKA1) {
+        xyz_t at = *pos;
+
+        /* the hole a unit ahead, where they face */
+        at.x += sin_s(actorx->shape_info.rotation.y) * 20.0f;
+        at.z += cos_s(actorx->shape_info.rotation.y) * 20.0f;
+        if (PC_AT(15.0f)) {
+            Player_actor_sound_scoop1(actorx);
+        }
+        if (PC_AT(14.0f) || PC_AT(15.0f) || PC_AT(16.0f)) {
+            eEC_CLIP->effect_make_proc(eEC_EFFECT_DIG_HOLE, at, 2, actorx->shape_info.rotation.y, game, RSV_NO,
+                                       mCoBG_Wpos2Attribute(at, NULL), PC_AT(14.0f) ? 0 : PC_AT(15.0f) ? 1 : 2);
+        }
+    }
+    if ((anim == mPlayer_ANIM_FILL_UP1 || anim == mPlayer_ANIM_FILL_UP_I1) && PC_AT(15.0f)) {
+        Player_actor_sound_scoop_umeru(actorx);
+    }
+#undef PC_AT
+}
+
 /* online (pc_mp.c): a tree another player cut or shook falls or shakes here too */
 void pc_mp_effect_bg_tree(GAME* game, mActor_name_t item, s16 bg_ef_type, int ut_x, int ut_z) {
     Player_actor_Set_EffectBgTree(game, item, bg_ef_type, ut_x, ut_z);

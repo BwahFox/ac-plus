@@ -29,19 +29,29 @@ static s64 s_wall_shift_secs = 0; /* --time / --date: how far the game's clock i
 static s64 s_calendar_fix = 0;    /* added to OSGetTime for the calendar (pc_os_calendar_ticks) */
 static s64 s_mp_shift = 0;        /* online visits: the host's town time, on top of ours (pc_mp.c) */
 
-/* GC ticks of a real time, as local time (daylight saving included) plus the --time/--date shift */
-static s64 pc_os_wall_ticks(time_t real_now) {
-    struct tm* gmt = gmtime(&real_now);
-    struct tm utc_tm;
-    s64 tz_offset_secs;
+/* How far local time is from UTC at that moment (daylight saving included). (Not mktime on gmtime's fields: that asks
+ * about the wrong moment, and for the hours before a clock change is an hour out.) */
+static s64 pc_os_tz_offset(time_t t) {
+    struct tm* p = localtime(&t);
+    struct tm lt, gm;
+    s64 days;
 
-    if (gmt == NULL) {
+    if (p == NULL) {
         return 0;
     }
-    utc_tm = *gmt;
-    utc_tm.tm_isdst = -1; /* let mktime determine DST */
-    tz_offset_secs = (s64)difftime(real_now, mktime(&utc_tm));
-    return ((s64)(real_now - GC_UNIX_EPOCH_DIFF) + tz_offset_secs + s_wall_shift_secs) * (s64)GC_TIMER_CLOCK;
+    lt = *p;
+    p = gmtime(&t);
+    if (p == NULL) {
+        return 0;
+    }
+    gm = *p;
+    days = lt.tm_year != gm.tm_year ? (lt.tm_year > gm.tm_year ? 1 : -1) : lt.tm_yday - gm.tm_yday;
+    return days * 86400 + (lt.tm_hour - gm.tm_hour) * 3600 + (lt.tm_min - gm.tm_min) * 60 + (lt.tm_sec - gm.tm_sec);
+}
+
+/* GC ticks of a real time, as local time plus the --time/--date shift */
+static s64 pc_os_wall_ticks(time_t real_now) {
+    return ((s64)(real_now - GC_UNIX_EPOCH_DIFF) + pc_os_tz_offset(real_now) + s_wall_shift_secs) * (s64)GC_TIMER_CLOCK;
 }
 
 /* dev: PC_CLOCK_SPEED=n runs the calendar clock n times faster from startup */
@@ -355,7 +365,8 @@ void OSInit(void) {
                 if (ovr_time != (time_t)-1) unix_now = ovr_time;
             }
         }
-        s_wall_shift_secs = (s64)(unix_now - real_now);
+        /* (the time asked for is local time then: in another season, a different offset from now's) */
+        s_wall_shift_secs = (s64)(unix_now - real_now) + pc_os_tz_offset(unix_now) - pc_os_tz_offset(real_now);
         gc_epoch_offset_ticks = pc_os_wall_ticks(real_now);
     }
 }

@@ -1548,6 +1548,11 @@ static void aMR_RewriteFactorInfo(GAME* game) {
 }
 
 static mActor_name_t aMR_GetBirthFurniture(u16 ftr_no, int angle_idx) {
+#ifdef TARGET_PC
+    if (ftr_no >= FTR_NUM && pc_cf_ftr_idx(ftr_no)) {
+        return mRmTp_FtrIdx2FtrItemNo(ftr_no, angle_idx & 3); /* City Folk's (pc_cf_ftr.c) */
+    }
+#endif
     if (ftr_no < FTR_NUM) {
         return mRmTp_FtrIdx2FtrItemNo(ftr_no, angle_idx & 3);
     }

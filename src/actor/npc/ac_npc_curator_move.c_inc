@@ -226,10 +226,20 @@ typedef struct {
     mMmd_ArtInfo(((item_no) >= FTR_START(FTR_SUM_ART01) && (item_no) <= FTR_END(FTR_SUM_ART15)) \
                      ? FTR_IDX_2_NO((item_no - FTR_START(FTR_SUM_ART01)))                   \
                      : 0)
+#ifdef TARGET_PC
+#include "pc_cf_creature.h"
+#define aCR_GetInsectDonator(item_no)                                                     \
+    (PC_CF_ITEM_IS_BUG(item_no) ? pc_cf_museum_donor(item_no)                             \
+                                : mMmd_InsectInfo(((item_no) >= ITM_INSECT_START && (item_no) < ITM_INSECT_END) ? (item_no - ITM_INSECT_START) : 0))
+#define aCR_GetFishDonator(item_no)                                                       \
+    (PC_CF_ITEM_IS_FISH(item_no) ? pc_cf_museum_donor(item_no)                            \
+                                 : mMmd_FishInfo(((item_no) >= ITM_FISH_START && (item_no) <= ITM_FISH_END) ? (item_no - ITM_FISH_START) : 0))
+#else
 #define aCR_GetInsectDonator(item_no) \
     mMmd_InsectInfo(((item_no) >= ITM_INSECT_START && (item_no) < ITM_INSECT_END) ? (item_no - ITM_INSECT_START) : 0)
 #define aCR_GetFishDonator(item_no) \
     mMmd_FishInfo(((item_no) >= ITM_FISH_START && (item_no) <= ITM_FISH_END) ? (item_no - ITM_FISH_START) : 0)
+#endif
 
 static int aCR_chk_fossil_parts_complete_sub(int type) {
     static mActor_name_t trikera_parts[] = { FTR_START(FTR_DIN_TRIKERA_HEAD), FTR_START(FTR_DIN_TRIKERA_TAIL), FTR_START(FTR_DIN_TRIKERA_BODY) };
@@ -355,6 +365,11 @@ static void aCR_set_after_explain_insect(NPC_CURATOR_ACTOR* curator, GAME_PLAY* 
         insect_type = 0;
     }
 
+#ifdef TARGET_PC
+    if (PC_CF_ITEM_IS_BUG(curator->donated_item)) {
+        pc_cf_creature_say_blathers(curator->donated_item, msg_no[insect_type]); /* City Folk's: a line of its own */
+    }
+#endif
     mMsg_Set_continue_msg_num(mMsg_Get_base_window_p(), msg_no[insect_type]);
     curator->msg_no = msg_no[insect_type];
     (*curator->setupTalkAction_proc)(curator, play, aCR_TALK_AFTER_EXPLAIN_INSECT);
@@ -641,9 +656,15 @@ static void aCR_get_demo_end_wait(NPC_CURATOR_ACTOR* curator, GAME_PLAY* play) {
 
 #define aCR_IS_ART(item) ((item) >= FTR_START(FTR_SUM_ART01) && (item) <= FTR_END(FTR_SUM_ART15))
 
+#ifdef TARGET_PC
+/* (with City Folk's) */
+#define aCR_IS_INSECT(item) ITEM_IS_INSECT(item)
+#define aCR_IS_FISH(item) ITEM_IS_FISH(item)
+#else
 #define aCR_IS_INSECT(item) ((item) >= ITM_INSECT_START && (item) < ITM_INSECT_END)
 
 #define aCR_IS_FISH(item) ((item) >= ITM_FISH_START && (item) <= ITM_FISH_END)
+#endif
 
 typedef struct {
     int msg_no;
@@ -842,6 +863,11 @@ static void aCR_putaway_demo_start_wait5_2(NPC_CURATOR_ACTOR* curator, GAME_PLAY
             fish_type = 0;
         }
 
+#ifdef TARGET_PC
+        if (PC_CF_ITEM_IS_FISH(curator->donated_item)) {
+            pc_cf_creature_say_blathers(curator->donated_item, msg_no[fish_type]); /* City Folk's: a line of its own */
+        }
+#endif
         mMsg_Set_continue_msg_num(msg_p, msg_no[fish_type]);
         (*curator->setupTalkAction_proc)(curator, play, aCR_TALK_PUTAWAY_DEMO_START_WAIT6);
     }

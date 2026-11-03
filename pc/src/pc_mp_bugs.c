@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include "ac_insect_h.h"
+#include "pc_cf_creature.h"
 #include "m_common_data.h"
 #include "m_field_info.h"
 #include "m_play.h"
@@ -90,7 +91,7 @@ void pc_mp_bugs_collect_host(mp_fish* out) {
             continue;
         }
         out->e[out->count].slot = (uint8_t)i;
-        out->e[out->count].type = (uint8_t)b->type;
+        out->e[out->count].type = (uint8_t)(b->pc_cf != 0 ? b->pc_cf : b->type); /* (City Folk's: which of theirs) */
         out->e[out->count].x = b->tools_actor.actor_class.world.position.x;
         out->e[out->count].y = b->tools_actor.actor_class.world.position.y;
         out->e[out->count].z = b->tools_actor.actor_class.world.position.z;
@@ -105,7 +106,7 @@ void pc_mp_bugs_host_received(int slot, const mp_fish* in, unsigned long long no
     for (i = 0; i < in->count; i++) {
         int k = in->e[i].slot;
         aINS_INSECT_ACTOR* b = bug_slot(k);
-        if (!bug_here(b) || b->type != in->e[i].type) {
+        if (!bug_here(b) || (b->pc_cf != 0 ? b->pc_cf : b->type) != in->e[i].type) {
             continue;
         }
         if (in->e[i].flags & MP_FISH_CAUGHT) {
@@ -128,7 +129,7 @@ void pc_mp_bugs_visitor_received(const mp_fish* in, unsigned long long now) {
     }
     for (i = 0; i < in->count; i++) {
         int k = in->e[i].slot;
-        if (in->e[i].type >= aINS_INSECT_TYPE_NUM || in->e[i].type == aINS_INSECT_TYPE_ANT) {
+        if ((in->e[i].type >= aINS_INSECT_TYPE_NUM && !(in->e[i].type >= aINS_TYPE_PC_CF && in->e[i].type < aINS_TYPE_PC_CF + PC_CF_BUG_NUM)) || in->e[i].type == aINS_INSECT_TYPE_ANT) {
             continue;
         }
         l_host[k].valid = TRUE;
@@ -247,7 +248,7 @@ static void visitor_apply(GAME_PLAY* play, int host_in_town, f32 host_x, f32 hos
             l_near[h] = FALSE;
             continue;
         }
-        if (have && b->type != l_host[h].type && !l_near[h]) {
+        if (have && (b->pc_cf != 0 ? b->pc_cf : b->type) != l_host[h].type && !l_near[h]) {
             bug_remove(play, l_map[h]);
             have = FALSE;
             l_map[h] = -1;

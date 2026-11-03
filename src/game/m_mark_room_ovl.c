@@ -153,7 +153,13 @@ typedef struct mark_room_ftr_info_s {
     /* u8 pad:6; */
 } mMkRm_ftr_info_c;
 
+#ifdef TARGET_PC
+/* City Folk's furniture (pc_cf_ftr.c) has indices past the GameCube's: filled in by mMkRm_pc_cf_info */
+#include "pc_cf_ftr.h"
+static mMkRm_ftr_info_c mMkRm_ftr_info[PC_FTR_IDX_NUM] = {
+#else
 static mMkRm_ftr_info_c mMkRm_ftr_info[FTR_NUM] = {
+#endif
     { mMkRm_SERIES_SPOOKY, mMkRm_NECESSITY_WARDROBE, mMkRm_FACE_TYPE_HAS_FACE, mMkRm_LUCK_TYPE_NOT_LUCKY,
       mRmTp_BIRTH_TYPE_HALLOWEEN, mMkRm_SURFACE_TYPE_NONE },
     { mMkRm_SERIES_CLASSIC, mMkRm_NECESSITY_WARDROBE, mMkRm_FACE_TYPE_HAS_FACE, mMkRm_LUCK_TYPE_NOT_LUCKY,
@@ -3595,7 +3601,43 @@ static void mMkRm_MakeFtrTable(mActor_name_t** layer_ut_info, int ut_max) {
     }
 }
 
+#ifdef TARGET_PC
+/* City Folk's furniture in the HRA: in the GameCube base series it names (as one more piece of it, never one of its
+ * necessities), else in none; themes and sets stay the GameCube's own, so completing one never needs a City Folk
+ * piece. Its shop group is its birth type; a piece things go on is a surface. */
+static void mMkRm_pc_cf_info(void) {
+    static int done;
+    int idx;
+
+    if (done) {
+        return;
+    }
+    done = TRUE;
+    for (idx = PC_CF_FTR_IDX_FIRST; idx < PC_FTR_IDX_NUM; idx++) {
+        mMkRm_ftr_info_c* info = &mMkRm_ftr_info[idx];
+        int series = pc_cf_ftr_series(idx);
+        int group = pc_cf_ftr_group(idx);
+
+        if (group < 0) {
+            continue;
+        }
+        if (series < 0 || series >= mMkRm_SERIES_NUM || mMkRm_series_info[series].type != mMkRm_SERIES_TYPE_BASE) {
+            series = mMkRm_SERIES_OTHER;
+        }
+        info->series = series;
+        info->group_idx = mMkRm_NOT_NECESSITY;
+        info->has_face = mMkRm_FACE_TYPE_HAS_FACE;
+        info->is_lucky = mMkRm_LUCK_TYPE_NOT_LUCKY;
+        info->birth_type = group == 0 ? mRmTp_BIRTH_TYPE_GRP_A : group == 1 ? mRmTp_BIRTH_TYPE_GRP_B : mRmTp_BIRTH_TYPE_GRP_C;
+        info->surface_type = pc_cf_ftr_surface(idx) ? mMkRm_SURFACE_TYPE_SURFACE : mMkRm_SURFACE_TYPE_NONE;
+    }
+}
+#endif
+
 static void mMkRm_InitData(mActor_name_t** layer_ut_info, int ut_max) {
+#ifdef TARGET_PC
+    mMkRm_pc_cf_info();
+#endif
     mMkRm_InitSearchTable();
     mMkRm_AssignIdxInGroup();
     mMkRm_MakeFtrTable(layer_ut_info, ut_max);

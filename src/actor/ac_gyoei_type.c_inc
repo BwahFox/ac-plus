@@ -1,3 +1,6 @@
+#ifdef TARGET_PC
+#include "pc_cf_creature_table.h"
+#endif
 typedef struct gyoei_type_s {
     short size;
     short search_area;
@@ -51,5 +54,11 @@ static aGYO_type_c gyoei_type[] = {
     { aGYO_SIZE_M, 2, 4 }, // aGYO_TYPE_BOOT
     { aGYO_SIZE_L, 2, 4 }, // aGYO_TYPE_OLD_TIRE
     { aGYO_SIZE_L, 2, 1 }, // aGYO_TYPE_SALMON2
+#ifdef TARGET_PC
+    /* City Folk's (pc_cf_creature.h): a fish of the size, the middling search and bite */
+#define PC_CF_GYO(name, sell, months, hours, area, weight, size, s2, placed, n) { size, 3, 3 },
+    [48] = PC_CF_FISH_TABLE(PC_CF_GYO)
+#undef PC_CF_GYO
+#endif
 };
 // clang-format on

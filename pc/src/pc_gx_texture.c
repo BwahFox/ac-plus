@@ -631,8 +631,10 @@ static void pc_gx_load_tex_obj_impl(void* obj, u32 id) {
     u32 filter_mode = g_pc_settings.texture_filtering ? o[TEXOBJ_MIN_FILTER] : GX_NEAR;
 
 #ifdef _WIN32
-    /* a texture whose image isn't readable memory (a stale or garbled pointer): skip it rather than crash */
-    if (image_ptr != NULL && IsBadReadPtr(image_ptr, 32)) {
+    /* a texture whose image isn't readable memory, all of it (a stale or garbled pointer, a wrong size): skip it
+     * rather than crash */
+    if (image_ptr != NULL && (IsBadReadPtr(image_ptr, 32) ||
+                              IsBadReadPtr(image_ptr, (UINT_PTR)((width * height * gc_format_bpp(format)) / 8)))) {
         static int logged;
 
         if (logged++ < 8) {

@@ -1,4 +1,9 @@
 #include "ac_set_ovl_insect.h"
+#ifdef TARGET_PC
+#include <stdio.h>
+#include <stdlib.h>
+#include "pc_cf_creature.h"
+#endif
 #include "m_field_info.h"
 #include "m_field_make.h"
 #include "m_random_field_h.h"
@@ -1361,6 +1366,26 @@ static int aSOI_ins_renew_check_range_table(SET_MANAGER* set_manager, aSOI_insec
   return renew;
 }
 
+#ifdef TARGET_PC
+/* City Folk's that are out now (pc_cf_creature.c), leaving room for the last three the game adds */
+static void aSOI_pc_cf_add(aSOI_insect_keep_c* keep) {
+  int i;
+
+  for (i = 0; i < PC_CF_BUG_NUM && keep->info_num < aSetMgr_INSECT_SPAWN_INFO_COUNT - 3; i++) {
+    int area = 0;
+    int weight = pc_cf_bug_now(i, &area);
+
+    if (weight != 0) {
+      aSOI_insect_spawn_info_f_c* dst = &keep->spawn_info[keep->info_num++];
+
+      dst->type = aINS_TYPE_PC_CF + i;
+      dst->spawn_area = (u8)area;
+      dst->weight = (f32)weight;
+    }
+  }
+}
+#endif
+
 static void aSOI_ins_make_range_data(SET_MANAGER* set_manager) {
   aSOI_insect_keep_c* keep = &set_manager->keep.insect_keep;
   int day_term;
@@ -1381,6 +1406,9 @@ static void aSOI_ins_make_range_data(SET_MANAGER* set_manager) {
         aSOI_ins_make_insect_normal_range_data(keep, term1, day_term, 1.0f - term0_rate);
       }
 
+#ifdef TARGET_PC
+      aSOI_pc_cf_add(keep);
+#endif
       aSOI_ins_add_range_info(keep->spawn_info + keep->info_num, &keep->info_num);
       aSOI_ins_renewal_time(keep);
       break;
@@ -1394,6 +1422,9 @@ static void aSOI_ins_make_range_data(SET_MANAGER* set_manager) {
       keep->info_num = 0;
       
       aSOI_ins_make_insect_island_range_data(keep, day_term);
+#ifdef TARGET_PC
+      aSOI_pc_cf_add(keep);
+#endif
       aSOI_ins_add_range_info(keep->spawn_info + keep->info_num, &keep->info_num);
       aSOI_ins_renewal_time(keep);
       break;
@@ -2071,6 +2102,12 @@ static int aSOI_ins_make_sub(aSOI_set_data_c* set_data, aSetMgr_player_pos_c* pl
     insect_init.position = wpos;
     insect_init.extra_data = set_data->extra_data;
     insect_init.game = game;
+#ifdef TARGET_PC
+    if (getenv("PC_CF_CR_FORCE") != NULL) {
+      printf("[cf] bug %d at %d,%d\n", insect_init.insect_type, (int)wpos.x, (int)wpos.z); /* (dev) */
+      fflush(stdout);
+    }
+#endif
 
     if (insect_init.insect_type == aINS_INSECT_TYPE_ANT) {
       (*Common_Get(clip).insect_clip->make_ant_proc)(&insect_init, player_pos->next_bx, player_pos->next_bz);
@@ -2091,7 +2128,11 @@ static int aSOI_ins_make(aSOI_set_data_c* set_data, aSetMgr_player_pos_c* player
   int res = FALSE;
 
   if (set_data->should_spawn == TRUE && Common_Get(clip).insect_clip->make_insect_proc != NULL && Common_Get(clip).insect_clip->make_ant_proc != NULL) {
+#ifdef TARGET_PC
+    aSOI_insect_birth_sum_c* birth_sum = l_insect_birth_sum + pc_cf_bug_base(set_data->type);
+#else
     aSOI_insect_birth_sum_c* birth_sum = l_insect_birth_sum + set_data->type;
+#endif
     int birth_num = birth_sum->min_birth_count + (int)(fqrand() * (f32)birth_sum->additional_range);
 
     while (birth_num != 0) {

@@ -12,6 +12,9 @@
 #include "m_player_lib.h"
 #include "sys_matrix.h"
 #include "m_rcp.h"
+#ifdef TARGET_PC
+#include "pc_cf_creature.h"
+#endif
 
 enum {
     aTUR_ACT_WAIT,

@@ -1,3 +1,6 @@
+#ifdef TARGET_PC
+#include "pc_cf_creature.h"
+#endif
 #include "ac_museum_fish_priv.h"
 
 // extern data
@@ -1041,6 +1044,10 @@ void Museum_Fish_Actor_draw(ACTOR* actorx, GAME* game) {
                              actor->prvFish[aGYO_TYPE_JELLYFISH].init_data.ofs_y)) {
             mfish_dw[0x23](&actor->prvFish[aGYO_TYPE_JELLYFISH], game);
         }
+
+#ifdef TARGET_PC
+        pc_cf_museum_draw_fish(game, 0.09f); /* City Folk's (pc_cf_creature.c) */
+#endif
 
         if (!GETREG(TAKREG, 82)) {
             mfish_normal_light_set(actorx, game);

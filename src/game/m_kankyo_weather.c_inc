@@ -591,6 +591,14 @@ extern void mEnv_DecideWeather_NormalGameStart() {
   else {
     Common_Set(island_weather, mEnv_WEATHER_RAIN);
     Common_Set(island_weather_intensity, mEnv_WEATHER_INTENSITY_HEAVY);
+#ifdef TARGET_PC
+    {
+        extern int pc_season_island_winter(void);
+        if (pc_season_island_winter()) {
+            Common_Set(island_weather, mEnv_WEATHER_SNOW); /* the winter island (pc_season_island.c) */
+        }
+    }
+#endif
     
   }
 }

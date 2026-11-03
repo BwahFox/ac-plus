@@ -336,7 +336,34 @@ static int pc_parse_rain_intensity(const char* text) {
     return -1;
 }
 
+#ifdef PC_DEV
+/* Dev: dev-env.txt next to the game holds NAME=value lines to run with, for a launcher that can't set them (a Steam
+ * shortcut on the Deck, the only way the game starts there). PC_PROFILE=N is --profile N. */
+static void pc_dev_env_file(void) {
+    FILE* f = fopen("dev-env.txt", "r");
+    char line[256];
+
+    if (f == NULL) {
+        return;
+    }
+    while (fgets(line, sizeof(line), f) != NULL) {
+        line[strcspn(line, "\r\n")] = '\0';
+        if (strchr(line, '=') != NULL) {
+            putenv(strdup(line));
+        }
+    }
+    fclose(f);
+    if (getenv("PC_PROFILE") != NULL) {
+        g_pc_profile_enabled = 1;
+        g_pc_profile_interval = atoi(getenv("PC_PROFILE"));
+    }
+}
+#endif
+
 int main(int argc, char* argv[]) {
+#ifdef PC_DEV
+    pc_dev_env_file();
+#endif
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             printf("Usage: AnimalCrossing [options]\n");
@@ -517,6 +544,19 @@ int main(int argc, char* argv[]) {
         pc_ext_save_check_newer_format();
     }
     {
+        /* ac-plus: --export-gci <file> writes the home town as a GameCube save (.gci) and quits (pc_m_card.c) */
+        extern void pc_save_export_gci(const char* out_path);
+        int a;
+
+        for (a = 1; a + 1 < argc; a++) {
+            if (strcmp(argv[a], "--export-gci") == 0) {
+                pc_save_export_gci(argv[a + 1]);
+                pc_platform_shutdown();
+                return 0;
+            }
+        }
+    }
+    {
         /* ac-plus: the City Folk files, made from the player's own City Folk disc on the first start
          * (pc_cf_setup.c) */
         extern int pc_cf_setup(void);
@@ -525,6 +565,13 @@ int main(int argc, char* argv[]) {
             pc_platform_shutdown();
             return 1;
         }
+    }
+    {
+        /* ac-plus: City Folk's furniture, now: it adds itself to Nook's lists, which the first restock may want
+         * before anything else asks about one of the pieces (pc_cf_ftr.c) */
+        extern int pc_cf_ftr_count(void);
+
+        pc_cf_ftr_count();
     }
 
     ac_entry();                         /* sets HotStartEntry = &entry */

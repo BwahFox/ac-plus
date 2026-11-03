@@ -44,6 +44,8 @@ typedef struct mp_puppet_actor_s {
     s_xyz item_joint[8];
     s_xyz item_morph[8];
     int item_shape, item_anim; /* what item_kf is set up for */
+    int sound_anim;            /* the body animation and frame last time, for its sounds (pc_mp_puppet_sounds) */
+    f32 sound_frame;
     ACTOR* umbrella;
     int umbrella_kind;
     ClObjPipe_c col_pipe; /* a body to bump into, as a villager has */
@@ -100,6 +102,7 @@ static void aMPP_actor_ct(ACTOR* actorx, GAME* game) {
     actorx->shape_info.ofs_y = 200.0f;
     aMPP_skeleton(pp, r != NULL ? r->gender : mPr_SEX_MALE);
     pp->item_shape = pp->item_anim = -1;
+    pp->sound_anim = -1;
     pp->umbrella = NULL;
     pp->umbrella_kind = -1;
     pp->ghost = TRUE; /* solid once it has been apart from the local player */
@@ -221,6 +224,16 @@ static void aMPP_actor_move(ACTOR* actorx, GAME* game) {
         cKF_SkeletonInfo_R_init_standard_repeat_setframeandspeedandmorph(
             &pp->kf1, mPlib_Get_Pointer_Animation(pp->anim1), NULL, r->frame1, 0.0f, 0.0f);
     }
+    {
+        /* their footsteps, tool swings and digging, heard and seen here (m_player_common.c_inc) */
+        extern void pc_mp_puppet_sounds(ACTOR* actorx, GAME* game, int anim, f32 prev, f32 cur, f32 end);
+
+        if (pp->sound_anim == pp->anim0) {
+            pc_mp_puppet_sounds(actorx, game, pp->anim0, pp->sound_frame, r->frame0, pp->kf0.frame_control.end_frame);
+        }
+        pp->sound_anim = pp->anim0;
+        pp->sound_frame = r->frame0;
+    }
     pp->kf0.frame_control.current_frame = r->frame0;
     pp->kf1.frame_control.current_frame = r->frame1;
     pp->kf0.frame_control.speed = 0.0f;
@@ -279,8 +292,8 @@ static void aMPP_draw_catch(MP_PUPPET_ACTOR* pp, pc_mp_remote* r, GAME* game) {
     int type = r->catch_item - ITM_FISH_START;
     Mtx* mtx;
 
-    if (r->catch_item == 0 || type < 0 || type >= (int)(sizeof(aGYO_displayList) / sizeof(aGYO_displayList[0])) ||
-        aGYO_displayList[type] == NULL) {
+    if (r->catch_item == 0 || type < 0 || (type < aGYO_TYPE_PC_CF && type >= (int)(sizeof(aGYO_displayList) / sizeof(aGYO_displayList[0]))) ||
+        aGYO_PC_DL(type) == NULL) {
         return;
     }
     Matrix_push();
@@ -291,7 +304,7 @@ static void aMPP_draw_catch(MP_PUPPET_ACTOR* pp, pc_mp_remote* r, GAME* game) {
         _texture_z_light_fog_prim(graph);
         OPEN_POLY_OPA_DISP(graph);
         gSPMatrix(POLY_OPA_DISP++, mtx, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
-        gSPDisplayList(POLY_OPA_DISP++, aGYO_displayList[type]->dl_a);
+        gSPDisplayList(POLY_OPA_DISP++, aGYO_PC_DL(type)[0]);
         CLOSE_POLY_OPA_DISP(graph);
     }
     Matrix_pull();

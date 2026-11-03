@@ -82,7 +82,7 @@ static void Player_actor_request_proc_index_fromPutaway_net(ACTOR* actor, GAME* 
             if (player->item_net_catch_type == 0) {
                 mSM_open_submenu_new2(
                     &play->submenu, mSM_OVL_INVENTORY, mSM_IV_OPEN_EXCHANGE,
-                    (mActor_name_t)(((aINS_INSECT_ACTOR*)player->item_net_catch_label)->type + ITM_INSECT_START), NULL,
+                    (mActor_name_t)(((aINS_INSECT_ACTOR*)player->item_net_catch_label)->item), NULL,
                     actor->shape_info.rotation.y);
             }
         } else {

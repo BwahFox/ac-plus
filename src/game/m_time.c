@@ -169,7 +169,12 @@ static int mTM_get_termIdx() {
 
 
   if (mFI_GetClimate() == mFI_CLIMATE_ISLAND) {
+#ifdef TARGET_PC
+    extern int pc_season_island_term(void);
+    return pc_season_island_term(); /* the season island Kapp'n goes to (pc_season_island.c) */
+#else
     return mTM_TERM_7;
+#endif
   }
   
   for (term = 0; term < mTM_TERM_NUM; term_info++, term++) {

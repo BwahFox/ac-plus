@@ -25,6 +25,7 @@
 #include "pc_settings.h"
 
 #include <dolphin/os.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -225,4 +226,44 @@ void pc_quick_save_draw(struct game_s* game) {
     pc_menu_draw_centered(game, l_qsave_msg, 20.0f, 255, 255, 255, alpha, 1.0f);
     mFont_UnSetMatrix(game->graph, mFont_MODE_FONT);
     l_qsave_timer--;
+}
+
+/* --- who played last: quick load in a town with several residents ---
+ * LPLY in the town's ac-plus data: { u8 player (0xFF none); u8 pad[3] }, the resident who saved last */
+static u8 l_last_player = 0xFF;
+
+void pc_last_player_reset(void) {
+    l_last_player = 0xFF;
+}
+
+int pc_last_player(void) {
+    return l_last_player < PLAYER_NUM ? l_last_player : -1;
+}
+
+int pc_last_player_read_chunk(const char tag[4], void* fp, unsigned int size) {
+    FILE* f = (FILE*)fp;
+    u8 buf[4];
+
+    if (memcmp(tag, "LPLY", 4) != 0) {
+        return FALSE;
+    }
+    if (size == sizeof(buf) && fread(buf, 1, sizeof(buf), f) == sizeof(buf)) {
+        l_last_player = buf[0];
+    } else {
+        fseek(f, (long)size, SEEK_CUR);
+    }
+    return TRUE;
+}
+
+int pc_last_player_write_chunk(void* fp) {
+    FILE* f = (FILE*)fp;
+    u8 buf[4] = { 0xFF, 0, 0, 0 };
+    u32 size = sizeof(buf);
+    int p = Common_Get(player_no);
+
+    if (p >= 0 && p < PLAYER_NUM && Now_Private == Save_GetPointer(private_data[p])) {
+        l_last_player = (u8)p; /* a resident saving now */
+    }
+    buf[0] = l_last_player;
+    return fwrite("LPLY", 1, 4, f) == 4 && fwrite(&size, 4, 1, f) == 1 && fwrite(buf, 1, size, f) == size;
 }

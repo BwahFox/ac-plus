@@ -1,3 +1,8 @@
+#ifdef TARGET_PC
+#include <stdio.h>
+#include <stdlib.h>
+#include "pc_cf_creature.h"
+#endif
 #include "ac_uki.h"
 
 #include "m_play.h"

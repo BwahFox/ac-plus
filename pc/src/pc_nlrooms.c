@@ -17,7 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define PC_NLR_VERSION 2
+#define PC_NLR_VERSION 3 /* 3: the basement's rooms too (2 had the main room's three only) */
 #define PC_NLR_PRICE_NEW 398000 /* a new room, as the big main room cost */
 #define PC_NLR_PRICE_GROW 798000 /* a room grown to 8x8, as the upstairs did */
 #define PC_NLR_UNIT 40.0f
@@ -37,19 +37,34 @@ typedef struct {
 } pc_nlr_order_c;
 
 typedef struct {
-    u8 size[PC_NLR_ROOMS]; /* 0 none yet, 6 or 8 */
+    u8 size[PC_NLR_ALL_ROOMS]; /* 0 none yet, 6 or 8 */
     pc_nlr_order_c order;
-    mHm_flr_c room[PC_NLR_ROOMS];
+    mHm_flr_c room[PC_NLR_ALL_ROOMS];
 } pc_nlr_house_c;
 
 /* The chunk: { u32 version; s32 room the player is in; u32 houses } then for each house
- * { u8 house; u8 size[3]; PersonalID_c owner; Nook's order; the rooms that exist, left, right, back } */
+ * { u8 house; u8 size[6]; u8 pad[2]; PersonalID_c owner; Nook's order; the rooms that exist, in order }
+ * (version 2: u8 size[3], three rooms) */
+typedef struct {
+    u8 house;
+    u8 size[PC_NLR_ALL_ROOMS];
+    u8 pad[1];
+    PersonalID_c owner;
+    pc_nlr_order_c order;
+} pc_nlr_chunk_house_c;
+
 typedef struct {
     u8 house;
     u8 size[PC_NLR_ROOMS];
     PersonalID_c owner;
     pc_nlr_order_c order;
-} pc_nlr_chunk_house_c;
+} pc_nlr_chunk_house_v2_c;
+
+/* A room's side (PC_NLR_LEFT...), and the room and floor it opens off */
+#define PC_NLR_SIDE(r) ((r) % PC_NLR_ROOMS)
+#define PC_NLR_IN_BASEMENT(r) ((r) >= PC_NLR_BASEMENT_FIRST)
+#define PC_NLR_PARENT_SCENE(r) (PC_NLR_IN_BASEMENT(r) ? SCENE_MY_ROOM_BASEMENT_LL1 : SCENE_MY_ROOM_LL1)
+#define PC_NLR_PARENT_FLOOR(r) (PC_NLR_IN_BASEMENT(r) ? mHm_ROOM_BASEMENT : mHm_ROOM_MAIN)
 
 static pc_nlr_house_c l_nlr[PLAYER_NUM];
 static int l_cur = -1;     /* the extra room the player is in */
@@ -57,11 +72,11 @@ static int l_pending = -1; /* the room the door being taken leads to, -2 when no
 static int l_granted;
 
 /* This scene's door table: the scene's own doors, then the ones to and from the extra rooms */
-static Door_data_c l_doors[PC_NLR_MAIN_DOORS + PC_NLR_ROOMS];
-static int l_door_target[PC_NLR_MAIN_DOORS + PC_NLR_ROOMS]; /* -1: the main room; -2: not ours */
+static Door_data_c l_doors[PC_NLR_MAIN_DOORS + PC_NLR_ALL_ROOMS];
+static int l_door_target[PC_NLR_MAIN_DOORS + PC_NLR_ALL_ROOMS]; /* -1: the room they open off; -2: not ours */
 static int l_door_first;                                 /* the first of ours */
 static int l_door_num;
-static int l_door_of_room[PC_NLR_ROOMS];                 /* in the main room: each room's door, -1 none */
+static int l_door_of_room[PC_NLR_ALL_ROOMS];             /* in the room they open off: each room's door, -1 none */
 
 static int pc_nlr_house(void) {
     int house = Common_Get(house_owner_name);
@@ -77,7 +92,7 @@ static int pc_nlr_house_ready(int house) {
 
 mHm_flr_c* mHm_GetFloorP(int house, int floor_no) {
     house &= 3;
-    if (floor_no >= PC_NLR_FLOOR_FIRST && floor_no < PC_NLR_FLOOR_FIRST + PC_NLR_ROOMS) {
+    if (floor_no >= PC_NLR_FLOOR_FIRST && floor_no < PC_NLR_FLOOR_FIRST + PC_NLR_ALL_ROOMS) {
         return &l_nlr[house].room[floor_no - PC_NLR_FLOOR_FIRST];
     }
     if (floor_no < 0 || floor_no >= mHm_ROOM_NUM) {
@@ -113,7 +128,7 @@ int pc_nlr_current(int* size) {
 }
 
 int pc_nlr_room_size(int house, int room) {
-    if (house < 0 || house >= PLAYER_NUM || room < 0 || room >= PC_NLR_ROOMS) {
+    if (house < 0 || house >= PLAYER_NUM || room < 0 || room >= PC_NLR_ALL_ROOMS) {
         return 0;
     }
     return l_nlr[house].size[room];
@@ -131,15 +146,16 @@ static void pc_nlr_reserve(mHm_flr_c* floor, int ux, int uz) {
 
 /* The floor in front of the doors to and from `room` (n: its size) */
 static void pc_nlr_reserve_doors(int house, int room, int n) {
-    mHm_flr_c* main_floor = &Save_Get(homes[house]).floors[mHm_ROOM_MAIN];
+    mHm_flr_c* main_floor = &Save_Get(homes[house]).floors[PC_NLR_PARENT_FLOOR(room)]; /* or the basement */
     mHm_flr_c* extra = &l_nlr[house].room[room];
+    int side = PC_NLR_SIDE(room);
 
-    if (room == PC_NLR_LEFT) {
+    if (side == PC_NLR_LEFT) {
         pc_nlr_reserve(main_floor, 1, 7);
         pc_nlr_reserve(main_floor, 1, 8);
         pc_nlr_reserve(extra, n, n - 1);
         pc_nlr_reserve(extra, n, n);
-    } else if (room == PC_NLR_RIGHT) {
+    } else if (side == PC_NLR_RIGHT) {
         pc_nlr_reserve(main_floor, 8, 7);
         pc_nlr_reserve(main_floor, 8, 8);
         pc_nlr_reserve(extra, 1, n - 1);
@@ -153,17 +169,18 @@ static void pc_nlr_reserve_doors(int house, int room, int n) {
 void pc_nlr_set_room_size(int house, int room, int size) {
     pc_nlr_house_c* h;
 
-    if (house < 0 || house >= PLAYER_NUM || room < 0 || room >= PC_NLR_ROOMS || (size != 6 && size != 8)) {
+    if (house < 0 || house >= PLAYER_NUM || room < 0 || room >= PC_NLR_ALL_ROOMS || (size != 6 && size != 8)) {
         return;
     }
     h = &l_nlr[house];
     if (h->size[room] == 0) {
-        mHm_PC_InitNlRoom(&h->room[room], size, &Save_Get(homes[house]).floors[mHm_ROOM_MAIN]);
+        /* the walls and floor of the room it opens off: the main room's, or the basement's */
+        mHm_PC_InitNlRoom(&h->room[room], size, &Save_Get(homes[house]).floors[PC_NLR_PARENT_FLOOR(room)]);
     } else if (h->size[room] != size) {
         int old = h->size[room], z;
 
-        for (z = old - 1; z <= old && room != PC_NLR_BACK; z++) {
-            mActor_name_t* was = &h->room[room].layer_main.items[z][room == PC_NLR_LEFT ? old : 1];
+        for (z = old - 1; z <= old && PC_NLR_SIDE(room) != PC_NLR_BACK; z++) {
+            mActor_name_t* was = &h->room[room].layer_main.items[z][PC_NLR_SIDE(room) == PC_NLR_LEFT ? old : 1];
 
             if (*was == RSV_DOOR) {
                 *was = EMPTY_NO; /* the door moves with the wall */
@@ -176,22 +193,22 @@ void pc_nlr_set_room_size(int house, int room, int size) {
     OSReport("[NLRooms] house %d: room %d is %dx%d\n", house, room, size, size);
 }
 
-/* dev: PC_NLR_GRANT=a,b,c */
+/* dev: PC_NLR_GRANT=a,b,c[,d,e,f] */
 static void pc_nlr_grant(void) {
     const char* env = getenv("PC_NLR_GRANT");
-    int size[PC_NLR_ROOMS] = { 0 };
+    int size[PC_NLR_ALL_ROOMS] = { 0 };
     int house, r;
 
     if (l_granted || env == NULL || !mSc_IS_SCENE_PLAYER_ROOM(Save_Get(scene_no))) {
         return; /* in a house, so the town is loaded */
     }
     l_granted = TRUE;
-    sscanf(env, "%d,%d,%d", &size[0], &size[1], &size[2]);
+    sscanf(env, "%d,%d,%d,%d,%d,%d", &size[0], &size[1], &size[2], &size[3], &size[4], &size[5]);
     for (house = 0; house < PLAYER_NUM; house++) {
         if (!pc_nlr_house_ready(house)) {
             continue;
         }
-        for (r = 0; r < PC_NLR_ROOMS; r++) {
+        for (r = 0; r < PC_NLR_ALL_ROOMS; r++) {
             if (size[r] == 6 || size[r] == 8) {
                 pc_nlr_set_room_size(house, r, size[r]);
             }
@@ -249,7 +266,7 @@ Door_data_c* pc_nlr_door_data(int scene, Door_data_c* doors, int* num_doors) {
     int r, n;
 
     l_door_num = 0;
-    for (r = 0; r < PC_NLR_ROOMS; r++) {
+    for (r = 0; r < PC_NLR_ALL_ROOMS; r++) {
         l_door_of_room[r] = -1;
     }
     if (getenv("PC_NLR_LOG") != NULL) {
@@ -260,7 +277,7 @@ Door_data_c* pc_nlr_door_data(int scene, Door_data_c* doors, int* num_doors) {
     if (!pc_nlr_house_ready(house) || doors == NULL || *num_doors < 1 || *num_doors > PC_NLR_MAIN_DOORS) {
         return doors;
     }
-    for (r = 0; r < PC_NLR_ROOMS; r++) {
+    for (r = 0; r < PC_NLR_ALL_ROOMS; r++) {
         if (l_nlr[house].size[r] != 0) {
             pc_nlr_reserve_doors(house, r, l_nlr[house].size[r]);
         }
@@ -271,17 +288,17 @@ Door_data_c* pc_nlr_door_data(int scene, Door_data_c* doors, int* num_doors) {
     }
     l_door_num = l_door_first = *num_doors;
 
-    if (l_cur < 0 && scene == SCENE_MY_ROOM_LL1) {
-        /* the main room: into each room that's there, arriving at its door */
-        for (r = 0; r < PC_NLR_ROOMS; r++) {
+    if (l_cur < 0 && (scene == SCENE_MY_ROOM_LL1 || scene == SCENE_MY_ROOM_BASEMENT_LL1)) {
+        /* the main room, or the basement: into each of its rooms that's there, arriving at its door */
+        for (r = 0; r < PC_NLR_ALL_ROOMS; r++) {
             n = l_nlr[house].size[r];
-            if (n == 0) {
+            if (n == 0 || PC_NLR_PARENT_SCENE(r) != scene) {
                 continue;
             }
             l_door_of_room[r] = l_door_num;
-            if (r == PC_NLR_LEFT) {
+            if (PC_NLR_SIDE(r) == PC_NLR_LEFT) {
                 pc_nlr_add_door(&doors[0], r, pc_nlr_scene_of(n), n, n, PC_NLR_FACE_W);
-            } else if (r == PC_NLR_RIGHT) {
+            } else if (PC_NLR_SIDE(r) == PC_NLR_RIGHT) {
                 pc_nlr_add_door(&doors[0], r, pc_nlr_scene_of(n), 1, n, PC_NLR_FACE_E);
             } else {
                 /* in through its front door, as into a house */
@@ -290,13 +307,15 @@ Door_data_c* pc_nlr_door_data(int scene, Door_data_c* doors, int* num_doors) {
             }
         }
     } else if (l_cur >= 0 && scene == pc_nlr_scene_of(l_nlr[house].size[l_cur])) {
-        /* an extra room: back to the main room, by its door there */
-        if (l_cur == PC_NLR_LEFT) {
-            pc_nlr_add_door(&doors[0], -1, SCENE_MY_ROOM_LL1, 1, 8, PC_NLR_FACE_E);
-        } else if (l_cur == PC_NLR_RIGHT) {
-            pc_nlr_add_door(&doors[0], -1, SCENE_MY_ROOM_LL1, 8, 8, PC_NLR_FACE_W);
+        /* an extra room: back to the room it opens off, by its door there */
+        int back = PC_NLR_PARENT_SCENE(l_cur);
+
+        if (PC_NLR_SIDE(l_cur) == PC_NLR_LEFT) {
+            pc_nlr_add_door(&doors[0], -1, back, 1, 8, PC_NLR_FACE_E);
+        } else if (PC_NLR_SIDE(l_cur) == PC_NLR_RIGHT) {
+            pc_nlr_add_door(&doors[0], -1, back, 8, 8, PC_NLR_FACE_W);
         } else {
-            pc_nlr_add_door(&doors[0], -1, SCENE_MY_ROOM_LL1, 4, 1, PC_NLR_FACE_S);
+            pc_nlr_add_door(&doors[0], -1, back, 4, 1, PC_NLR_FACE_S);
             l_doors[l_door_num - 1].exit_position.x = (s16)(5 * PC_NLR_UNIT);
         }
     } else {
@@ -305,6 +324,28 @@ Door_data_c* pc_nlr_door_data(int scene, Door_data_c* doors, int* num_doors) {
     }
     *num_doors = l_door_num;
     return l_doors;
+}
+
+/* m_player.c, after the player moves: a side room has no front door, and its alcove isn't drawn (it's sealed,
+ * pc_nlr_build_wall), but the room's ground still runs into it. The player stops there as along the rest of the
+ * front wall: 18 short of its line, where the wall's collision stops them. */
+#define PC_NLR_FRONT_STOP 18.0f
+void pc_nlr_keep_in_room(xyz_t* pos) {
+    int house = pc_nlr_house();
+    f32 limit;
+    int size;
+
+    if (l_cur < 0 || house < 0 || PC_NLR_SIDE(l_cur) == PC_NLR_BACK) {
+        return;
+    }
+    size = l_nlr[house].size[l_cur];
+    if (size == 0 || Save_Get(scene_no) != pc_nlr_scene_of(size)) {
+        return;
+    }
+    limit = (size + 1) * PC_NLR_UNIT - PC_NLR_FRONT_STOP;
+    if (pos->z > limit) {
+        pos->z = limit;
+    }
 }
 
 int pc_nlr_door_in_front(const xyz_t* probe, int item) {
@@ -327,15 +368,21 @@ int pc_nlr_door_in_front(const xyz_t* probe, int item) {
     }
 
     if (l_cur < 0) {
-        /* the main room's walls: left and right near the front, the back in the middle */
-        if (l_door_of_room[PC_NLR_LEFT] >= 0 && ux == 0 && (uz == 7 || uz == 8)) {
-            return DOOR_START + l_door_of_room[PC_NLR_LEFT];
-        }
-        if (l_door_of_room[PC_NLR_RIGHT] >= 0 && ux == 9 && (uz == 7 || uz == 8)) {
-            return DOOR_START + l_door_of_room[PC_NLR_RIGHT];
-        }
-        if (l_door_of_room[PC_NLR_BACK] >= 0 && uz == 0 && (ux == 4 || ux == 5)) {
-            return DOOR_START + l_door_of_room[PC_NLR_BACK];
+        /* the main room's or the basement's walls (only this room's doors are set): left and right near the
+         * front, the back in the middle */
+        int r;
+
+        for (r = 0; r < PC_NLR_ALL_ROOMS; r++) {
+            int side = PC_NLR_SIDE(r);
+
+            if (l_door_of_room[r] < 0) {
+                continue;
+            }
+            if ((side == PC_NLR_LEFT && ux == 0 && (uz == 7 || uz == 8)) ||
+                (side == PC_NLR_RIGHT && ux == 9 && (uz == 7 || uz == 8)) ||
+                (side == PC_NLR_BACK && uz == 0 && (ux == 4 || ux == 5))) {
+                return DOOR_START + l_door_of_room[r];
+            }
         }
         return item;
     }
@@ -343,9 +390,10 @@ int pc_nlr_door_in_front(const xyz_t* probe, int item) {
     n = l_nlr[house].size[l_cur];
     if (item == EXIT_DOOR || item == EXIT_DOOR + 1) {
         /* the front door: the back room's way out, a sealed one for the side rooms */
-        return l_cur == PC_NLR_BACK ? DOOR_START + l_door_first : RSV_WALL_NO;
+        return PC_NLR_SIDE(l_cur) == PC_NLR_BACK ? DOOR_START + l_door_first : RSV_WALL_NO;
     }
-    if (((l_cur == PC_NLR_LEFT && ux == n + 1) || (l_cur == PC_NLR_RIGHT && ux == 0)) && (uz == n - 1 || uz == n)) {
+    if (((PC_NLR_SIDE(l_cur) == PC_NLR_LEFT && ux == n + 1) || (PC_NLR_SIDE(l_cur) == PC_NLR_RIGHT && ux == 0)) &&
+        (uz == n - 1 || uz == n)) {
         return DOOR_START + l_door_first;
     }
     return item;
@@ -361,20 +409,23 @@ int pc_nlr_is_door(int item) {
 
 static const char* l_room_side[PC_NLR_ROOMS] = { "left", "right", "back" };
 
-/* The next room Nook can build or grow for a house, in order: new rooms first, then each grown to 8x8 */
+/* The next room Nook can build or grow for a house, in order: the main room's new rooms, then each grown to 8x8;
+ * then the same for the basement's */
 static int pc_nlr_next(int house, int* size) {
-    int r;
+    int first, r;
 
-    for (r = 0; r < PC_NLR_ROOMS; r++) {
-        if (l_nlr[house].size[r] == 0) {
-            *size = 6;
-            return r;
+    for (first = 0; first < PC_NLR_ALL_ROOMS; first += PC_NLR_ROOMS) {
+        for (r = first; r < first + PC_NLR_ROOMS; r++) {
+            if (l_nlr[house].size[r] == 0) {
+                *size = 6;
+                return r;
+            }
         }
-    }
-    for (r = 0; r < PC_NLR_ROOMS; r++) {
-        if (l_nlr[house].size[r] == 6) {
-            *size = 8;
-            return r;
+        for (r = first; r < first + PC_NLR_ROOMS; r++) {
+            if (l_nlr[house].size[r] == 6) {
+                *size = 8;
+                return r;
+            }
         }
     }
     return -1;
@@ -451,7 +502,7 @@ void pc_nlr_check_orders(void) {
         /* as mHm_CheckRehouseOrder: done on the first load on another day */
         if (o->date.day != now->day || o->date.month != now->month || o->date.year != now->year) {
             /* a new room's wing outside needs its ground: a tree or a rock there holds it up a day */
-            if (l_nlr[house].size[o->room] == 0) {
+            if (l_nlr[house].size[o->room] == 0 && !PC_NLR_IN_BASEMENT(o->room)) { /* no wing for the basement's */
                 if (!pc_nlr_wing_ground(house, o->room, FALSE)) {
                     continue;
                 }
@@ -468,20 +519,20 @@ static const char* l_lines[] = {
     /* PC_NLR_LINE_NEW */
     "Oh! @! Welcome, welcome!\f"
     "That house of yours has\ncome such a long way, hm?\nBut I can't help thinking\nit could use more room...\f"
-    "So here's my idea: a whole\nnew room, right off the %s\nside of your main room!\nSpacious, cozy, splendid!\f"
+    "So here's my idea: a whole\nnew room, right off the %s\nside of your %s!\nSpacious, cozy, splendid!\f"
     "My crew will start at once.\nIt'll be ready tomorrow,\nyes? Oh ho ho! You can\nthank me later!",
     /* PC_NLR_LINE_GROW */
     "Ah, @! Do come in!\f"
-    "I was thinking about that\n%s room of yours. Lovely,\nbut a bit snug, wouldn't\nyou say?\f"
+    "I was thinking about that\n%s room off your\n%s. Lovely, but a bit\nsnug, wouldn't you say?\f"
     "I'll have it made as big as\nyour main room! It'll be\nready tomorrow, hm?\nOh ho ho!",
     /* PC_NLR_LINE_NEW_DONE */
     "Welcome, @!\f"
-    "Have you seen your new room\nyet? Right off the %s side\nof your main room! Grand,\nisn't it?\f"
+    "Have you seen your new room\nyet? Right off the %s side\nof your %s! Grand,\nisn't it?\f"
     "Now then, the small matter\nof the cost... That'll be\n398,000 Bells!\f"
     "No need to pay it now, of\ncourse. Just pay it off\nthrough the post office,\nlike before, yes?",
     /* PC_NLR_LINE_GROW_DONE */
     "Welcome, @!\f"
-    "Your %s room is all\ngrown up now! Plenty of\nspace for all sorts of\nfurniture, hm?\f"
+    "That %s room off\nyour %s is all grown\nup now! Plenty of space\nfor furniture, hm?\f"
     "And that comes to...\n798,000 Bells!\f"
     "Pay it off through the post\noffice whenever you can.\nOh ho ho! Do come again!",
 };
@@ -498,7 +549,8 @@ int pc_nlr_msg(int index, u8* buf, int buf_size, int* len) {
         l_line = -1; /* the talk has moved on: that message is the game's own again */
         return FALSE;
     }
-    snprintf(text, sizeof(text), l_lines[l_line], l_room_side[l_line_room]);
+    snprintf(text, sizeof(text), l_lines[l_line], l_room_side[PC_NLR_SIDE(l_line_room)],
+             PC_NLR_IN_BASEMENT(l_line_room) ? "basement" : "main room");
     for (t = text; *t != '\0' && i < buf_size - 8; t++) {
         if (*t == '\n') {
             buf[i++] = 0xCD;
@@ -550,30 +602,36 @@ static int pc_nlr_openings(pc_nlr_opening_c* op, int* front_sealed) {
 
     *front_sealed = 0;
     if (l_door_num == 0 || house < 0 ||
-        scene != (l_cur < 0 ? SCENE_MY_ROOM_LL1 : pc_nlr_scene_of(l_nlr[house].size[l_cur]))) {
+        (l_cur < 0 ? scene != SCENE_MY_ROOM_LL1 && scene != SCENE_MY_ROOM_BASEMENT_LL1
+                   : scene != pc_nlr_scene_of(l_nlr[house].size[l_cur]))) {
         return 0;
     }
 #define PC_NLR_OPEN(z, w, c, in) \
     (op[n].along_z = (z), op[n].wall = (w), op[n].s0 = (c) - h, op[n].s1 = (c) + h, op[n].inward = (in), n++)
     if (l_cur < 0) {
-        if (l_door_of_room[PC_NLR_LEFT] >= 0) {
-            PC_NLR_OPEN(TRUE, u, 8 * u, 1.0f);
-        }
-        if (l_door_of_room[PC_NLR_RIGHT] >= 0) {
-            PC_NLR_OPEN(TRUE, 9 * u, 8 * u, -1.0f);
-        }
-        if (l_door_of_room[PC_NLR_BACK] >= 0) {
-            PC_NLR_OPEN(FALSE, u, 5 * u, 1.0f);
+        int r;
+
+        for (r = 0; r < PC_NLR_ALL_ROOMS; r++) { /* only this room's doors are set */
+            if (l_door_of_room[r] < 0) {
+                continue;
+            }
+            if (PC_NLR_SIDE(r) == PC_NLR_LEFT) {
+                PC_NLR_OPEN(TRUE, u, 8 * u, 1.0f);
+            } else if (PC_NLR_SIDE(r) == PC_NLR_RIGHT) {
+                PC_NLR_OPEN(TRUE, 9 * u, 8 * u, -1.0f);
+            } else {
+                PC_NLR_OPEN(FALSE, u, 5 * u, 1.0f);
+            }
         }
     } else {
         size = l_nlr[house].size[l_cur];
-        if (l_cur == PC_NLR_LEFT) {
+        if (PC_NLR_SIDE(l_cur) == PC_NLR_LEFT) {
             PC_NLR_OPEN(TRUE, (size + 1) * u, size * u, -1.0f);
-        } else if (l_cur == PC_NLR_RIGHT) {
+        } else if (PC_NLR_SIDE(l_cur) == PC_NLR_RIGHT) {
             PC_NLR_OPEN(TRUE, u, size * u, 1.0f);
         }
         /* the back room's way out is its front door; the side rooms have none there */
-        *front_sealed = l_cur != PC_NLR_BACK ? (int)((size + 1) * u) : 0;
+        *front_sealed = PC_NLR_SIDE(l_cur) != PC_NLR_BACK ? (int)((size + 1) * u) : 0;
     }
 #undef PC_NLR_OPEN
     return n;
@@ -1003,7 +1061,7 @@ static void pc_nlr_build_wall(pc_nlr_wall_c* w, Gfx* src, const pc_nlr_opening_c
 }
 
 Gfx* pc_nlr_wall_model(Gfx* model) {
-    pc_nlr_opening_c op[PC_NLR_ROOMS];
+    pc_nlr_opening_c op[PC_NLR_ALL_ROOMS];
     int nop, front_sealed, i;
     u32 key;
     pc_nlr_wall_c* w;
@@ -1061,7 +1119,7 @@ int pc_nlr_read_chunk(const char tag[4], void* fp, unsigned int size) {
     }
     end = ftell(f) + (long)size;
     pc_nlr_reset();
-    if (fread(&version, 4, 1, f) != 1 || version != PC_NLR_VERSION || fread(&cur, 4, 1, f) != 1 ||
+    if (fread(&version, 4, 1, f) != 1 || (version != PC_NLR_VERSION && version != 2) || fread(&cur, 4, 1, f) != 1 ||
         fread(&houses, 4, 1, f) != 1) {
         fseek(f, end, SEEK_SET);
         return TRUE;
@@ -1070,10 +1128,25 @@ int pc_nlr_read_chunk(const char tag[4], void* fp, unsigned int size) {
         pc_nlr_chunk_house_c h;
         int r;
 
-        if (fread(&h, sizeof(h), 1, f) != 1 || h.house >= PLAYER_NUM) {
+        if (version == 2) {
+            /* the main room's three only */
+            pc_nlr_chunk_house_v2_c h2;
+
+            if (fread(&h2, sizeof(h2), 1, f) != 1) {
+                break;
+            }
+            memset(&h, 0, sizeof(h));
+            h.house = h2.house;
+            memcpy(h.size, h2.size, sizeof(h2.size));
+            h.owner = h2.owner;
+            h.order = h2.order;
+        } else if (fread(&h, sizeof(h), 1, f) != 1) {
             break;
         }
-        for (r = 0; r < PC_NLR_ROOMS; r++) {
+        if (h.house >= PLAYER_NUM) {
+            break;
+        }
+        for (r = 0; r < PC_NLR_ALL_ROOMS; r++) {
             if (h.size[r] != 0 && fread(&l_nlr[h.house].room[r], sizeof(mHm_flr_c), 1, f) != 1) {
                 break;
             }
@@ -1101,7 +1174,7 @@ int pc_nlr_write_chunk(void* fp) {
     for (i = 0; i < PLAYER_NUM; i++) {
         int rooms = 0;
 
-        for (r = 0; r < PC_NLR_ROOMS; r++) {
+        for (r = 0; r < PC_NLR_ALL_ROOMS; r++) {
             rooms += l_nlr[i].size[r] != 0;
         }
         if (rooms != 0 || l_nlr[i].order.room >= 0) {
@@ -1118,12 +1191,19 @@ int pc_nlr_write_chunk(void* fp) {
         h.house = (u8)i;
         memcpy(h.size, l_nlr[i].size, sizeof(h.size));
         h.order = l_nlr[i].order;
-        if (h.size[0] == 0 && h.size[1] == 0 && h.size[2] == 0 && h.order.room < 0) {
-            continue;
+        {
+            int any = h.order.room >= 0;
+
+            for (r = 0; r < PC_NLR_ALL_ROOMS; r++) {
+                any |= h.size[r] != 0;
+            }
+            if (!any) {
+                continue;
+            }
         }
         h.owner = Save_Get(homes[i]).ownerID;
         ok = fwrite(&h, sizeof(h), 1, f) == 1;
-        for (r = 0; ok && r < PC_NLR_ROOMS; r++) {
+        for (r = 0; ok && r < PC_NLR_ALL_ROOMS; r++) {
             if (h.size[r] != 0) {
                 ok = fwrite(&l_nlr[i].room[r], sizeof(mHm_flr_c), 1, f) == 1;
             }

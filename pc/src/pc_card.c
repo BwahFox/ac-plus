@@ -6,9 +6,10 @@
 #ifdef _WIN32
 #include <direct.h>  /* _mkdir */
 #include <windows.h>
-#else
-#include <dirent.h>
 #endif
+#include <dirent.h>
+#include <string.h>
+#include <strings.h> /* strcasecmp */
 
 #define CARD_RESULT_READY     0
 #define CARD_RESULT_BUSY     -1
@@ -386,5 +387,25 @@ int pc_card_scan_for_gci(s32 chan, char* out_path, int out_size) {
     closedir(d);
 #endif
 
+    /* else an ac-plus town file (town.acplus, a friend's town copied over) */
+    {
+        extern int pc_ext_town_is_merged(const char* path);
+        DIR* td = opendir(dir);
+        struct dirent* te;
+
+        while (td != NULL && (te = readdir(td)) != NULL) {
+            char full[512];
+            size_t len = strlen(te->d_name);
+
+            if (len < 8 || strcasecmp(te->d_name + len - 7, ".acplus") != 0) continue;
+            snprintf(full, sizeof(full), "%s/%s", dir, te->d_name);
+            if (pc_ext_town_is_merged(full)) {
+                snprintf(out_path, out_size, "%s", full);
+                closedir(td);
+                return 1;
+            }
+        }
+        if (td != NULL) closedir(td);
+    }
     return 0;
 }

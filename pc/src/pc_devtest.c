@@ -462,6 +462,12 @@ static u32 devctl_buttons(const char* names) {
 /* One PC_CTL line:
  *   press A+B 10 | tap A | stick X Y frames | cstick X Y frames | shot name | warp N [x z] | ground [slot] | skin N | skinpick | menu N |
  *   teleport x z [deg] | loan bells (the player's) | echo text | quit (save and quit, as the menu does) | exit */
+/* (dev: the rod's bite, PC_UKI_LOG: press A as a player would) */
+void pc_devtest_tap_a(void) {
+    s_ctl_buttons = devctl_buttons("A");
+    s_ctl_buttons_until = s_frame + 8;
+}
+
 static void devctl_run(const char* line, int* quit_at, int* exit_at) {
     char cmd[16], a[64];
     int x = 0, y = 0, n = 0;
@@ -568,6 +574,14 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
         /* shopfake SLOT ITEM: this game's shop slot only, unreported (tests a purchase the host refuses) */
         extern int pc_mp_world_apply(int kind, int a, int b, unsigned short value);
         pc_mp_world_apply(3, x, 0, (unsigned short)n);
+    } else if (strcmp(cmd, "codemake") == 0 && sscanf(line, "%*s %x", &n) == 1) {
+        extern void pc_dev_secret_code_make(int item);
+        pc_dev_secret_code_make(n);
+    } else if (strcmp(cmd, "code") == 0 && strlen(line) > 5) {
+        /* code HEX: a Nook secret code (its 28 font codes as hex) through the game's own decoding and checks, as
+         * Nook does with one in a letter; logs [code] item, type, valid */
+        extern void pc_dev_secret_code(const char* text);
+        pc_dev_secret_code(line + 5);
     } else if (strcmp(cmd, "museumfish") == 0 && sscanf(line, "%*s %d", &n) == 1) {
         extern void mMmd_SetFish(int fish_no);
         mMmd_SetFish(n);
@@ -577,6 +591,36 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
         for (x = 0; x < n; x++) {
             mMmd_SetFossil(x);
         }
+    } else if (strcmp(cmd, "spawnfish") == 0 && sscanf(line, "%*s %d %d %d", &n, &x, &y) == 3) {
+        /* spawnfish TYPE X Z: a fish there, or beside the float if X is -1 */
+        extern void pc_dev_spawn_fish(int type, int x, int z);
+        pc_dev_spawn_fish(n, x, y);
+    } else if (strcmp(cmd, "museumcf") == 0 && sscanf(line, "%*s %x", &n) == 1) {
+        /* museumcf ITEM: that City Folk fish or bug given to the museum */
+        extern void pc_cf_museum_donate(unsigned short item, int player);
+        pc_cf_museum_donate((unsigned short)n, 0);
+    } else if (strcmp(cmd, "cfcaught") == 0 && sscanf(line, "%*s %x", &n) == 1) {
+        /* cfcaught ITEM: that City Folk fish or bug caught, for the fish and bug pages */
+        extern void pc_cf_creature_set_caught(unsigned short item);
+        pc_cf_creature_set_caught((unsigned short)n);
+    } else if (strcmp(cmd, "iteminfo") == 0 && sscanf(line, "%*s %x", &n) == 1) {
+        /* iteminfo ITEM: what the game makes of it */
+        extern u32 mSP_ItemNo2ItemPrice(unsigned short item);
+        extern int mNT_check_unknown(unsigned short item);
+        extern unsigned short mRmTp_Item1ItemNo2FtrItemNo_AtPlayerRoom(unsigned short item, int no_convert_tools);
+        extern unsigned short mRmTp_FtrItemNo2Item1ItemNo(unsigned short item, int no_convert_tools);
+        unsigned short placed = mRmTp_Item1ItemNo2FtrItemNo_AtPlayerRoom((unsigned short)n, 0);
+        printf("[dev] item %04X: price %u unknown %d placed %04X back %04X\n", n, (unsigned)mSP_ItemNo2ItemPrice((unsigned short)n),
+               mNT_check_unknown((unsigned short)n), placed, mRmTp_FtrItemNo2Item1ItemNo(placed, 0));
+        fflush(stdout);
+    } else if (strcmp(cmd, "giftall") == 0 && sscanf(line, "%*s %x", &n) == 1) {
+        /* giftall ITEM: that item in a letter in the pockets, the mailbox, and with the gyroid (for --export-gci) */
+        extern void pc_dev_gift_all(int item);
+        pc_dev_gift_all(n);
+    } else if (strcmp(cmd, "spawnbug") == 0 && sscanf(line, "%*s %d %d %d", &n, &x, &y) == 3) {
+        /* spawnbug TYPE X Z: a bug there, a GameCube type or 48 + City Folk's */
+        extern void pc_dev_spawn_bug(int type, int x, int z);
+        pc_dev_spawn_bug(n, x, y);
     } else if (strcmp(cmd, "pocket") == 0 && sscanf(line, "%*s %d %x", &x, &n) == 2) {
         /* pocket SLOT ITEM(hex) */
         extern void pc_dev_pocket(int slot, int item);
@@ -599,6 +643,17 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
     } else if (strcmp(cmd, "fengshui") == 0) {
         extern void pc_dev_fengshui(void);
         pc_dev_fengshui();
+    } else if (strcmp(cmd, "door") == 0 && sscanf(line, "%*s %d", &n) == 1) {
+        /* door N: take this scene's door N (its door table, ac-plus' extra doors included) */
+        extern void pc_dev_take_door(int n);
+        pc_dev_take_door(n);
+    } else if (strcmp(cmd, "roomgrid") == 0) {
+        /* roomgrid H F: house H's floor F, its 16x16 main layer as hex */
+        extern void pc_dev_room_grid(int home, int floor);
+        int h, f;
+        if (sscanf(line, "%*s %d %d", &h, &f) == 2) {
+            pc_dev_room_grid(h, f);
+        }
     } else if (strcmp(cmd, "roomlog") == 0) {
         extern void pc_dev_room(int home, int floor, int unit, int item);
         int h, f, u;
@@ -690,6 +745,25 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
         /* memtest IDX: villager IDX gets to know this player, as a first talk does */
         extern void pc_mp_memory_dev_meet(int v);
         pc_mp_memory_dev_meet(n);
+    } else if (strcmp(cmd, "itemnames") == 0 && sscanf(line, "%*s %x %d", &x, &n) == 2) {
+        /* itemnames FIRST(hex) COUNT: item names */
+        extern void pc_dev_item_names(int first, int count);
+        pc_dev_item_names(x, n);
+    } else if (strcmp(cmd, "goisland") == 0) {
+        /* goisland: what Kapp'n's boat does on the way over, then onto the island (dev) */
+        extern void pc_dev_go_island(void);
+        pc_dev_go_island();
+    } else if (strcmp(cmd, "actors") == 0) {
+        extern void pc_dev_actors(void);
+        pc_dev_actors();
+    } else if (strcmp(cmd, "dock") == 0) {
+        /* dock: to the acre with Kapp'n's dock (logged; teleport there yourself) */
+        extern void pc_dev_dock(void);
+        pc_dev_dock();
+    } else if (strcmp(cmd, "bank") == 0 && sscanf(line, "%*s %d", &n) == 1) {
+        /* bank BELLS: the player's savings at the post office */
+        extern void pc_dev_bank(int bells);
+        pc_dev_bank(n);
     } else if (strcmp(cmd, "wallet") == 0 && sscanf(line, "%*s %d", &n) == 1) {
         /* wallet BELLS: the player's wallet */
         extern void pc_dev_wallet(int bells);
@@ -702,6 +776,17 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
     } else if (strcmp(cmd, "shoplog") == 0) {
         extern void pc_dev_shop_log(void);
         pc_dev_shop_log();
+    } else if (strcmp(cmd, "shoproll") == 0 && sscanf(line, "%*s %d", &n) == 1) {
+        /* shoproll N: pick N pieces of furniture as Nook's shop does (lists A-C), log how many were City Folk's */
+        extern void mSP_SelectRandomItem_New(void*, u16*, int, u16*, int, int, int, int);
+        extern int pc_cf_ftr_item(u16 item);
+        u16 item;
+        int cf = 0;
+        for (x = 0; x < n; x++) {
+            mSP_SelectRandomItem_New(NULL, &item, 1, NULL, 0, 0 /* furniture */, 8 /* ABC */, 0);
+            cf += pc_cf_ftr_item(item) != 0;
+        }
+        printf("[devtest] shoproll %d picks, %d City Folk's\n", n, cf);
     } else if (strcmp(cmd, "fgfind") == 0 && sscanf(line, "%*s %x", &n) == 1) {
         extern void pc_dev_fg_find(int item);
         pc_dev_fg_find(n);

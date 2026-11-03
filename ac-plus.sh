@@ -14,7 +14,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 ROOT="$PWD"
-IMAGE=ac-plus-build:3
+IMAGE=ac-plus-build:4
 DIST="$ROOT/dist/ac-plus"
 
 if command -v podman > /dev/null 2>&1; then
@@ -51,7 +51,7 @@ case "${1:-}" in
         # the City Folk converter the game runs on its first start: the tools and a Windows Python
         rm -rf "$DIST/cf-tools"
         mkdir -p "$DIST/cf-tools"
-        cp pc/tools/*.py src/data/npc/model/mdl/owl_1.c "$DIST/cf-tools/"
+        cp pc/tools/*.py pc/tools/*.tsv src/data/npc/model/mdl/owl_1.c "$DIST/cf-tools/"
         run -v "$DIST/cf-tools:/out:Z" "$IMAGE" cp -r /opt/winpython /out/python
         cp README.md LICENSE "$DIST/"
         rm -f "$DIST/rom/PUT_YOUR_GAMECUBE_DISC_HERE.txt"

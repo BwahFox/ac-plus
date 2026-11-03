@@ -1,0 +1,67 @@
+# City Folk fish and bugs ac-plus adds (pc/tools/cf_creatures.py): those the GameCube has none of. (emperor, miyama stag,
+# black bass and char are the GameCube's purple butterfly, mountain beetle, bass and large char.)
+# Item: fish 0x2330 + slot, bugs 0x2D30 + slot; put in the house: furniture 0x3C00 + 4 * n (fish first, then bugs).
+# months/hours when they come out (hours from-to, wrapping past midnight, comma for several; all); place: where the
+# GameCube's own spawn tables would have them; weight: on those tables' scale; base: fish, the size (XS S M L XL) and
+# bite as the GameCube's fish of that size; bugs, the GameCube's bug it moves and is caught like; file: Fish/ or
+# Insect/ on the disc; placed: Item/Fish/FishN or Item/Insect/InsectN; size: a bug's half width in town (0 for fish).
+# line: its catch line in City Folk's sys_MESS/SYS_Get_fish.bmg or SYS_Get_bug.bmg (for a fish, Chip's in npc_SP/NPC_uomasa.bmg is 100 on).
+kind	slot	name	sell	months	hours	place	weight	base	file	placed	size	line
+fish	0	yellow perch	240	10-3	all	RIVER	4	M	fsh_yellow	18	0	19
+fish	1	pike	1800	9-12	4-21	RIVER	2	L	fsh_pike	20	0	21
+fish	2	king salmon	1800	9	all	RIVER_MOUTH	3	XL	fsh_king	28	0	29
+fish	3	neon tetra	500	4-11	9-16	RIVER	3	XS	fsh_neon	31	0	32
+fish	4	dorado	15000	6-9	4-21	RIVER	1	XL	fsh_dorado	34	0	35
+fish	5	gar	6000	6-9	16-9	POOL	1	XL	fsh_ga	35	0	36
+fish	6	sea butterfly	1000	12-2	all	SEA	4	XS	fsh_kurione	37	0	38
+fish	7	sea horse	1100	4-11	all	SEA	4	XS	fsh_tatsu	39	0	40
+fish	8	clownfish	650	4-9	all	SEA	5	XS	fsh_kumanomi	40	0	41
+fish	9	surgeonfish	1000	4-9	all	SEA	4	S	fsh_nanyou	41	0	42
+fish	10	butterflyfish	1000	4-9	all	SEA	4	S	fsh_chouchou	42	0	43
+fish	11	Napoleonfish	10000	7-8	all	SEA	1	XL	fsh_napoleon	43	0	44
+fish	12	zebra turkeyfish	400	4-11	all	SEA	5	M	fsh_minokasago	44	0	45
+fish	13	puffer fish	240	7-9	all	SEA	6	S	fsh_harisen	45	0	46
+fish	14	horse mackerel	150	1-12	all	SEA	10	S	fsh_aji	46	0	47
+fish	15	dab	300	10-4	all	SEA	6	M	fsh_karei	50	0	51
+fish	16	olive flounder	800	1-12	all	SEA	4	M	fsh_hirame	51	0	52
+fish	17	squid	400	12-8	all	SEA	6	M	fsh_ika	52	0	53
+fish	18	octopus	500	3-7,9-1	all	SEA	5	S	fsh_tako	53	0	54
+fish	19	lobster	2500	11-2	all	SEA	2	L	fsh_lobster	54	0	55
+fish	20	moray eel	2000	8-10	all	SEA	2	L	fsh_utsubo	55	0	56
+fish	21	football fish	2500	11-3	16-9	SEA	2	M	fsh_ankou	56	0	57
+fish	22	tuna	7000	11-3	all	SEA	1	XL	fsh_maguro	57	0	58
+fish	23	blue marlin	10000	7-9	all	SEA	1	XL	fsh_kajiki	58	0	59
+fish	24	ray	3000	8-11	4-21	SEA	2	XL	fsh_ei	59	0	60
+fish	25	ocean sunfish	4000	6-9	4-21	SEA	2	XL	fsh_manbou	60	0	61
+fish	26	hammerhead shark	8000	6-9	16-9	SEA	1	XL	fsh_shumoku	61	0	62
+fish	27	shark	15000	6-9	16-9	SEA	1	XL	fsh_same	62	0	63
+bug	0	peacock	220	3-9	4-19	FLYING_NEAR_FLOWERS_OR_AROUND	2	TIGER_BUTTERFLY	ins_karasu	3	10	4
+bug	1	monarch	140	9-11	4-17	FLYING_NEAR_FLOWERS_OR_AROUND	3	COMMON_BUTTERFLY	ins_ookaba	4	10	5
+bug	2	agrias butterfly	3000	6-9	8-17	FLYING_NEAR_FLOWERS_OR_AROUND	1	TIGER_BUTTERFLY	ins_miiro	6	10	7
+bug	3	Raja Brooke	2500	5-9	8-17	FLYING_NEAR_WATER	1	TIGER_BUTTERFLY	ins_akaeri	7	11	8
+bug	4	birdwing	4000	6-9	8-16	FLYING_NEAR_FLOWERS_OR_AROUND	1	TIGER_BUTTERFLY	ins_alex	8	12	9
+bug	5	moth	60	5-9	19-4	FLYING_NEAR_FLOWERS_OR_AROUND	4	COMMON_BUTTERFLY	ins_ga	9	8	10
+bug	6	oak silk moth	1200	6-9	19-4	FLYING	1	COMMON_BUTTERFLY	ins_ymmga	10	11	11
+bug	7	honeybee	100	3-7	8-17	FLYING_NEAR_FLOWERS_OR_AROUND	3	YELLOW_BUTTERFLY	ins_mitsu	11	5	12
+bug	8	orchid mantis	2400	4-11	8-17	ON_FLOWER	1	MANTIS	ins_hanakama	16	8	17
+bug	9	lantern fly	1800	6-9	16-19,23-8	ON_TREE	1	DRONE_BEETLE	ins_biwa	21	8	22
+bug	10	giant petaltail	8000	8-10	17-19	FLYING	1	DARNER_DRAGONFLY	ins_mukashi	25	12	26
+bug	11	diving beetle	800	5-9	8-17	ON_WATER	2	POND_SKATER	ins_gengorou	28	6	29
+bug	12	walking leaf	600	7-9	8-17	ON_GROUND	2	COCKROACH	ins_konoha	34	7	35
+bug	13	walkingstick	600	7-11	4-8,17-19	ON_TREE	2	DRONE_BEETLE	ins_nana	35	9	36
+bug	14	violin beetle	260	6,9-11	4-17	ON_TREE	2	JEWEL_BEETLE	ins_violin	38	7	39
+bug	15	dung beetle	800	12-2	17-8	ON_GROUND	1	COCKROACH	ins_hunkoro	40	7	41
+bug	16	fruit beetle	100	7-9	all	ON_TREE	3	DRONE_BEETLE	ins_kogane	42	6	43
+bug	17	scarab beetle	6000	7-8	23-8	ON_TREE	1	DYNASTID_BEETLE	ins_plakoga	43	8	44
+bug	18	rainbow stag	10000	6-9	19-8	ON_TREE	1	SAW_STAG_BEETLE	ins_nijikwa	48	9	49
+bug	19	cyclommatus	8000	7-8	17-8	ON_TREE	1	SAW_STAG_BEETLE	ins_hosokwa	49	9	50
+bug	20	golden stag	12000	7-8	17-8	ON_TREE	1	SAW_STAG_BEETLE	ins_ougon	50	9	51
+bug	21	atlas beetle	8000	7-8	17-8	ON_TREE	1	DYNASTID_BEETLE	ins_kokbt	52	10	53
+bug	22	elephant beetle	8000	7-8	17-8	ON_TREE	1	DYNASTID_BEETLE	ins_zokbt	53	10	54
+bug	23	hercules beetle	12000	7-8	17-8	ON_TREE	1	DYNASTID_BEETLE	ins_helkbt	54	10	55
+bug	24	goliath beetle	6000	6-9	19-8	ON_TREE	1	DYNASTID_BEETLE	ins_gorias	55	9	56
+bug	25	flea	70	3-11	all	ON_GROUND	2	GRASSHOPPER	ins_nomi	56	4	57
+bug	26	fly	60	1-12	all	ON_TRASH	4	COCKROACH	ins_hae	59	4	60
+bug	27	centipede	300	6-2	16-23	UNDER_ROCK	3	PILL_BUG	ins_mukade	60	7	61
+bug	28	tarantula	8000	6-8	19-4	ON_GROUND	1	COCKROACH	ins_taran	62	10	63
+bug	29	scorpion	8000	7-9	19-4	ON_GROUND	1	COCKROACH	ins_sasori	63	10	64

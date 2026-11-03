@@ -1,3 +1,6 @@
+#ifdef TARGET_PC
+#include "pc_cf_creature.h"
+#endif
 #include "ac_museum_insect_priv.h"
 // clang-format off
 extern Gfx
@@ -1111,4 +1114,7 @@ void Museum_Insect_Actor_draw(ACTOR* actorx, GAME* game) {
 
     MI_Draw_1894 = NULL;
     MI_Draw_1CA0 = NULL;
+#ifdef TARGET_PC
+    pc_cf_museum_draw_bugs(game, 0.08f); /* City Folk's (pc_cf_creature.c) */
+#endif
 }

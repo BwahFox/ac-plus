@@ -130,13 +130,15 @@ static int aGYR_anime_frame(GYO_RELEASE_ACTOR* gyo_release, int advance) {
     if (advance) {
         cur_frame++;
     }
-    if (aGYR_anime_ptn[gyo_release->gyo_type] == 1) {
+    int ptn = gyo_release->gyo_type < ARRAY_COUNT(aGYR_anime_ptn) ? aGYR_anime_ptn[gyo_release->gyo_type] : 2; /* (City Folk's) */
+
+    if (ptn == 1) {
         if (cur_frame >= ARRAY_COUNT(aGYR_frame_ptn1)) {
             cur_frame = 0;
         }
 
         next_frame = aGYR_frame_ptn1[cur_frame];
-    } else if (aGYR_anime_ptn[gyo_release->gyo_type] == 2) {
+    } else if (ptn == 2) {
         if (cur_frame >= ARRAY_COUNT(aGYR_frame_ptn2)) {
             cur_frame = 0;
         }
@@ -368,7 +370,7 @@ static void aGYR_actor_draw(ACTOR* actorx, GAME* game) {
         frame = aGYR_anime_frame(gyo_release, TRUE);
 #endif
     }
-    gSPDisplayList(NEXT_POLY_OPA_DISP, ((Gfx**)aGYO_displayList[gyo_release->gyo_type])[(int)(frame * 0.5f)]);
+    gSPDisplayList(NEXT_POLY_OPA_DISP, aGYO_PC_DL(gyo_release->gyo_type)[(int)(frame * 0.5f)]);
 
     CLOSE_DISP(graph);
 

@@ -1,9 +1,13 @@
 #include "m_private.h"
 #ifdef TARGET_PC
+#include "pc_cf_ftr.h" /* City Folk furniture */
+#endif
+#ifdef TARGET_PC
 #include "pc_basement.h"
 /* the basement's rock wall/floor items (pc_basement.h): no collect bit (the catalog always lists them), and not
  * what a request for "a carpet" or "a wallpaper" finds */
-#define mPr_PC_SKIP(item) PC_ITEM_IS_BASEMENT_LOOK(item)
+#include "pc_cf_decor.h"
+#define mPr_PC_SKIP(item) (PC_ITEM_IS_BASEMENT_LOOK(item) || pc_cf_decor_item(item)) /* and City Folk's */
 #else
 #define mPr_PC_SKIP(item) FALSE
 #endif
@@ -580,6 +584,11 @@ extern void mPr_SetItemCollectBit(mActor_name_t item) {
         if (ftr_idx >= 0 && ftr_idx < FTR_NUM) {
             Common_Get(now_private)->furniture_collected_bitfield[ftr_idx >> 5] |= (1 << (ftr_idx & 31));
         }
+#ifdef TARGET_PC
+        else if (pc_cf_ftr_item(ftr_item_no)) {
+            pc_cf_ftr_collect(ftr_item_no); /* City Folk's: its own bits (pc_cf_ftr.c) */
+        }
+#endif
 
     } else if (item_type == NAME_TYPE_ITEM1) {
         int category = ITEM_NAME_GET_CAT(ftr_item_no);

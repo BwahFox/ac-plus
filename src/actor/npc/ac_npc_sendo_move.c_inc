@@ -447,10 +447,43 @@ static void aSEN_sing_end_wait_talk_proc(NPC_SENDO_ACTOR* sendo, GAME_PLAY* play
 static void aSEN_pl_ride_on_check_talk_proc(NPC_SENDO_ACTOR* sendo, GAME_PLAY* play) {
     mMsg_Window_c* msg_p = mMsg_Get_base_window_p();
 
+#ifdef TARGET_PC
+    {
+        /* "which island?" after the player says they'll ride (pc_season_island.c) */
+        extern int pc_season_island_kappn(void);
+        int asked = pc_season_island_kappn();
+
+        if (asked == 2) {
+            /* one picked: off they go, as below */
+            mDemo_Set_OrderValue(mDemo_ORDER_NPC0, 9, 0);
+            mMsg_Set_LockContinue(msg_p);
+            mGcgba_InitVar();
+            sendo->gba_comm_tries = 0;
+            aSEN_change_talk_proc(sendo, aSEN_TALK_CHK_POWER_AGB);
+            return;
+        }
+        if (asked != 0) {
+            return;
+        }
+    }
+#endif
+
     if (mMsg_Check_MainNormalContinue(msg_p) == TRUE) {
         switch (mChoice_Get_ChoseNum(mChoice_Get_base_window_p())) {
             case mChoice_CHOICE0:
-                /* Player chose not to ride */
+                /* Player chose to ride ("Yes, I'll cross") */
+#ifdef TARGET_PC
+            {
+                /* with islands to pick from: which one, first (pc_season_island.c) */
+                extern int pc_season_island_kappn_start(int next_msg);
+
+                if (pc_season_island_kappn_start(1)) {
+                    mMsg_Set_continue_msg_num(msg_p, 0x3E1C); /* PC_ISL_MSG_KAPPN */
+                    mMsg_Set_ForceNext(msg_p);
+                    break;
+                }
+            }
+#endif
                 mDemo_Set_OrderValue(mDemo_ORDER_NPC0, 9, 0);
                 mMsg_Set_LockContinue(msg_p);
                 mGcgba_InitVar();
@@ -458,7 +491,7 @@ static void aSEN_pl_ride_on_check_talk_proc(NPC_SENDO_ACTOR* sendo, GAME_PLAY* p
                 aSEN_change_talk_proc(sendo, aSEN_TALK_CHK_POWER_AGB);
                 break;
             case mChoice_CHOICE1:
-                /* Player chose to ride */
+                /* Player chose not to ride ("No, I won't") */
                 mDemo_Set_OrderValue(mDemo_ORDER_NPC0, 9, 0);
                 mMsg_Set_continue_msg_num(msg_p, aSEN_get_msg_no(sendo, 0x3074));
                 aSEN_change_talk_proc(sendo, aSEN_TALK_END_WAIT);

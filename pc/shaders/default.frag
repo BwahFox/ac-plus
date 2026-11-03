@@ -5,7 +5,12 @@ in vec2 v_texcoord1;
 in vec3 v_normal;
 in float v_fog_z;
 in float v_curve_drop;
-uniform vec4 u_curve_haze;  /* rgb: sky colour at the horizon, a: 1 / drop at the horizon (0 = off) */
+in vec3 v_eye_flat;
+uniform vec4 u_curve_haze;
+uniform vec4 u_curve_up;   /* as in default.vert */
+uniform vec4 u_curve_fwd;
+uniform float u_depth_bias; /* the ground: a hair further back, so what lies on it always shows (pc_gx_set_ground) */
+uniform mat4 u_projection;  /* rgb: sky colour at the horizon, a: 1 / drop at the horizon (0 = off) */
 
 /* Fog on/off is separate from the range params so shader specialization can
    fold the branch while start/end stay dynamic */
@@ -369,6 +374,21 @@ void main() {
     }
 
     fragColor = prev;
+
+    /* Curved world: the depth of this very point on the curve. The vertices are curved and the triangle between
+     * them is flat, so a big ground triangle and a small decal on it (a doormat, a path, a shadow) would sag by
+     * different amounts between their corners and fight; curving each fragment gives coplanar surfaces the same
+     * depth however they're cut into triangles. */
+    if (u_curve_up.w != 0.0) {
+        vec3 p = v_eye_flat;
+        float u = dot(p, u_curve_fwd.xyz) - u_curve_fwd.w;
+        p -= u_curve_up.xyz * (u_curve_up.w * u * u);
+        vec4 clip = u_projection * vec4(p, 1.0);
+        gl_FragDepth = gl_DepthRange.near + gl_DepthRange.diff * (clamp(clip.z / clip.w, -1.0, 1.0) * 0.5 + 0.5);
+    } else {
+        gl_FragDepth = gl_FragCoord.z;
+    }
+    gl_FragDepth = min(gl_FragDepth + u_depth_bias, 1.0);
 
     /* Fog */
     if (u_fog_enable != 0) {

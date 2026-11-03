@@ -1,13 +1,19 @@
+#ifdef TARGET_PC
+#include "pc_platform.h"
+#endif
 #include "ac_field_draw.h"
 
 #include "audio.h"
 #include "m_debug.h"
 #include "m_field_info.h"
+#include "m_island.h"
 #include "m_player_lib.h"
 #include "m_random_field.h"
 #include "m_common_data.h"
 #include "m_rcp.h"
 #include "sys_matrix.h"
+#include <stdio.h>
+#include <stdlib.h>
 
 static void Bg_Draw_Actor_ct(ACTOR* actorx, GAME* game);
 static void Bg_Draw_Actor_dt(ACTOR* actorx, GAME* game);
@@ -225,14 +231,57 @@ static void aFD_PrepareFieldDraw(ACTOR* actorx, GAME* game) {
     aFD_SetActorPosition(actorx, play);
 
     for (i = 0; i < aFD_BLOCK_DRAW_NUM; i++) {
+#ifdef TARGET_PC
+        /* 5 across, from the row behind the player to three ahead (the camera looks north, -z), nearest first as
+         * the table's order is */
+        block->bx = bx + (i % 5) - 2;
+        block->bz = bz + 1 - (i / 5);
+        if (!mFI_BlockCheck(block->bx, block->bz)) {
+            /* past the map's edge: where its edge is open sea (the island's), the sea goes on, the nearest edge
+             * acre drawn again out there; else nothing, as before */
+            int cx = block->bx < 0 ? 0 : block->bx >= mFI_GetBlockXMax() ? mFI_GetBlockXMax() - 1 : block->bx;
+            int cz = block->bz < 0 ? 0 : block->bz >= mFI_GetBlockZMax() ? mFI_GetBlockZMax() - 1 : block->bz;
+
+            if (mFI_BlockCheck(cx, cz) && (mFI_BkNum2BlockKind(cx, cz) & mRF_BLOCKKIND_OFFING) != 0) {
+                mFI_BkNum2WposXZ(&block->wpos.x, &block->wpos.z, block->bx, block->bz);
+                block->bx = cx;
+                block->bz = cz;
+                block->wpos.y = mFI_BkNum2BaseHeight(cx, cz);
+                block->exist = TRUE;
+            } else {
+                block->exist = FALSE;
+            }
+            block++;
+            continue;
+        }
+#else
         block->bx = bx + draw_block_offset_table[i].offset_x;
         block->bz = bz + draw_block_offset_table[i].offset_z;
+#endif
         mFI_BkNum2WposXZ(&block->wpos.x, &block->wpos.z, block->bx, block->bz);
         block->wpos.y = mFI_BkNum2BaseHeight(block->bx, block->bz);
         block->exist = TRUE;
         block++;
     }
 
+#ifdef TARGET_PC
+    if (getenv("PC_FD_LOG") != NULL) { /* dev: the acres drawn, when the player's acre changes */
+        static int last = -1;
+
+        if (last != bx * 100 + bz) {
+            int k;
+
+            last = bx * 100 + bz;
+            printf("[fd] player acre %d,%d of %dx%d:", bx, bz, mFI_GetBlockXMax(), mFI_GetBlockZMax());
+            for (k = 0; k < aFD_BLOCK_DRAW_NUM; k++) {
+                aFD_block_c* b = &field_draw->block[k];
+                printf(" %d,%d%s%x/t%d", b->bx, b->bz, b->exist ? ":" : "-", mFI_BlockCheck(b->bx, b->bz) ? mFI_BkNum2BlockKind(b->bx, b->bz) : 0, mFI_BlockCheck(b->bx, b->bz) ? mFI_BkNum2BlockType(b->bx, b->bz) : -1);
+            }
+            printf("\n");
+            fflush(stdout);
+        }
+    }
+#endif
     aFD_MakeMarinScrollInfo(actorx, game);
 }
 
@@ -401,7 +450,13 @@ static void aFD_DrawBg(Gfx* gfx, int exists, GAME* game) {
         OPEN_DISP(game->graph);
 
         gSPSegment(NEXT_BG_OPA_DISP, G_MWO_SEGMENT_A, gfx); /* Bg display list is called in between culling microcode */
+#ifdef TARGET_PC
+        gDPNoOpTag(NEXT_BG_OPA_DISP, PC_NOOP_GROUND_ON);
+#endif
         gSPDisplayList(NEXT_BG_OPA_DISP, aFD_cull_set_model);
+#ifdef TARGET_PC
+        gDPNoOpTag(NEXT_BG_OPA_DISP, PC_NOOP_GROUND_OFF);
+#endif
 
         CLOSE_DISP(game->graph);
     }
@@ -443,6 +498,21 @@ static void aFD_DrawBlock(aFD_block_c* block, ACTOR* actorx, GAME* game) {
         opa_gfx = mFI_GetBGDisplayListRom(block->bx, block->bz);
         xlu_gfx = mFI_GetBGDisplayListRom_XLU(block->bx, block->bz);
         anime_data = mFI_GetBGTexAnimInfo(&anime_frame_count, block->bx, block->bz);
+#ifdef TARGET_PC
+        {
+            /* the open sea beside the island (its row, east and west) is a darker model than the open sea north of
+             * it, and meets the island's sea with a seam: the GameCube's 4:3 view never shows it from the island, a
+             * wide one does. Drawn as the sea north of it instead, which meets the island's without one. */
+            int nz = block->bz - 1;
+
+            if (block->bz == mISL_BLOCK_Z && (mFI_BkNum2BlockKind(block->bx, block->bz) & mRF_BLOCKKIND_ISLAND) == 0 &&
+                (mFI_BkNum2BlockKind(block->bx, block->bz) & mRF_BLOCKKIND_OFFING) != 0 && mFI_BlockCheck(block->bx, nz) &&
+                (mFI_BkNum2BlockKind(block->bx, nz) & mRF_BLOCKKIND_OFFING) != 0) {
+                opa_gfx = mFI_GetBGDisplayListRom(block->bx, nz);
+                xlu_gfx = mFI_GetBGDisplayListRom_XLU(block->bx, nz);
+            }
+        }
+#endif
 
         Matrix_translate(block->wpos.x, block->wpos.y, block->wpos.z, MTX_LOAD);
         Matrix_scale(0.0625f, 0.0625f, 0.0625f, MTX_MULT);
@@ -491,6 +561,24 @@ static void aFD_DrawBlock(aFD_block_c* block, ACTOR* actorx, GAME* game) {
             }
         }
 
+#ifdef TARGET_PC
+        {
+            /* dev: PC_FD_SKIP=bx,bz leaves that acre's translucent part (its sea) out, to see what it covers */
+            static int skip_read, sx = -99, sz = -99;
+
+            if (!skip_read) {
+                const char* skip = getenv("PC_FD_SKIP");
+
+                skip_read = TRUE;
+                if (skip == NULL || sscanf(skip, "%d,%d", &sx, &sz) != 2) {
+                    sx = sz = -99;
+                }
+            }
+            if (sx == block->bx && sz == block->bz) {
+                return;
+            }
+        }
+#endif
         if (aFD_SetMarinScrollXluSegment(actorx, game, block->bx, block->bz)) {
             if (GETREG(MYKREG, 77) != 3) {
                 aFD_DrawXluBg(xlu_gfx, exist, game);

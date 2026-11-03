@@ -3820,6 +3820,7 @@ void emu64::dl_G_SETTILESIZE() {
 
 #ifdef TARGET_PC
 extern "C" void pc_gx_tlut_set_native_le(unsigned int idx);
+extern "C" void pc_gx_set_ground(int on);
 extern "C" u16 s_tlut_first_word[16];
 #endif
 
@@ -4409,6 +4410,10 @@ void emu64::dl_G_NOOP() {
 #ifdef TARGET_PC
             /* PC widescreen: skip aspect correction for transitions / bg blits.
              * See pc_platform.h for how the marker/flag mechanism works. */
+            if (this->gfx.words.w1 == PC_NOOP_GROUND_ON || this->gfx.words.w1 == PC_NOOP_GROUND_OFF) {
+                pc_gx_set_ground(this->gfx.words.w1 == PC_NOOP_GROUND_ON);
+                break;
+            }
             if (this->gfx.words.w1 == PC_NOOP_WIDESCREEN_STRETCH) {
                 g_pc_widescreen_stretch = 1;
                 break;

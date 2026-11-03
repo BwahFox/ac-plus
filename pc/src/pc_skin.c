@@ -52,8 +52,21 @@ int pc_skin_tone_of(int player) {
     return player >= 0 && player < PLAYER_NUM && l_tone[player] < PC_SKIN_TONE_NUM ? l_tone[player] : PC_SKIN_TONE_DEFAULT;
 }
 
+/* The tone of the player away from home (a train trip, a random town, an online visit): kept from when they left,
+ * as the town they visit has its own residents' tones and none of theirs */
+static u8 l_visitor_tone = PC_SKIN_TONE_DEFAULT;
+
+void pc_skin_note_traveller(void) {
+    l_visitor_tone = (u8)pc_skin_tone();
+}
+
 int pc_skin_tone(void) {
-    return pc_skin_tone_of(pc_skin_now_player());
+    int p = pc_skin_now_player();
+
+    if (p < 0 && Common_Get(player_no) == mPr_FOREIGNER && l_visitor_tone < PC_SKIN_TONE_NUM) {
+        return l_visitor_tone;
+    }
+    return pc_skin_tone_of(p);
 }
 
 void pc_skin_set_tone(int player, int tone) {

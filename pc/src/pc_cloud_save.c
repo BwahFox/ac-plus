@@ -19,8 +19,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-/* Same size check the loader relies on: GCI header + 0x72000 bytes of card data. */
-#define CLOUD_GCI_SIZE (0x40 + 0x72000)
 /* Copies whose times differ by less than this are the same save. */
 #define CLOUD_MTIME_SLACK 2
 
@@ -88,30 +86,12 @@ static int copy_file(const char* src, const char* dst) {
 }
 
 static int looks_like_town_save(const char* path) {
-    struct stat st;
-    char game[4] = { 0 };
-    FILE* f;
-
-    if (stat(path, &st) != 0 || st.st_size != CLOUD_GCI_SIZE) {
-        return FALSE;
-    }
-    f = fopen(path, "rb");
-    if (f == NULL) {
-        return FALSE;
-    }
-    if (fread(game, 1, 3, f) != 3) {
-        game[0] = '\0';
-    }
-    fclose(f);
-    return memcmp(game, "GAF", 3) == 0;
+    return pc_ext_town_is_merged(path);
 }
 
-/* After a successful save of the home town: the .gci and its ac-plus
- * companion file (pc_ext_save.c) travel together. */
+/* After a successful save of the home town (its town file, pc_ext_save.h). */
 void pc_cloud_save_push(const char* local_path) {
     char cloud[600];
-    char ext[400];
-    struct stat st;
 
     if (!cloud_enabled()) {
         return;
@@ -121,15 +101,6 @@ void pc_cloud_save_push(const char* local_path) {
         OSReport("[cloud] Uploaded save to %s\n", cloud);
     } else {
         OSReport("[cloud] Could not write %s (does the folder exist?)\n", cloud);
-        return;
-    }
-
-    pc_ext_save_path(ext, sizeof(ext), local_path);
-    if (stat(ext, &st) == 0) {
-        cloud_path_for(cloud, sizeof(cloud), ext);
-        if (!copy_file(ext, cloud)) {
-            OSReport("[cloud] Could not write %s\n", cloud);
-        }
     }
 }
 
@@ -175,22 +146,5 @@ void pc_cloud_save_pull(const char* local_path) {
         return;
     }
 
-    /* Its companion file comes along (or goes, if the cloud has none). */
-    {
-        char ext[400];
-        char cloud_ext[600];
-        struct stat st;
 
-        pc_ext_save_path(ext, sizeof(ext), local_path);
-        cloud_path_for(cloud_ext, sizeof(cloud_ext), ext);
-        if (stat(ext, &st) == 0) {
-            snprintf(keep, sizeof(keep), "%s.cloudbak", ext);
-            copy_file(ext, keep);
-        }
-        if (stat(cloud_ext, &st) == 0) {
-            copy_file(cloud_ext, ext);
-        } else {
-            remove(ext);
-        }
-    }
 }

@@ -1,9 +1,10 @@
 #ifndef PC_EXT_SAVE_H
 #define PC_EXT_SAVE_H
 
-/* ac-plus companion save: data the GameCube save has no room for, kept next to
- * the town's .gci as <gci>.acplus and written/read/cloud-synced with it. The
- * .gci itself stays exactly GameCube format.
+/* The ac-plus town save: one file, save/card_a/town.acplus, holding the town's GameCube save image (GCIS chunk)
+ * and the data the GameCube save has no room for. Before the single file, that data was a companion
+ * <gci>.acplus next to the town's .gci; such a pair is moved into a town file on first load
+ * (pc_ext_town_convert), and a .gci can still be exported for Dolphin or a GameCube (--export-gci).
  *
  * Holds per-unit ground patterns for the town, the dressers' storages (pc_dresser.c) and
  * the pattern IDs and library (pc_pattern.c).
@@ -33,12 +34,24 @@ typedef struct {
     u8 pad;
 } PCExtStoredItem;
 
-/* After the town's save is read / before nothing else: load or reset. */
-void pc_ext_save_load(const char* gci_path);
-/* After the town's save is written. */
-void pc_ext_save_write(const char* gci_path);
-/* The companion file's path for a .gci path. */
+/* After the town's save is read / before nothing else: load or reset. path is the town file read (its
+ * chunks), or a .gci (its companion file, if any). */
+void pc_ext_save_load(const char* path);
+/* The companion file's path for a .gci path (the old two-file save). */
 void pc_ext_save_path(char* out, int size, const char* gci_path);
+
+/* Is path a single town file? */
+int pc_ext_town_is_merged(const char* path);
+/* Reads the GameCube image (img_size bytes: GCI header + card data) of the town file at path, or of its newest
+ * good backup when it's damaged; used gets the file read, for pc_ext_save_load. FALSE: none could be read. */
+int pc_ext_town_read_image(const char* path, u8* img, u32 img_size, char* used, int used_size);
+/* Writes the town file: the image and the ac-plus data in memory (backups rotated). */
+int pc_ext_town_write(const char* path, const u8* img, u32 img_size);
+/* Makes a town file of a .gci (gci_path: the file itself or one of its backups) and the companion file of
+ * ext_of, if there is one. The files themselves are left alone. */
+int pc_ext_town_convert(const char* gci_path, const char* ext_of, const char* town_path, u16 land_id);
+/* Writes the town file's GameCube image out as a .gci. */
+int pc_ext_town_export_gci(const char* town_path, const char* gci_out, u32 img_size);
 
 /* Ground pattern of a town unit: 0 = none, else a pattern ID (pc_pattern.h).
  * bx/bz are town acres (0-based, FG blocks), ux/uz units within the acre. */

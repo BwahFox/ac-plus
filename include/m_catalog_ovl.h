@@ -11,7 +11,11 @@
 extern "C" {
 #endif
 
+#ifdef TARGET_PC
+#define mCL_MENU_ITEM_MAX (742 + 320) /* and City Folk's furniture (pc_cf_ftr.h PC_CF_FTR_SLOTS) */
+#else
 #define mCL_MENU_ITEM_MAX 742
+#endif
 #define mCL_MENU_PAGE_SIZE 7
 #define mCL_ITEM_DATA_NUM 2
 #define mCL_TAG_STR_SIZE 10

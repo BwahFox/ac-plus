@@ -250,6 +250,25 @@ static void pc_gx_buffer_data_profiled(GLenum target, GLsizeiptr size, const voi
 }
 
 /* Commit pending vertex + flush batch to GL. Used by GXBegin/GXEnd/GXCopyDisp/etc. */
+/* The town's ground (ac_field_draw.c marks it in the display list) is drawn a hair further back than it really is: the
+ * mats, paths and shadows lying on it are as good as level with it, and depth rounding alone made them flicker. */
+void pc_gx_set_ground(int on) {
+    static float bias = -1.0f;
+    float want;
+
+    if (bias < 0.0f) {
+        const char* env = getenv("PC_GROUND_BIAS");
+        bias = env != NULL ? (float)atof(env) : 2e-5f;
+    }
+    want = on ? bias : 0.0f;
+    pc_gx_flush_if_begin_complete();
+    pc_gx_flush_vertices();
+    if (g_gx.ground_bias != want) {
+        g_gx.ground_bias = want;
+        DIRTY(PC_GX_DIRTY_PROJECTION);
+    }
+}
+
 static void pc_gx_commit_pending_and_flush(void) {
     if (!g_gx.in_begin) return;
     if (g_gx.vertex_pending && g_gx.current_vertex_idx < PC_GX_MAX_VERTS) {
@@ -588,6 +607,7 @@ void pc_gx_cache_uniform_locations(GLuint shader, PCGXUloc* u) {
     u->curve_up   = UL("u_curve_up");
     u->curve_fwd  = UL("u_curve_fwd");
     u->curve_haze = UL("u_curve_haze");
+    u->depth_bias = UL("u_depth_bias");
 
     u->tev_prev = UL("u_tev_prev");
     u->tev_reg0 = UL("u_tev_reg0");
@@ -734,9 +754,161 @@ void pc_gx_draw_pending(void) {
     g_gx.pending_verts = 0;
 }
 
+/* --- Curved world: big triangles cut smaller ---
+ * The curve bends each vertex (default.vert), and a triangle stays flat between them: a big one, such as the
+ * few that make a field's flat ground, sits far off the curve in its middle, while small things on it follow
+ * the curve closely and look like they float or sink. With the curve on, triangles longer than the curve allows
+ * are cut at their longest edge until the curve's sag inside each is under a unit. Batches with no long edge
+ * are left as they are. */
+static PCGXVertex s_curve_out[PC_GX_MAX_VERTS];
+static int s_curve_out_n;
+
+static void pc_gx_curve_lerp(PCGXVertex* o, const PCGXVertex* a, const PCGXVertex* b) {
+    int k;
+
+    for (k = 0; k < 3; k++) {
+        o->position[k] = (a->position[k] + b->position[k]) * 0.5f;
+        o->normal[k] = (a->normal[k] + b->normal[k]) * 0.5f;
+    }
+    for (k = 0; k < 4; k++) {
+        o->color0[k] = (unsigned char)((a->color0[k] + b->color0[k] + 1) / 2);
+        o->color1[k] = (unsigned char)((a->color1[k] + b->color1[k] + 1) / 2);
+    }
+    for (k = 0; k < 16; k++) {
+        (&o->texcoord[0][0])[k] = ((&a->texcoord[0][0])[k] + (&b->texcoord[0][0])[k]) * 0.5f;
+    }
+}
+
+/* squared length in eye space of the edge a-b */
+static float pc_gx_curve_len2(const float m[3][4], const PCGXVertex* a, const PCGXVertex* b) {
+    float d[3] = { b->position[0] - a->position[0], b->position[1] - a->position[1], b->position[2] - a->position[2] };
+    float e0 = m[0][0] * d[0] + m[0][1] * d[1] + m[0][2] * d[2];
+    float e1 = m[1][0] * d[0] + m[1][1] * d[1] + m[1][2] * d[2];
+    float e2 = m[2][0] * d[0] + m[2][1] * d[1] + m[2][2] * d[2];
+
+    return e0 * e0 + e1 * e1 + e2 * e2;
+}
+
+/* the longest edge allowed, squared: the sag in the middle of an edge of length L is k (L/2)^2, kept under a unit.
+ * The same everywhere, near or far: were it looser with distance, a triangle would be cut differently as the eye
+ * moves and the ground's shape would shift about while walking */
+static float s_curve_k;
+
+static float pc_gx_curve_max2(void) {
+    float max2 = 4.0f / s_curve_k;
+
+    return max2 < 256.0f ? 256.0f : max2;
+}
+
+static void pc_gx_curve_emit(const float m[3][4], float max2, const PCGXVertex* a, const PCGXVertex* b,
+                             const PCGXVertex* c, int depth) {
+    float ab = pc_gx_curve_len2(m, a, b), bc = pc_gx_curve_len2(m, b, c), ca = pc_gx_curve_len2(m, c, a);
+    PCGXVertex mid;
+
+        if (depth >= 10 || s_curve_out_n + 6 > PC_GX_MAX_VERTS || (ab <= max2 && bc <= max2 && ca <= max2)) {
+        if (s_curve_out_n + 3 <= PC_GX_MAX_VERTS) {
+            s_curve_out[s_curve_out_n++] = *a;
+            s_curve_out[s_curve_out_n++] = *b;
+            s_curve_out[s_curve_out_n++] = *c;
+        }
+        return;
+    }
+    /* the longest edge in half; the two halves keep the triangle's winding */
+    if (ab >= bc && ab >= ca) {
+        pc_gx_curve_lerp(&mid, a, b);
+        pc_gx_curve_emit(m, max2, a, &mid, c, depth + 1);
+        pc_gx_curve_emit(m, max2, &mid, b, c, depth + 1);
+    } else if (bc >= ca) {
+        pc_gx_curve_lerp(&mid, b, c);
+        pc_gx_curve_emit(m, max2, a, b, &mid, depth + 1);
+        pc_gx_curve_emit(m, max2, a, &mid, c, depth + 1);
+    } else {
+        pc_gx_curve_lerp(&mid, c, a);
+        pc_gx_curve_emit(m, max2, a, b, &mid, depth + 1);
+        pc_gx_curve_emit(m, max2, &mid, b, c, depth + 1);
+    }
+}
+
+/* the batch's triangle i as three vertex indexes (from the batch start), by primitive */
+static void pc_gx_curve_tri(int prim, int i, int* t) {
+    if (prim == GX_QUADS) {
+        int q = (i / 2) * 4;
+        t[0] = q, t[1] = q + 1 + (i & 1), t[2] = q + 2 + (i & 1);
+    } else if (prim == GX_TRIANGLESTRIP) {
+        t[0] = (i & 1) ? i + 1 : i, t[1] = (i & 1) ? i : i + 1, t[2] = i + 2;
+    } else if (prim == GX_TRIANGLEFAN) {
+        t[0] = 0, t[1] = i + 1, t[2] = i + 2;
+    } else {
+        t[0] = i * 3, t[1] = i * 3 + 1, t[2] = i * 3 + 2;
+    }
+}
+
+static void pc_gx_curve_subdivide(void) {
+    static int off = -1;
+    int prim = g_gx.current_primitive;
+    int start = g_gx.pending_verts;
+    int count = g_gx.current_vertex_idx - start;
+    PCGXVertex* v = g_gx.vertex_buffer + start;
+    const float(*m)[4] = g_gx.pos_mtx[g_gx.current_mtx];
+    float k, max2;
+    int tris, i, j, any = FALSE;
+
+    if (off < 0) {
+        off = getenv("PC_CURVE_NO_SPLIT") != NULL; /* dev: as before, to compare */
+    }
+    if (off || (prim != GX_TRIANGLES && prim != GX_QUADS && prim != GX_TRIANGLESTRIP && prim != GX_TRIANGLEFAN)) {
+        return;
+    }
+    k = pc_sky_curve_now(g_gx.projection_type == GX_PERSPECTIVE);
+    if (k <= 0.0f) {
+        return;
+    }
+    s_curve_k = k;
+    max2 = pc_gx_curve_max2();
+    tris = prim == GX_QUADS ? (count / 4) * 2 : prim == GX_TRIANGLES ? count / 3 : count - 2;
+    for (i = 0; i < tris && !any; i++) {
+        int t[3];
+
+        pc_gx_curve_tri(prim, i, t);
+        
+        any = pc_gx_curve_len2(m, &v[t[0]], &v[t[1]]) > max2 || pc_gx_curve_len2(m, &v[t[1]], &v[t[2]]) > max2 ||
+              pc_gx_curve_len2(m, &v[t[2]], &v[t[0]]) > max2;
+    }
+    if (!any) {
+        return;
+    }
+    s_curve_out_n = 0;
+    for (i = 0; i < tris; i++) {
+        int t[3];
+
+        pc_gx_curve_tri(prim, i, t);
+        pc_gx_curve_emit(m, max2, &v[t[0]], &v[t[1]], &v[t[2]], 0);
+    }
+    if (start + s_curve_out_n > PC_GX_MAX_VERTS) {
+        return; /* no room: drawn as it was */
+    }
+    for (j = 0; j < s_curve_out_n; j++) {
+        v[j] = s_curve_out[j];
+    }
+    g_gx.current_vertex_idx = start + s_curve_out_n;
+    g_gx.current_primitive = GX_TRIANGLES;
+    if (getenv("PC_CURVE_STATS") != NULL) { /* dev: vertices the cuts add, logged now and then */
+        static unsigned added, calls;
+
+        added += s_curve_out_n - count;
+        if (++calls % 20000 == 0) {
+            printf("[curve] %u vertices added in the last 20000 cut batches\n", added);
+            added = 0;
+        }
+    }
+}
+
 void pc_gx_flush_vertices(void) {
     int count = g_gx.current_vertex_idx - g_gx.pending_verts;
     if (count <= 0) return;
+
+    pc_gx_curve_subdivide();
+    count = g_gx.current_vertex_idx - g_gx.pending_verts;
 
     Uint64 flush_start = pc_profiler_begin_timer();
     pc_profiler_add_count_flush();
@@ -789,6 +961,7 @@ void pc_gx_flush_vertices(void) {
                 glUniform4fv(UL(curve_fwd), 1, fwd);
                 if (UL(curve_haze) >= 0) glUniform4fv(UL(curve_haze), 1, haze);
             }
+            if (UL(depth_bias) >= 0) glUniform1f(UL(depth_bias), g_gx.ground_bias);
         }
 
         if (dirty & PC_GX_DIRTY_MODELVIEW) {

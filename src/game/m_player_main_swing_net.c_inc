@@ -253,6 +253,11 @@ static int Player_actor_CatchSomethingCheck_common(ACTOR* actor, f32 frame) {
 
                 if (type == 0 && label != 0) {
                     player->item_net_catch_insect_idx = ((aINS_INSECT_ACTOR*)label)->type;
+#ifdef TARGET_PC
+                    if (((aINS_INSECT_ACTOR*)label)->pc_cf != 0) {
+                        ((aINS_INSECT_ACTOR*)label)->item = (mActor_name_t)(ITM_INSECT_START + ((aINS_INSECT_ACTOR*)label)->pc_cf); /* City Folk's */
+                    }
+#endif
                 } else if (label != 0) {
                     if (((ACTOR*)label)->id == mAc_PROFILE_BEE) {
                         player->item_net_catch_insect_idx = aINS_INSECT_TYPE_BEE;

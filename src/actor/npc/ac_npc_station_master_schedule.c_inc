@@ -224,6 +224,13 @@ static void aSTM_in_train(NPC_STATION_MASTER_ACTOR* actor, GAME_PLAY* play) {
     xyz_t pos;
 
     aSTM_look_player(actor, play);
+#ifdef TARGET_PC
+    if (mPlib_get_player_actor_main_index((GAME*)play) == mPlayer_INDEX_DEMO_GETON_TRAIN_WAIT) {
+        /* already on board (the boarding step can pass between his looks): see them off */
+        aSTM_setup_think_proc(actor, play, aSTM_THINK_SEE_OFF);
+        return;
+    }
+#endif
     if (mPlib_get_player_actor_main_index((GAME*)play) != mPlayer_INDEX_DEMO_GETON_TRAIN) {
         pos.x = actor->npc_class.actor_class.home.position.x + mFI_UT_WORLDSIZE_X_F;
         pos.y = actor->train_actor_p->world.position.y + 20.0f;

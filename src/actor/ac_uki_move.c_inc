@@ -95,6 +95,11 @@ static mActor_name_t aUKI_get_fish_type(ACTOR* actorx) {
     // clang-format on
     mActor_name_t item = EMPTY_NO;
 
+#ifdef TARGET_PC
+    if (uki->gyo_type >= aGYO_TYPE_PC_CF) {
+        return (mActor_name_t)(ITM_FISH_START + uki->gyo_type); /* City Folk's (pc_cf_creature.c) */
+    }
+#endif
     if (uki->gyo_type >= 0 && uki->gyo_type < aGYO_TYPE_EXTENDED_NUM) {
         item = fish_data[uki->gyo_type];
     }
@@ -654,6 +659,16 @@ static void aUKI_touch(ACTOR* actorx, GAME* game) {
     if (aUKI_force_command(actorx, game) == FALSE) {
         if (uki->gyo_command == 2) {
             aUKI_touch_vib_proc(uki);
+#ifdef TARGET_PC
+            if (getenv("PC_UKI_LOG") != NULL) {
+                printf("[uki] bite %d\n", ((UKI_ACTOR*)actorx)->gyo_type); /* (dev: when to press A) */
+                fflush(stdout);
+                {
+                    extern void pc_devtest_tap_a(void);
+                    pc_devtest_tap_a();
+                }
+            }
+#endif
             aUKI_set_proc(actorx, game, aUKI_PROC_BITE, 0);
         } else if (uki->command == 6) {
             int timer;

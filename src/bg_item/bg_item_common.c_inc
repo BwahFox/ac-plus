@@ -2576,6 +2576,10 @@ static void bg_item_common_outPutData(const GAME_PLAY* const play, bg_item_draw_
     draw_pos->sub_idx = gfx_idx;
 }
 
+#ifdef TARGET_PC
+static int pc_bIT_far_building; /* building a far acre's table: trees and rocks only */
+#endif
+
 static void bg_item_common_classifyitemDataTable(const GAME_PLAY* const play, bg_item_draw_table_c* draw_table,
                                                  const mFI_block_tbl_c* block_table, u16* start_idx_tbl,
                                                  bg_item_type_data_c** type_data_table,
@@ -2617,6 +2621,12 @@ static void bg_item_common_classifyitemDataTable(const GAME_PLAY* const play, bg
 
         for (ut_z = 0; ut_z < UT_Z_NUM; ut_z++) {
             for (ut_x = 0; ut_x < UT_X_NUM; ut_x++, fg_p++, draw_pos++, idx++, col++, height_p++) {
+#ifdef TARGET_PC
+                /* the acres farther off (pc_bIT_far_draw): only trees and rocks */
+                if (pc_bIT_far_building && !IS_ITEM_TREE(*fg_p) && !IS_ITEM_ROCK(*fg_p)) {
+                    continue;
+                }
+#endif
                 if (bIT_individual_draw_check(*fg_p)) {
                     xyz_t pos;
                     bg_item_type_data_c type_data;
@@ -3197,6 +3207,78 @@ static void bIT_actor_pit_draw(GAME* game, bg_item_common_info_c* common_info, b
     }
 }
 
+#ifdef TARGET_PC
+/* Trees and rocks in the acres farther off than the four nearest, which the GameCube draws items in: the ground
+ * of 5 x 5 acres is drawn (ac_field_draw.c), wide screens and the curved world see that far, and without these
+ * the far acres stood empty. Their draw tables are made as the near ones are (trees and rocks only), when the
+ * player's acre changes and every second, and drawn as they are, all of each (no culling of their own). */
+#define PC_BIT_FAR_NUM 25
+static bg_item_draw_table_c pc_bIT_far_tbl[PC_BIT_FAR_NUM];
+static u16 pc_bIT_far_idx[PC_BIT_FAR_NUM][bIT_DRAW_TYPE_MAX];
+static u64 pc_bIT_far_zero[16]; /* per-item data some variants read (the Christmas tree's lights): none */
+
+static void pc_bIT_far_draw(GAME_PLAY* play, bg_item_common_c* common, f32 shadow_pos, rgba_t* shadow_color,
+                            bg_item_draw_part_table_c* draw_part_table) {
+    static int last_bx = -99, last_bz = -99, timer, off = -1;
+    PLAYER_ACTOR* player = GET_PLAYER_ACTOR(play);
+    int bx, bz, i, j, n;
+
+    if (off < 0) {
+        off = getenv("PC_FAR_ITEMS_OFF") != NULL; /* dev: as before, to compare */
+    }
+    if (off || player == NULL || mFI_GetFieldId() != mFI_FIELD_FG ||
+        !mFI_Wpos2BlockNum(&bx, &bz, player->actor_class.world.position)) {
+        return;
+    }
+    if (bx != last_bx || bz != last_bz || --timer <= 0) {
+        last_bx = bx, last_bz = bz;
+        timer = 60;
+        pc_bIT_far_building = TRUE;
+        for (i = 0; i < PC_BIT_FAR_NUM; i++) {
+            bg_item_draw_table_c* tbl = &pc_bIT_far_tbl[i];
+            int fbx = bx + (i % 5) - 2;
+            int fbz = bz + 1 - (i / 5);
+            int near = FALSE;
+            mFI_block_tbl_c blk;
+            int num;
+
+            tbl->draw_flag = FALSE;
+            for (j = 0; j < mFM_VISIBLE_BLOCK_NUM; j++) {
+                near |= common->draw_table[j].draw_flag && common->draw_table[j].bx == fbx &&
+                        common->draw_table[j].bz == fbz;
+            }
+            if (near || fbz > bz || !mFI_BlockCheck(fbx, fbz)) {
+                continue; /* (behind the player, the camera looking north never sees it) */
+            }
+            num = mFI_GetBlockNum(fbx, fbz);
+            blk.items = g_fdinfo->block_info[num].fg_info.items_p;
+            if (blk.items == NULL) {
+                continue;
+            }
+            blk.block_x = (s8)fbx;
+            blk.block_z = (s8)fbz;
+            mFI_BkNum2WposXZ(&blk.pos_x, &blk.pos_z, fbx, fbz);
+            tbl->bx = fbx;
+            tbl->bz = fbz;
+            tbl->draw_data.val = bIT_DRAW_TYPE_MAX - 1;
+            tbl->draw_data.idx_p = pc_bIT_far_idx[i];
+            bg_item_common_set_draw_tbl(play, tbl, &blk, common->common_info.type_data_table_p,
+                                        common->common_info.draw_part_table_p);
+            for (n = 0; n < UT_TOTAL_NUM + 1; n++) {
+                tbl->draw_data.draw_pos[n].cull_flag = FALSE;
+                tbl->draw_data.draw_pos[n]._04 = pc_bIT_far_zero;
+            }
+        }
+        pc_bIT_far_building = FALSE;
+    }
+    for (i = 0; i < PC_BIT_FAR_NUM; i++) {
+        if (pc_bIT_far_tbl[i].draw_flag == TRUE) {
+            bg_item_common_draw_item(play, &pc_bIT_far_tbl[i], shadow_pos, shadow_color, draw_part_table);
+        }
+    }
+}
+#endif
+
 static void bg_item_common_draw(GAME_PLAY* play, bg_item_common_c* common, bg_item_draw_part_table_c* draw_part_table) {
     GAME* game = (GAME*)play;
     Kankyo* kankyo = &play->kankyo;
@@ -3242,6 +3324,9 @@ static void bg_item_common_draw(GAME_PLAY* play, bg_item_common_c* common, bg_it
             }
         }
     }
+#ifdef TARGET_PC
+    pc_bIT_far_draw(play, common, shadow_pos, &shadow_color, draw_part_table);
+#endif
 
     bIT_actor_drop_draw(game, &common->common_info, &common->drop_info);
     bIT_actor_drop_draw(game, &common->common_info, &common->fruit_drop_info);

@@ -220,8 +220,15 @@ extern int mNT_check_unknown(mActor_name_t item_no);
 #define TICKET_GET_ITEM(month, cnt) (ITM_TICKET_START | (((month) - 1) << 3) | ((cnt) & 7))
 #define WISP_COUNT(n) (ITEM_IS_WISP(n) ? (1 + (n) - ITM_SPIRIT0) : 0)
 
+#ifdef TARGET_PC
+/* (with City Folk's: pc_cf_creature.h) */
+#include "pc_cf_creature_table.h"
+#define ITEM_IS_INSECT(n) (((n) >= ITM_INSECT_START && (n) < ITM_INSECT_END) || ((n) >= ITM_INSECT_START + 48 && (n) < ITM_INSECT_START + 48 + PC_CF_BUG_NUM))
+#define ITEM_IS_FISH(n) (((n) >= ITM_FISH_START && (n) <= ITM_FISH_END) || ((n) >= ITM_FISH_START + 48 && (n) < ITM_FISH_START + 48 + PC_CF_FISH_NUM))
+#else
 #define ITEM_IS_INSECT(n) ((n) >= ITM_INSECT_START && (n) < ITM_INSECT_END)
 #define ITEM_IS_FISH(n) ((n) >= ITM_FISH_START && (n) <= ITM_FISH_END)
+#endif
 #define ITEM_IS_WISP(n) ((n) >= ITM_SPIRIT0 && (n) <= ITM_SPIRIT4)
 #define ITEM_IS_PAPER(n) ((n) >= ITM_PAPER_START && (n) <= (ITM_PAPER_END - 1))
 #define ITEM_IS_CLOTH(n) ((n) >= ITM_CLOTH_START && (n) < ITM_CLOTH_END)

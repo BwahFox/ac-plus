@@ -5,7 +5,7 @@ FROM docker.io/library/debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc-mingw-w64-i686 g++-mingw-w64-i686 gcc libc6-dev cmake make \
-        python3 python3-numpy curl ca-certificates \
+        python3 python3-numpy python3-pil curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # SDL2 for MinGW, where build_wine.sh looks for it (next to the source folder, /build/src)
@@ -15,18 +15,22 @@ RUN curl -fsSL -o /tmp/sdl2.tgz "$SDL2_URL" \
     && echo "$SDL2_SHA256  /tmp/sdl2.tgz" | sha256sum -c - \
     && mkdir -p /build && tar xzf /tmp/sdl2.tgz -C /build && rm /tmp/sdl2.tgz
 
-# A Windows Python with numpy, shipped in the game folder (cf-tools/python/) to convert the player's City Folk
+# A Windows Python with numpy and Pillow, shipped in the game folder (cf-tools/python/) to convert the player's City Folk
 # disc on the first start (pc/src/pc_cf_setup.c)
 ARG PYEMBED_URL=https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip
 ARG PYEMBED_SHA256=4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3
 ARG NUMPY_URL=https://files.pythonhosted.org/packages/36/fa/8c9210162ca1b88529ab76b41ba02d433fd54fecaf6feb70ef9f124683f1/numpy-2.2.6-cp312-cp312-win_amd64.whl
 ARG NUMPY_SHA256=c1f9540be57940698ed329904db803cf7a402f3fc200bfe599334c9bd84a40b2
+ARG PILLOW_URL=https://files.pythonhosted.org/packages/ff/cd/73a79ecdc822076002eb24b5e1e4a530b0bb5310fcb6d239abbec877110b/pillow-13.0.0-cp312-cp312-win_amd64.whl
+ARG PILLOW_SHA256=ff3fe9eb621fbb9db4c4be33ab946f6bac5f98ab50ca8d3260503653656c961b
 RUN curl -fsSL -o /tmp/py.zip "$PYEMBED_URL" && echo "$PYEMBED_SHA256  /tmp/py.zip" | sha256sum -c - \
     && curl -fsSL -o /tmp/np.whl "$NUMPY_URL" && echo "$NUMPY_SHA256  /tmp/np.whl" | sha256sum -c - \
+    && curl -fsSL -o /tmp/pil.whl "$PILLOW_URL" && echo "$PILLOW_SHA256  /tmp/pil.whl" | sha256sum -c - \
     && python3 -c "import zipfile; zipfile.ZipFile('/tmp/py.zip').extractall('/opt/winpython'); \
-zipfile.ZipFile('/tmp/np.whl').extractall('/opt/winpython/Lib/site-packages')" \
+zipfile.ZipFile('/tmp/np.whl').extractall('/opt/winpython/Lib/site-packages'); \
+zipfile.ZipFile('/tmp/pil.whl').extractall('/opt/winpython/Lib/site-packages')" \
     && printf 'Lib\\site-packages\r\n' >> /opt/winpython/python312._pth \
     && find /opt/winpython/Lib/site-packages/numpy -type d -name tests -prune -exec rm -rf {} + \
-    && rm -f /tmp/py.zip /tmp/np.whl && chmod -R a+rX /opt/winpython
+    && rm -f /tmp/py.zip /tmp/np.whl /tmp/pil.whl && chmod -R a+rX /opt/winpython
 
 WORKDIR /build/src

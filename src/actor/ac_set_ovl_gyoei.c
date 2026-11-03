@@ -1,4 +1,9 @@
 #include "ac_set_ovl_gyoei.h"
+#ifdef TARGET_PC
+#include <stdio.h>
+#include <stdlib.h>
+#include "pc_cf_creature.h"
+#endif
 
 #include "m_field_info.h"
 #include "m_collision_bg.h"
@@ -1640,6 +1645,12 @@ static int aSOG_gyoei_make(aSOG_set_data_c* set_data, int* block_xz, GAME* game)
 
     /* send fish off to fish actor to spawn actual actor */
     res = (*Common_Get(clip.gyo_clip)->make_gyoei_proc)(&init_data);
+#ifdef TARGET_PC
+    if (getenv("PC_CF_CR_FORCE") != NULL) {
+      printf("[cf] fish %d at %d,%d: %d\n", init_data.fish_type, (int)wpos.x, (int)wpos.z, res); /* (dev) */
+      fflush(stdout);
+    }
+#endif
     set_data->should_spawn = FALSE;
   }
 
@@ -2148,6 +2159,46 @@ static void aSOG_gyoei_make_range_data(SET_MANAGER* set_manager, u32 block_type)
   if (term0_rate != 1.0f) {
     (*make_range_data_proc[range_proc])(gyoei_keep, time_no, term1, TRUE, 1.0f - term0_rate);
   }
+
+#ifdef TARGET_PC
+  /* City Folk's that are out now (pc_cf_creature.c). (40 is get_idx's "none": leave room below it) */
+  {
+    int i;
+
+    for (i = 0; i < PC_CF_FISH_NUM && gyoei_keep->possible_gyoei_num < aGYO_TYPE_NUM - 1; i++) {
+      int area = 0;
+      int weight = pc_cf_fish_now(i, &area);
+      int here;
+
+      if (weight == 0) {
+        continue;
+      }
+      switch (range_proc) {
+        case aSOG_RANGE_PROC_RIVER:
+          here = area == aSOG_SPAWN_AREA_RIVER || area == aSOG_SPAWN_AREA_POOL || area == aSOG_SPAWN_AREA_RIVER_MOUTH;
+          break;
+        case aSOG_RANGE_PROC_SEA:
+        case aSOG_RANGE_PROC_ISLAND:
+          here = area == aSOG_SPAWN_AREA_SEA;
+          break;
+        case aSOG_RANGE_PROC_OFFING:
+          here = area == aSOG_SPAWN_AREA_SEA;
+          weight *= 10;
+          break;
+        default:
+          here = FALSE;
+          break;
+      }
+      if (here) {
+        aSOG_gyoei_spawn_info_weight_f_c* w = &gyoei_keep->spawn_weights[gyoei_keep->possible_gyoei_num++];
+
+        w->type = (s16)(aGYO_TYPE_PC_CF + i);
+        w->spawn_area = (u8)area;
+        w->spawn_weight = (f32)weight;
+      }
+    }
+  }
+#endif
 }
 
 /**

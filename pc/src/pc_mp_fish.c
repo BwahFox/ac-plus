@@ -7,6 +7,7 @@
  * (or on it) is the visitor's to move: the visitor reports it, and the host's fish follows. A fish a visitor
  * catches is gone for the host too. Out of the host's acre a visitor's game has its own fish, as nobody else can see
  * them. */
+#include "pc_cf_creature.h"
 #include "pc_mp_fish.h"
 
 #include <stdio.h>
@@ -60,7 +61,7 @@ static int fish_busy(aGYO_CTRL_ACTOR* f) {
     int kaseki = f->gyo_type == aGYO_TYPE_SALMON || f->gyo_type == aGYO_TYPE_COELACANTH ||
                  f->gyo_type == aGYO_TYPE_JELLYFISH || f->gyo_type == aGYO_TYPE_SEA_BASS ||
                  f->gyo_type == aGYO_TYPE_RED_SNAPPER || f->gyo_type == aGYO_TYPE_BARRED_KNIFEJAW ||
-                 f->gyo_type == aGYO_TYPE_WHALE;
+                 f->gyo_type == aGYO_TYPE_WHALE || pc_cf_fish_in_sea(f->gyo_type);
     int near = kaseki ? 7 : 3, bite = kaseki ? 9 : 5; /* aGKK_ / aGTT_ACTION_NEAR .. _BITE */
     return (f->gyo_flags & 4) != 0 || (f->action >= near && f->action <= bite);
 }
@@ -92,7 +93,8 @@ void pc_mp_fish_collect_host(mp_fish* out) {
     memset(out, 0, sizeof(*out));
     for (i = 0; i < aGYO_MAX_GYOEI && i < MP_FISH_MAX; i++) {
         aGYO_CTRL_ACTOR* f = fish_slot(i);
-        if (f == NULL || !f->exist || f->gyo_type < 0 || f->gyo_type > aGYO_TYPE_WHALE) {
+        if (f == NULL || !f->exist || f->gyo_type < 0 ||
+            (f->gyo_type > aGYO_TYPE_WHALE && pc_cf_fish_dl(f->gyo_type) == NULL)) {
             continue;
         }
         out->e[out->count].slot = (uint8_t)i;
@@ -134,7 +136,7 @@ void pc_mp_fish_visitor_received(const mp_fish* in, unsigned long long now) {
     }
     for (i = 0; i < in->count; i++) {
         int k = in->e[i].slot;
-        if (in->e[i].type > aGYO_TYPE_WHALE) {
+        if (in->e[i].type > aGYO_TYPE_WHALE && pc_cf_fish_dl(in->e[i].type) == NULL) {
             continue;
         }
         l_host[k].valid = TRUE;

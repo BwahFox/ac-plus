@@ -13,7 +13,8 @@
 # An older ac-sync.conf (AC_SYNC_HOST=, AC_SYNC_DIR=) is used until settings.ini has server_sync;
 # the game copies it over on its next start.
 #
-# What moves: save/card_a/*.gci and their .gci.acplus companions, always as one set.
+# What moves: save/card_a/town.acplus (the town file), or an older version's *.gci and their .gci.acplus
+# companions, always as one set.
 # Which way: .sync-state remembers the hash of the set at the last sync, so
 #   - only the server changed -> download    - only this machine changed -> upload
 #   - both changed (played on two machines without syncing) -> the newer set wins,
@@ -63,9 +64,9 @@ remote() {
         -o ServerAliveInterval=5 -o ServerAliveCountMax=3 "$AC_SYNC_HOST" "$@"
 }
 
-# The save set: town/passport .gci files plus their .acplus companions (no .bak*).
+# The save set: the town file, or an older version's .gci files plus their .acplus companions (no .bak*).
 local_files() {
-    (cd "$CARD" 2>/dev/null && ls -1 -- *.gci *.gci.acplus 2>/dev/null) | sort
+    (cd "$CARD" 2>/dev/null && ls -1 -- *.gci *.acplus 2>/dev/null) | sort
 }
 
 # One hash for the whole set (names + contents), "none" when there is nothing.
@@ -87,7 +88,7 @@ local_mtime() {
 # Prints "<hash> <mtime>" for the server's set, "none 0" when empty; fails if unreachable.
 remote_info() {
     remote "mkdir -p '$AC_SYNC_DIR/current' && cd '$AC_SYNC_DIR/current' &&
-        f=\$(ls -1 -- *.gci *.gci.acplus 2>/dev/null | sort)
+        f=\$(ls -1 -- *.gci *.acplus 2>/dev/null | sort)
         if [ -z \"\$f\" ]; then echo none 0; exit 0; fi
         h=\$(echo \"\$f\" | xargs -d '\n' sha256sum | sha256sum | cut -c1-64)
         m=\$(echo \"\$f\" | xargs -d '\n' stat -c %Y | sort -n | tail -1)
@@ -108,13 +109,13 @@ backup_local() {
 download() {
     local tmp
     tmp="$(mktemp -d "$HERE/save/.incoming.XXXXXX")" || return 1
-    if ! remote "cd '$AC_SYNC_DIR/current' && ls -1 -- *.gci *.gci.acplus 2>/dev/null | tar -cf - -T -" |
+    if ! remote "cd '$AC_SYNC_DIR/current' && ls -1 -- *.gci *.acplus 2>/dev/null | tar -cf - -T -" |
         tar -xpf - -C "$tmp"; then
         rm -rf "$tmp"
         log "download failed, keeping the local save"
         return 1
     fi
-    if ! ls "$tmp"/*.gci > /dev/null 2>&1; then
+    if ! ls "$tmp"/*.gci > /dev/null 2>&1 && ! ls "$tmp"/town.acplus > /dev/null 2>&1; then
         rm -rf "$tmp"
         log "download was empty, keeping the local save"
         return 1
@@ -134,7 +135,7 @@ upload() {
     (cd "$CARD" && local_files | tar -cf - -T -) |
         remote "set -e; cd '$AC_SYNC_DIR'; mkdir -p incoming current history
             rm -rf incoming/*; tar -xpf - -C incoming
-            ls incoming/*.gci > /dev/null
+            ls incoming/*.gci > /dev/null 2>&1 || ls incoming/town.acplus > /dev/null
             if ls current/* > /dev/null 2>&1; then
                 h=history/\$(date +%Y-%m-%d_%H%M%S)-before-$who; mkdir -p \"\$h\"; mv current/* \"\$h\"/
             fi

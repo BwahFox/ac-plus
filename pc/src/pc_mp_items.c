@@ -9,6 +9,7 @@
  *    0x8000-0x8015 and props 0xA000-0xA012 (birth control's tables), building footprints 0xF001-0xF147, and the
  *    door and bridge markers RSV_DOOR..RSV_FE1F. */
 #include "pc_mp_town.h"
+#include "pc_cf_ftr.h"
 
 #include "m_ftr_def.h"
 #include "m_name_table.h"
@@ -19,13 +20,16 @@ static int item1_ok(mActor_name_t n) {
         PAPER_NUM, MONEY_NUM, TOOL_NUM, FISH_NUM, CLOTH_NUM, ETC_NUM, CARPET_NUM, WALL_NUM,
         FRUIT_NUM, PLANT_NUM, MINIDISK_NUM, DIARY_NUM, TICKET_NUM, INSECT_NUM, HUKUBUKURO_NUM, KABU_NUM,
     };
+    if (ITEM_IS_FISH(n) || ITEM_IS_INSECT(n)) {
+        return TRUE; /* (City Folk's are past the GameCube's numbers) */
+    }
     return ITEM_NAME_GET_TYPE(n) == NAME_TYPE_ITEM1 && (n & 0xFF) < kinds[(n >> 8) & 0xF];
 }
 
 static int ftr_ok(mActor_name_t n) {
     if (ITEM_IS_FTR(n)) {
         int idx = mRmTp_FtrItemNo2FtrIdx(n);
-        return idx >= 0 && idx < FTR_NUM;
+        return idx >= 0 && (idx < FTR_NUM || pc_cf_ftr_idx(idx)); /* (City Folk's are past the GameCube's) */
     }
     return FALSE;
 }

@@ -14,7 +14,9 @@ Usage:
 Writes <bin dir>/cf_sky/{cloud,star,moon}.tga, cf_sky/rooms/*.cfroom,
 cf_sky/celeste.{msg,tex}, cf_sky/brewster.msg, cf_sky/chars/*.cfchar,
 cf_sky/anims/{roost.cfanim,player.cfpanm}, cf_sky/tv.cftv (the TV programs, cf_tv.py),
-cf_sky/tv/*.wav (their sound, cf_tv_sound.py), cf_sky/music/roost.wav and cf_sky/sfx/bite.wav (the
+cf_sky/tv/*.wav (their sound, cf_tv_sound.py), cf_sky/decor.cfdecor (wallpaper and carpets, cf_decor.py),
+cf_sky/furniture.cfftr (furniture, cf_furniture.py with cf_furniture.tsv),
+cf_sky/music/roost.wav and cf_sky/sfx/bite.wav (the
 sounds need numpy). The sky works without them, just without clouds, stars
 and moon; Celeste only comes to the museum when her lines are there. Her textures
 are fitted to Blathers' model, read from the GameCube disc in <bin dir> (rom/).
@@ -276,21 +278,25 @@ def find_files_root(path):
 
 # The game checks cf_sky/version.txt against this (PC_CF_DATA_VERSION in pc/include/pc_cf_data.h) and asks
 # for a fresh extraction when they differ: raise both whenever what's written here changes.
-CF_DATA_VERSION = 3  # 2: tv.cftv, 3: tv/*.wav
+CF_DATA_VERSION = 11  # 2: tv.cftv, 3: tv/*.wav, 4: decor.cfdecor, 5: furniture.cfftr, 6: its moving parts, 7: creatures.cfcr, 8: better pictures, tanks sized and posed, 9: creatures.cfln, 10: and Blathers', 11: furniture that plays (TVs, stereos, instruments)
 
 # What a complete extraction leaves in cf_sky/
 REQUIRED = ['cloud.tga', 'star.tga', 'moon.tga', 'rooms/idr_ms_astro.cfroom', 'rooms/idr_cafe.cfroom',
             'rooms/idr_entrance.cfroom', 'celeste.msg', 'celeste.tex', 'brewster.msg', 'chars/brewster.cfchar',
             'chars/cup_coffee.cfchar', 'chars/cup_milk.cfchar', 'chars/cup_empty.cfchar', 'chars/saucer.cfchar',
             'chars/pot.cfchar', 'chars/polish_cup.cfchar', 'chars/duster.cfchar', 'anims/roost.cfanim',
-            'anims/player.cfpanm', 'music/roost.wav', 'sfx/bite.wav', 'tv.cftv', 'tv/news.wav']
+            'anims/player.cfpanm', 'music/roost.wav', 'sfx/bite.wav', 'tv.cftv', 'tv/news.wav', 'creatures.cfln']
 
 
 # The files read off the City Folk disc
-DISC_FILES = ['Sky/', 'Script/ENG/npc_SP/NPC_hu-ko.bmg', 'Script/ENG/npc_SP/NPC_master.bmg', 'BgData/BgModel/',
+DISC_FILES = ['Sky/', 'Script/ENG/npc_SP/NPC_hu-ko.bmg', 'Script/ENG/npc_SP/NPC_master.bmg',
+              'Script/ENG/npc_SP/NPC_uomasa.bmg', 'Script/ENG/npc_SP/NPC_hu-ta_fish.bmg',
+              'Script/ENG/npc_SP/NPC_hu-ta_bug.bmg', 'Script/ENG/sys_MESS/SYS_Get_fish.bmg',
+              'Script/ENG/sys_MESS/SYS_Get_bug.bmg', 'BgData/BgModel/',
               'Npc/Special/Model/14.brres', 'Npc/Special/Model/23.brres', 'Rmobj/obj_cafe1.brres',
               'Rmobj/obj_cafe2.brres', 'Rmobj/obj_cafe3.brres', 'Rmobj/obj_cafe4.brres', 'Rmobj/obj_cafe5.brres',
-              'Rmobj/obj_cafe6.brres', 'Anm/Anm.brcha', 'Sound/rv_forest.brsar', 'Ftr/', 'rels/d_ftr_managerNP.rel']
+              'Rmobj/obj_cafe6.brres', 'Anm/Anm.brcha', 'Sound/rv_forest.brsar', 'Ftr/', 'rels/d_ftr_managerNP.rel',
+              'Item/', 'Fish/', 'Insect/']
 CF_GAME_ID = 'RUUE01'
 
 
@@ -387,6 +393,15 @@ def main():
     import cf_tv_sound
     cf_tv_sound.write_tv_sound(root, os.path.join(out, 'tv'))
     progress(85)
+    import cf_decor
+    cf_decor.write_decor(root, os.path.join(out, 'decor.cfdecor'))
+    progress(88)
+    import cf_furniture
+    cf_furniture.write_furniture(root, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cf_furniture.tsv'),
+                                 os.path.join(out, 'furniture.cfftr'))
+    import cf_creatures
+    cf_creatures.main(root, os.path.join(out, 'creatures.cfcr'))
+    cf_creatures.write_lines(root, os.path.join(out, 'creatures.cfln'))
     brsar = os.path.join(root, 'Sound', 'rv_forest.brsar')
     if os.path.isfile(brsar):
         import cf_music

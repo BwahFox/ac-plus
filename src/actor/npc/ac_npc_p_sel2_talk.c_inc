@@ -1450,25 +1450,38 @@ static int aNPS2_talk_end_chk(ACTOR* actorx, GAME* game) {
 }
 
 #ifdef TARGET_PC
-/* Quick load (quick_load setting): the town's only resident, if they are at
- * home and have saved before, skips this conversation. This does what picking
+/* Quick load (quick_load setting): the town's only resident (with several, the one who saved last; B held as the
+ * game starts gives the conversation), if they are at home and have saved before, skips this conversation. This does what picking
  * them in it would (aNPS2_select_player + aNPS2_game_start_wait): the clock and
  * cheat checks, the birthday flag and the card load. start_flag then sends them
  * out of their front door as usual, along with Resetti or a birthday visit.
- * New players, visitors with a passport and towns with several residents get the
- * normal conversation. */
+ * New players and visitors with a passport get the normal conversation. */
+#include "m_controller.h"
 static int aNPS2_pc_quick_load(NPC_P_SEL2_ACTOR* p_sel2, GAME_PLAY* play) {
     Private_c* priv = Save_Get(private_data);
     int pl_no = -1;
     int i;
 
-    if (!g_pc_settings.quick_load || p_sel2->player_sum != 1 || mCD_CheckPassportFile() != -1) {
+    if (!g_pc_settings.quick_load || p_sel2->player_sum < 1 || mCD_CheckPassportFile() != -1) {
         return FALSE;
     }
 
-    for (i = 0; i < PLAYER_NUM; i++) {
-        if (mPr_NullCheckPersonalID(&priv[i].player_ID) == FALSE) {
-            pl_no = i;
+    if (p_sel2->player_sum == 1) {
+        for (i = 0; i < PLAYER_NUM; i++) {
+            if (mPr_NullCheckPersonalID(&priv[i].player_ID) == FALSE) {
+                pl_no = i;
+            }
+        }
+    } else {
+        /* several residents: the one who saved last (pc_quick_save.c), unless B is held to choose */
+        extern int pc_last_player(void);
+
+        if (chkButton(BUTTON_B)) {
+            return FALSE;
+        }
+        pl_no = pc_last_player();
+        if (pl_no < 0 || mPr_NullCheckPersonalID(&priv[pl_no].player_ID)) {
+            return FALSE;
         }
     }
     if (pl_no < 0 || priv[pl_no].exists != TRUE || !Save_Get(homes[mHS_get_arrange_idx(pl_no)]).flags.has_saved) {

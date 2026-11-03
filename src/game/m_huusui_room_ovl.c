@@ -29,7 +29,13 @@ typedef struct huusui_room_ftr_info_s {
 } mHsRm_ftr_info_c;
 
 /* table of feng shui data for every item, clearly copy-pasted... should be mHsRm_ftr_info */
+#ifdef TARGET_PC
+/* every furniture index there can be (pc_cf_ftr.h): City Folk's have no feng shui colour (zero: none) */
+#include "pc_cf_ftr.h"
+static mHsRm_ftr_info_c mMkRm_ftr_info[PC_FTR_IDX_NUM] = {
+#else
 static mHsRm_ftr_info_c mMkRm_ftr_info[FTR_NUM] = {
+#endif
 #include "../src/game/m_huusui_room_ovl_data.inc" /* data moved out of file due to length */
 };
 

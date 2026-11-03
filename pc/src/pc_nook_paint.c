@@ -5,6 +5,7 @@
 
 #include "pc_nook_paint.h"
 #include "pc_msg_text.h"
+#include "pc_season_island.h"
 #include "m_font.h"
 
 #include <stdio.h>
@@ -96,6 +97,14 @@ int pc_nook_paint_menu(u8* buf, int size, int buf_size) {
     buf[i + 1] = mFont_CONT_CODE_SET_SELECT_STRING_5;
     buf[i + 8] = PC_NOOK_PAINT_CHOICE >> 8;
     buf[i + 9] = PC_NOOK_PAINT_CHOICE & 0xFF;
+    if (pc_season_island_menu_on() && size + 2 <= buf_size) {
+        /* and Islands (pc_season_island.c), before "Umm, hang on!" */
+        memmove(buf + i + 12, buf + i + 10, size - (i + 10));
+        size += 2;
+        buf[i + 1] = mFont_CONT_CODE_SET_SELECT_STRING_6;
+        buf[i + 10] = PC_ISL_CHOICE_MENU >> 8;
+        buf[i + 11] = PC_ISL_CHOICE_MENU & 0xFF;
+    }
     return size;
 }
 

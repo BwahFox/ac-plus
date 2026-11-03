@@ -16,9 +16,19 @@
 #include "m_player_lib.h"
 #include "m_field_info.h"
 #include "m_collision_bg.h"
+#include "ac_insect_h.h"
+#include "ac_gyoei_h.h"
+#include "m_player.h"
+#include "ac_uki.h"
 #include "ac_my_room.h"
 #include "m_room_type.h"
 #include "pc_nlrooms.h"
+#include "m_island.h"
+#include "m_item_name.h"
+#include "m_npc.h"
+#include "m_bg_item.h"
+#include "ac_weather.h"
+#include "m_time.h"
 #include <stdio.h>
 
 #include <stdlib.h>
@@ -89,6 +99,10 @@ void pc_dev_warp(void* playv, int which) {
         door.next_scene_id = SCENE_POST_OFFICE;
         door.exit_orientation = mSc_DIRECT_NORTH;
         door.exit_position.x = 160, door.exit_position.z = 240;
+    } else if (scene != NULL && (atoi(scene) == 15 || atoi(scene) == 16)) {
+        /* the museum's fish room, its insect room */
+        door.next_scene_id = atoi(scene) == 15 ? SCENE_MUSEUM_ROOM_FISH : SCENE_MUSEUM_ROOM_INSECT;
+        door.exit_position.x = 320, door.exit_position.z = 400;
     } else if (scene != NULL && atoi(scene) == 3) {
         door.next_scene_id = SCENE_MUSEUM_CAFE;
         door.exit_orientation = mSc_DIRECT_WEST;
@@ -123,6 +137,9 @@ void pc_dev_teleport(void* playv, const char* pos) {
         if (bx != play->block_table.block_x || bz != play->block_table.block_z) {
             mFI_SetBearActor(play, player->actor_class.world.position, TRUE);
         }
+        /* and on the ground there (the beach is lower than the town's upper levels) */
+        player->actor_class.world.position.y = mCoBG_GetBgY_OnlyCenter_FromWpos2(player->actor_class.world.position,
+                                                                                 0.0f);
     }
 }
 
@@ -357,7 +374,7 @@ void pc_dev_fengshui(void) {
 void pc_dev_room(int home, int floor, int unit, int item) {
     mActor_name_t* it;
     mHm_flr_c* f;
-    if (home < 0 || home >= PLAYER_NUM || floor < 0 || floor >= PC_NLR_FLOOR_FIRST + PC_NLR_ROOMS || unit < 0 ||
+    if (home < 0 || home >= PLAYER_NUM || floor < 0 || floor >= PC_NLR_FLOOR_FIRST + PC_NLR_ALL_ROOMS || unit < 0 ||
         unit >= UT_TOTAL_NUM || (f = mHm_GetFloorP(home, floor)) == NULL) {
         return;
     }
@@ -584,6 +601,57 @@ void pc_dev_pstate(void) {
 }
 
 /* ctl "pocket SLOT ITEM": an item in the player's pockets */
+/* a fish beside the player's float, or at x, z */
+void pc_dev_spawn_fish(int type, int x, int z) {
+    PLAYER_ACTOR* p = GET_PLAYER_ACTOR((GAME_PLAY*)gamePT);
+    aGYO_Init_c init;
+
+    init.fish_type = (s16)type;
+    init.position.x = (f32)x;
+    init.position.z = (f32)z;
+    init.position.y = 0.0f;
+    if (x < 0 && p != NULL && p->fishing_rod_actor_p != NULL) {
+        init.position = p->fishing_rod_actor_p->world.position;
+        init.position.x += 20.0f;
+    }
+    init.position.y = mCoBG_GetWaterHeight_File(init.position, __FILE__, __LINE__);
+    init.extra_data = 0;
+    init.game = gamePT;
+    if (Common_Get(clip).gyo_clip != NULL && Common_Get(clip).gyo_clip->make_gyoei_proc != NULL) {
+        int r = Common_Get(clip).gyo_clip->make_gyoei_proc(&init);
+        printf("[dev] fish %d at %d,%d: %d\n", type, (int)init.position.x, (int)init.position.z, r);
+        fflush(stdout);
+    }
+}
+
+void pc_dev_gift_all(int item) {
+    Save_Get(private_data[0]).mail[0].present = (mActor_name_t)item;
+    Save_Get(homes[0]).mailbox[0].present = (mActor_name_t)item;
+    Save_Get(homes[0]).haniwa.items[0].item = (mActor_name_t)item;
+    Save_Get(post_office).mail[0].present = (mActor_name_t)item;
+}
+
+/* a bug at x, z on the ground */
+void pc_dev_spawn_bug(int type, int x, int z) {
+    xyz_t pos;
+
+    pos.x = (f32)x;
+    pos.z = (f32)z;
+    pos.y = mCoBG_GetBgY_OnlyCenter_FromWpos2(pos, 0.0f);
+    if (Common_Get(clip).insect_clip != NULL && Common_Get(clip).insect_clip->make_insect_proc != NULL) {
+        aINS_Init_c init;
+        ACTOR* a;
+
+        init.insect_type = type;
+        init.position = pos;
+        init.extra_data = 0;
+        init.game = gamePT;
+        a = Common_Get(clip).insect_clip->make_insect_proc(&init, aINS_MAKE_NEW);
+        printf("[dev] bug %d at %d,%d: %p\n", type, x, z, (void*)a);
+        fflush(stdout);
+    }
+}
+
 void pc_dev_pocket(int slot, int item) {
     if (Common_Get(now_private) != NULL && slot >= 0 && slot < mPr_POCKETS_SLOT_COUNT) {
         mPr_SetPossessionItem(Common_Get(now_private), slot, (mActor_name_t)item, mPr_ITEM_COND_NORMAL);
@@ -598,5 +666,110 @@ void pc_dev_home_log(void) {
         mHm_hs_c* h = Save_GetPointer(homes[i]);
         printf("[state] home %d size %d next %d roof %d next %d ordered %d\n", i, h->size_info.size,
                h->size_info.next_size, h->outlook_pal, h->next_outlook_pal, h->ordered_outlook_pal);
+    }
+}
+
+/* ctl "roomgrid H F": a house floor's main layer, row by row */
+void pc_dev_room_grid(int home, int floor) {
+    extern mHm_flr_c* mHm_GetFloorP(int house, int floor_no);
+    mHm_flr_c* f = mHm_GetFloorP(home, floor);
+    int x, z;
+
+    for (z = 0; z < UT_Z_NUM; z++) {
+        printf("[grid] %2d:", z);
+        for (x = 0; x < UT_X_NUM; x++) {
+            printf(" %04X", f->layer_main.items[z][x]);
+        }
+        printf("\n");
+    }
+}
+
+/* ctl "door N": through the scene's door N, as if walked into */
+void pc_dev_take_door(int n) {
+    GAME_PLAY* play = (GAME_PLAY*)gamePT;
+
+    if (play == NULL || n < 0 || n >= play->door_info.num_doors) {
+        printf("[state] door %d: not here (%d doors)\n", n, play != NULL ? play->door_info.num_doors : -1);
+        return;
+    }
+    goto_other_scene(play, &play->door_info.door_data_p[n], TRUE);
+}
+
+/* ctl "bank N": the player's savings */
+void pc_dev_bank(int bells) {
+    if (Now_Private != NULL && bells >= 0) {
+        Now_Private->bank_account = (u32)bells;
+    }
+}
+
+/* ctl "dock": where the dock acre and the island's acres are */
+void pc_dev_dock(void) {
+    int bx, bz;
+
+    if (mFI_BlockKind2BkNum(&bx, &bz, mRF_BLOCKKIND_DOCK)) {
+        printf("[state] dock acre %d,%d (world %d..%d, %d..%d)\n", bx, bz, bx * 640, bx * 640 + 640, bz * 640,
+               bz * 640 + 640);
+    }
+    if (mFI_BlockKind2BkNum(&bx, &bz, mRF_BLOCKKIND_ISLAND_LEFT)) {
+        printf("[state] island acre %d,%d\n", bx, bz);
+    }
+}
+
+/* ctl "actors": every actor's profile and position */
+void pc_dev_actors(void) {
+    GAME_PLAY* play = (GAME_PLAY*)gamePT;
+    int part;
+
+    if (play == NULL) {
+        return;
+    }
+    for (part = 0; part < ACTOR_PART_NUM; part++) {
+        ACTOR* a;
+        for (a = play->actor_info.list[part].actor; a != NULL; a = a->next_actor) {
+            printf("[state] actor part %d profile %d fg %04X at %d,%d\n", part, a->id, a->npc_id,
+                   (int)a->world.position.x, (int)a->world.position.z);
+        }
+    }
+}
+
+/* ctl "goisland": the island's season and look, as the boat sets them halfway over (ac_boat_demo_move.c_inc),
+ * and the player put on it */
+void pc_dev_go_island(void) {
+    GAME_PLAY* play = (GAME_PLAY*)gamePT;
+    int bx, bz;
+    char pos[48];
+
+    if (play == NULL || !mFI_BlockKind2BkNum(&bx, &bz, mRF_BLOCKKIND_ISLAND_LEFT)) {
+        return;
+    }
+    mFI_SetClimate(mFI_CLIMATE_ISLAND);
+    mFM_toSummer();
+    aWeather_RequestChangeWeatherToIsland();
+    mISL_ChangeBG();
+    mRmTp_DecideCottageDefaultLightSwitch();
+    mNpc_SetIslandPresentFtr();
+    mNpc_SetIslandRoomFtr(&Save_Get(island).animal);
+    mBI_change_bg_item(play);
+    snprintf(pos, sizeof(pos), "%d,%d,0", bx * 640 + 640, bz * 640 + 200);
+    pc_dev_teleport(play, pos);
+    printf("[state] on the island: term %d season %d weather %d\n", Common_Get(time.term_idx), Common_Get(time.season),
+           Common_Get(island_weather));
+}
+
+/* ctl "itemnames FIRST COUNT" */
+void pc_dev_item_names(int first, int count) {
+    int i;
+
+    for (i = 0; i < count; i++) {
+        u8 name[16];
+        char out[17];
+        int k;
+
+        mIN_copy_name_str(name, (mActor_name_t)(first + i));
+        for (k = 0; k < 16; k++) {
+            out[k] = (name[k] >= 0x20 && name[k] < 0x7F) ? (char)name[k] : ' ';
+        }
+        out[16] = '\0';
+        printf("[state] item %04X %s\n", first + i, out);
     }
 }

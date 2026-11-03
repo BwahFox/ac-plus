@@ -1,4 +1,7 @@
 #include "ac_insect.h"
+#ifdef TARGET_PC
+#include "pc_cf_creature.h"
+#endif
 
 #include "m_name_table.h"
 #include "m_common_data.h"

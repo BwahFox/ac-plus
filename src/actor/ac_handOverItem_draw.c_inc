@@ -92,7 +92,7 @@ static void aHOI_actor_draw(ACTOR* actorx, GAME* game) {
       gfx = NOW_POLY_OPA_DISP;
 
       gSPMatrix(gfx++, _Matrix_to_Mtx_new(graph), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
-      gSPDisplayList(gfx++, aGYO_displayList[handOverItem->gyo_type]->dl_a);
+      gSPDisplayList(gfx++, aGYO_PC_DL(handOverItem->gyo_type)[0]);
 
       SET_POLY_OPA_DISP(gfx);
       CLOSE_DISP(graph);
