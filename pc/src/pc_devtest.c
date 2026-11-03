@@ -803,6 +803,12 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
     } else if (strcmp(cmd, "oftrfill") == 0 && sscanf(line, "%*s %d", &n) == 1) {
         extern void aMR_pc_dev_fill(int per_acre);
         aMR_pc_dev_fill(n);
+    } else if (strcmp(cmd, "maketown") == 0) {
+        /* maketown: make a "Somewhere new" town and throw it away (the home town must come through as it was) */
+        extern void* pc_random_town_make(void* game);
+        extern void* gamePT;
+        free(pc_random_town_make(gamePT));
+        printf("[state] random town made\n");
     } else if (strcmp(cmd, "quit") == 0) {
         *quit_at = (int)s_frame;
     } else if (strcmp(cmd, "exit") == 0) {

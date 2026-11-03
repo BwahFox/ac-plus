@@ -82,9 +82,14 @@ def glass_alpha(textures, meshes):
     out = list(textures)
     for i, (name, w, h, px) in enumerate(textures):
         used = [m for m in meshes if m[1] == i]
+        rgba = bytes(px)
+        if used and not any(rgba[3::4]):  # no alpha at all (the upright piano's body): City Folk draws it solid
+            fixed = bytearray(rgba)
+            fixed[3::4] = b'\xff' * (len(rgba) // 4)
+            out[i] = (name, w, h, bytes(fixed))
+            continue
         if not used or not all(m[2] for m in used):
             continue
-        rgba = bytes(px)
         if all(a == 255 for a in rgba[3::4]) and rgba[0::4] == rgba[1::4] == rgba[2::4]:
             fixed = bytearray(rgba)
             fixed[3::4] = rgba[0::4]
@@ -136,7 +141,7 @@ def rebind_blended(bones, meshes):
 # the piece has its own: chestA a drawer (the GameCube's dressers), chestB one door (closets), chestC two (wardrobes)
 STORAGE = {'chestA': 1, 'chestB': 4, 'chestC': 2}
 HANDS = {'kh_j': 1, 'km_j': 2}
-MODE_STORAGE, MODE_LOOP, MODE_SWITCH_LOOP, MODE_ONCE, MODE_SWITCH_START = 0, 1, 2, 3, 4
+MODE_STORAGE, MODE_LOOP, MODE_SWITCH_LOOP, MODE_ONCE, MODE_SWITCH_START, MODE_TOGGLE = 0, 1, 2, 3, 4, 5
 
 
 def m_inv(m):
@@ -146,17 +151,19 @@ def m_inv(m):
     return np.linalg.inv(a)[:3, :].tolist()
 
 
-def anim_worlds(bones, b, off, f, absolute=False):
+def anim_worlds(bones, b, off, f, absolute=False, ref=None):
     """Each bone's model-space matrix at frame f of the CHR0 at off: the animation's turn and move since its own
-    first frame, put on the model's own rest pose (the shared ones hinge where no model does)"""
+    first frame, put on the model's own rest pose (the shared ones hinge where no model does). ref: (bytes, offset)
+    of the animation whose first frame to measure from instead (a loop after a start: the music box's open lid)"""
     from cf_anim import read_chr0, sample
     from cf_roost_anim import m_srt, m_mul
     a = read_chr0(b, off)
+    r = read_chr0(*ref) if ref is not None else a
     out = []
     for bn in bones:
         par = bones[bn['parent']]['world'] if bn['parent'] >= 0 else None
         rest = m_mul(m_inv(par), bn['world']) if par else bn['world']
-        s, s0 = sample(a, bn['name'], f), sample(a, bn['name'], 0)
+        s, s0 = sample(a, bn['name'], f), sample(r, bn['name'], 0) or sample(a, bn['name'], 0)
         if absolute and s and bn['name'] not in HANDS:
             loc = m_srt(*s)  # where the animation has it, not a move from its first frame (a fish in its tank)
         else:
@@ -190,17 +197,20 @@ def motion(b, model, bones, meshes, shared, shift_x, always=None, absolute=False
             srcs = [(MODE_SWITCH_START, b, own[names[0]]), (MODE_SWITCH_LOOP, b, own[names[1]])]
         else:
             loop = read_chr0(b, own[names[0]])['loop']
+            # F: two states, played to its end when switched on and held there, back when off (the VCR's tape)
             mode = (MODE_LOOP if tail == 'LP' else MODE_SWITCH_LOOP if tail in ('SW', 'SW2')
+                    else MODE_TOGGLE if tail == 'F'
                     else MODE_LOOP if loop and not tail.startswith('TR') else MODE_ONCE)
             srcs = [(mode, b, own[names[0]])]
     # the parts: bones some animation moves (and their children), and clock hands
     moved = set()
     baked = []
     for mode, ab, off in srcs:
-        a, _ = anim_worlds(bones, ab, off, 0, absolute)
+        ref = (srcs[0][1], srcs[0][2]) if mode == MODE_SWITCH_LOOP and srcs[0][0] == MODE_SWITCH_START else None
+        a, _ = anim_worlds(bones, ab, off, 0, absolute, ref)
         frames = []
         for f in range(a['frames'] + 1):
-            _, ws = anim_worlds(bones, ab, off, f, absolute)
+            _, ws = anim_worlds(bones, ab, off, f, absolute, ref)
             d = [m_mul(w, m_inv(bn['world'])) for w, bn in zip(ws, bones)]
             moved |= {i for i, m in enumerate(d) if not is_ident(m)}
             frames.append(d)

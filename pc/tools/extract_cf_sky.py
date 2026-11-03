@@ -278,7 +278,7 @@ def find_files_root(path):
 
 # The game checks cf_sky/version.txt against this (PC_CF_DATA_VERSION in pc/include/pc_cf_data.h) and asks
 # for a fresh extraction when they differ: raise both whenever what's written here changes.
-CF_DATA_VERSION = 11  # 2: tv.cftv, 3: tv/*.wav, 4: decor.cfdecor, 5: furniture.cfftr, 6: its moving parts, 7: creatures.cfcr, 8: better pictures, tanks sized and posed, 9: creatures.cfln, 10: and Blathers', 11: furniture that plays (TVs, stereos, instruments)
+CF_DATA_VERSION = 12  # 2: tv.cftv, 3: tv/*.wav, 4: decor.cfdecor, 5: furniture.cfftr, 6: its moving parts, 7: creatures.cfcr, 8: better pictures, tanks sized and posed, 9: creatures.cfln, 10: and Blathers', 11: furniture that plays (TVs, stereos, instruments), 12: two-state pieces (F) hold when on
 
 # What a complete extraction leaves in cf_sky/
 REQUIRED = ['cloud.tga', 'star.tga', 'moon.tga', 'rooms/idr_ms_astro.cfroom', 'rooms/idr_cafe.cfroom',

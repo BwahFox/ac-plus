@@ -1096,6 +1096,24 @@ void pc_nlr_clear_house(int house) {
     }
 }
 
+/* pc_random_town.c: the random town is made by the game's own new-town setup, which clears every house
+ * (mHm_ClearAllHomeInfo -> pc_nlr_clear_house) and settles room orders; the rooms are kept here around it */
+void* pc_nlr_keep(void) {
+    void* k = malloc(sizeof(l_nlr));
+
+    if (k != NULL) {
+        memcpy(k, l_nlr, sizeof(l_nlr));
+    }
+    return k;
+}
+
+void pc_nlr_put_back(void* k) {
+    if (k != NULL) {
+        memcpy(l_nlr, k, sizeof(l_nlr));
+        free(k);
+    }
+}
+
 void pc_nlr_reset(void) {
     int house;
 

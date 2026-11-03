@@ -10,6 +10,8 @@
  * up (pc_random_town_unlocked), not before. */
 
 #include "pc_random_town.h"
+#include "pc_nlrooms.h"
+#include "pc_town_map.h"
 #include "m_common_data.h"
 #include "m_land.h"
 #include "m_private.h"
@@ -68,6 +70,7 @@ int pc_random_town_unlocked(void) {
 Save_t* pc_random_town_make(GAME* game) {
     common_data_t* keep = (common_data_t*)malloc(sizeof(common_data_t));
     Save_t* town = (Save_t*)malloc(sizeof(Save_t));
+    void* rooms;
     int i;
 
     if (keep == NULL || town == NULL) {
@@ -76,6 +79,7 @@ Save_t* pc_random_town_make(GAME* game) {
         return NULL;
     }
     memcpy(keep, &common_data, sizeof(common_data_t));
+    rooms = pc_nlr_keep(); /* the setup below clears every house's extra rooms too, which live outside common_data */
     if (mSDI_StartInitBefore(game, 0, mSDI_INIT_MODE_NEW, mSDI_MALLOC_FLAG_ZELDA) == TRUE) {
         mSDI_StartInitAfter(game, TRUE, mSDI_MALLOC_FLAG_ZELDA);
     }
@@ -108,6 +112,8 @@ Save_t* pc_random_town_make(GAME* game) {
         memcpy(town, &whole.save, sizeof(Save_t));
     }
     memcpy(&common_data, keep, sizeof(common_data_t)); /* the game as it was */
+    pc_nlr_put_back(rooms);
+    pc_town_map_new_town(FALSE); /* (the setup took this for a brand-new town) */
     free(keep);
     OSReport("[random town] made %.8s\n", town->land_info.name);
     return town;

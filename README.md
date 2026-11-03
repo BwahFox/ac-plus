@@ -314,6 +314,10 @@ mouse, controllers), ac-plus adds:
 - The sea beside Kapp'n's island no longer shows a dark wedge.
 - You can no longer walk out of the front of an extra side room.
 - Villagers in a "Somewhere new" town no longer say they moved there "from ."
+- **A "Somewhere new" trip no longer empties your house's extra rooms** (Beta 1 lost them on the
+  way out).
+- City Folk furniture: the VCR's tape stays in while the TV is on, the music box's lid stays open
+  while it plays, and the upright piano is no longer invisible.
 - Kapp'n asks which island after you say you'll cross, and "Never mind" lets you stay.
 - Your skin tone goes with you on train trips and online visits.
 - **Custom hourly music:** replace the 24 hourly tracks with your own files (see

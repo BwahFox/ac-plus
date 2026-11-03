@@ -33,7 +33,8 @@
 enum { PC_CF_PART_ANIM, PC_CF_PART_HOUR, PC_CF_PART_MINUTE };
 /* How an animation plays: a storage's opening (the game's own open/close), always, while switched on (A), once
  * when switched, once when switched on before the next one loops */
-enum { PC_CF_MODE_STORAGE, PC_CF_MODE_LOOP, PC_CF_MODE_SWITCH_LOOP, PC_CF_MODE_ONCE, PC_CF_MODE_SWITCH_START };
+enum { PC_CF_MODE_STORAGE, PC_CF_MODE_LOOP, PC_CF_MODE_SWITCH_LOOP, PC_CF_MODE_ONCE, PC_CF_MODE_SWITCH_START,
+       PC_CF_MODE_TOGGLE };
 
 /* What a piece does when you press A, as the GameCube's of its kind */
 enum { PC_CF_DOES_NOTHING, PC_CF_DOES_TV, PC_CF_DOES_STEREO, PC_CF_DOES_INST = 0x100 };
@@ -683,6 +684,17 @@ static void pc_cf_ftr_mv(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game,
                 if (c->anims[fc->mode].mode == PC_CF_MODE_SWITCH_START && fc->mode + 1 < c->nanims) {
                     fc->mode++; /* started: the loop now */
                 }
+            }
+            break;
+        case PC_CF_MODE_TOGGLE: /* on: to the end and held there; off: back to the start */
+            fc->mode = 0;
+            if (fc->previous_frame < 0.0f) {
+                fc->previous_frame = 0.0f;
+                fc->current_frame = on ? (f32)c->anims[0].frames : 0.0f; /* as it was placed or loaded */
+            } else if (on && fc->current_frame < (f32)c->anims[0].frames) {
+                fc->current_frame += 1.0f;
+            } else if (!on && fc->current_frame > 0.0f) {
+                fc->current_frame -= 1.0f;
             }
             break;
         default: /* once, when switched */

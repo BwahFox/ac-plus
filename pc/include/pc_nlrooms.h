@@ -93,6 +93,8 @@ void pc_nlr_draw_wings(struct game_s* game, int house, int winter, void* palette
 int pc_nlr_read_chunk(const char tag[4], void* fp, unsigned int size);
 int pc_nlr_write_chunk(void* fp);
 void pc_nlr_reset(void);
+void* pc_nlr_keep(void);         /* the extra rooms as they are, for pc_nlr_put_back (frees it) */
+void pc_nlr_put_back(void* kept);
 void pc_nlr_clear_house(int house);
 
 #ifdef __cplusplus
