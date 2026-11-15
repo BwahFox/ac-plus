@@ -56,7 +56,6 @@ typedef struct hand_info_s {
     u8 catch_pg;
     s16 haniwa_item_cond;
     u32 haniwa_item_price;
-    f32 visual_pos[2]; // Visual position (so mouse follows smoothly)
 } mHD_hand_info_c;
 
 /* sizeof(struct hand_ovl_s) == 0x378 */
@@ -68,6 +67,11 @@ struct hand_ovl_s {
 
 extern void mHD_hand_ovl_construct(Submenu* submenu);
 extern void mHD_hand_ovl_destruct(Submenu* submenu);
+#ifdef MOUSE_INPUT
+extern void mHD_mouse_pointer_begin_frame(void);
+extern void mHD_mouse_pointer_draw(GAME* game);
+extern void mHD_mouse_hand_pos_get(Submenu* submenu, f32* pos, int table_type, int table_idx);
+#endif
 
 #ifdef __cplusplus
 }

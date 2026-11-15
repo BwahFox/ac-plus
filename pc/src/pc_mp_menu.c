@@ -5,12 +5,14 @@
  * keybindings: T, or LB on a controller) opens the menu straight onto the Say line and closes it once said.
  * Going online starts at the station: hosting and visiting are only offered when Porter opened the menu (his
  * "Online"); a visit then leaves on his train (pc_mp.c). Once online, the pause menu's page has it all. */
+#include <SDL3/SDL.h>
+#include <aurora/aurora.h>
 #include "pc_mp.h"
 
 #include <stdio.h>
 #include <string.h>
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 
 #include "game.h"
 #include "pc_menu_util.h"
@@ -55,6 +57,20 @@ void pc_mp_menu_enter_porter(void) {
     extern void pc_mp_menu_enter(void);
     pc_mp_menu_enter();
     s_porter = 1;
+}
+
+/* The Online Play window in Nookery's menu (ui/acplus_online.cpp) is open, by Porter (porter 1) or not */
+void pc_mp_menu_ui_open(int porter) {
+    s_active = 1;
+    s_quick = 0;
+    s_porter = porter;
+    s_view = VIEW_MAIN;
+    s_typing = 0;
+}
+
+void pc_mp_menu_ui_close(void) {
+    s_active = 0;
+    s_porter = 0;
 }
 
 /* pc_mp.c: a visit started from here leaves on Porter's train */
@@ -126,7 +142,7 @@ static void type_begin(char* buf, size_t size) {
     s_buf_size = size;
     snprintf(s_before, sizeof(s_before), "%s", buf);
     s_typing = 1;
-    SDL_StartTextInput();
+    SDL_StartTextInput(aurora_get_window());
 }
 
 static void type_end(int keep) {
@@ -139,7 +155,7 @@ static void type_end(int keep) {
         snprintf(s_buf, s_buf_size, "%s", s_before);
     }
     s_typing = 0;
-    SDL_StopTextInput();
+    SDL_StopTextInput(aurora_get_window());
     if (s_quick) {
         extern void pc_pause_menu_toggle(void);
         s_quick = 0;
@@ -179,7 +195,7 @@ int pc_mp_menu_text_event(const SDL_Event* e) {
     len = strlen(s_buf);
 
     switch (e->type) {
-        case SDL_TEXTINPUT:
+        case SDL_EVENT_TEXT_INPUT:
             /* a chat key that types (T) can still send its letter just after typing starts */
             if (s_quick && s_buf == s_say && s_say[0] == '\0' && SDL_GetTicks() - s_quick_ticks < 150 &&
                 e->text.text[0] != '\0' && e->text.text[1] == '\0') {
@@ -188,15 +204,15 @@ int pc_mp_menu_text_event(const SDL_Event* e) {
             }
             type_add(e->text.text);
             break;
-        case SDL_KEYDOWN:
-            switch (e->key.keysym.sym) {
+        case SDL_EVENT_KEY_DOWN:
+            switch (e->key.key) {
                 case SDLK_BACKSPACE:
                     if (len > 0) {
                         s_buf[len - 1] = '\0';
                     }
                     break;
-                case SDLK_v:
-                    if (e->key.keysym.mod & KMOD_CTRL) {
+                case SDLK_V:
+                    if (e->key.mod & SDL_KMOD_CTRL) {
                         char* clip = SDL_GetClipboardText();
                         if (clip != NULL) {
                             type_add(clip);
@@ -213,11 +229,11 @@ int pc_mp_menu_text_event(const SDL_Event* e) {
                     break;
             }
             break;
-        case SDL_CONTROLLERBUTTONDOWN:
-            if (e->cbutton.button == SDL_CONTROLLER_BUTTON_A) {
+        case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+            if (e->gbutton.button == SDL_GAMEPAD_BUTTON_SOUTH) {
                 type_end(1);
             }
-            if (e->cbutton.button == SDL_CONTROLLER_BUTTON_B) {
+            if (e->gbutton.button == SDL_GAMEPAD_BUTTON_EAST) {
                 type_end(0);
             }
             break;

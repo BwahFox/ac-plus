@@ -1,19 +1,27 @@
 /* pc_sky.c - render side of the curved ("rolling log") world and sky.
  * See pc_sky.h for how the game marks what to curve; the game side is pc_sky_game.c. */
-#include "pc_gx_internal.h"
+#include <SDL3/SDL.h>
 #include "pc_sky.h"
 #include "pc_constellation.h"
+#include "pc_acplus_gx.h"
+#include "pc_platform.h"
 
-#include <dolphin/gx/GXEnum.h>
+#include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
-extern float pc_gx_projection_x_scale(void);
+/* The renderer bends the world: Aurora's vertex stage through patches/aurora-curved-world.patch (GXAuroraSetCurve,
+ * set with every perspective projection in aurora_widescreen.cpp). A port whose Aurora lacks that patch builds with
+ * -DPC_SKY_CAN_CURVE=0 (docs/PORTING.md): the ground stays flat, and everything that would follow the curve (culling, the horizon's dip, fireworks'
+ * height) sees k = 0. */
+#ifndef PC_SKY_CAN_CURVE
+#define PC_SKY_CAN_CURVE 1
+#endif
 
-extern void pc_gx_restore_after_nes(void);
-
-#define PC_SKY_STR2(x) #x
-#define PC_SKY_STR(x) PC_SKY_STR2(x)
-#define PC_SKY_LINE_MAX_STR PC_SKY_STR(PC_SKY_LINE_MAX)
+int pc_sky_curve_supported(void) {
+    return PC_SKY_CAN_CURVE;
+}
 
 static struct {
     /* set by the game for the frame being drawn */
@@ -37,153 +45,30 @@ static struct {
     float horizon_drop; /* how far the ground has dropped where it meets the horizon */
 } s_sky;
 
-static GLuint s_prog;
-static GLuint s_vao;
-static GLint s_u_proj, s_u_eye_to_world, s_u_zenith, s_u_horizon, s_u_dip, s_u_misc, s_u_have, s_u_rainbow;
-static GLint s_u_turn, s_u_lines, s_u_line_num, s_u_edit_num, s_u_ground, s_u_hl, s_u_hl_on;
-
 static PCSkyGaze s_gaze; /* the stargazing view, drawn over the frame at PC_NOOP_STARGAZE */
-static GLuint s_tex_cloud, s_tex_star, s_tex_moon;
+static PCGXHTex s_tex_cloud, s_tex_star, s_tex_moon;
+static int s_inited;
 
-static const char* s_vert_src =
-    "#version 330 core\n"
-    "out vec2 v_ndc;\n"
-    "void main() {\n"
-    "    vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)) * 2.0 - 1.0;\n"
-    "    v_ndc = p;\n"
-    "    gl_Position = vec4(p, 1.0, 1.0);\n"
-    "}\n";
+#define SKY_PI 3.14159265f
+#define SKY_COL_W (2.0f * SKY_PI / (float)PC_CONST_COLS)
+#define SKY_ROW_H PC_CONST_CELL
 
-static const char* s_frag_src =
-    "#version 330 core\n"
-    "in vec2 v_ndc;\n"
-    "out vec4 frag;\n"
-    "uniform vec4 u_proj;          /* 1/P00, 1/P11, P02, P12 */\n"
-    "uniform mat3 u_eye_to_world;\n"
-    "uniform vec3 u_zenith;\n"
-    "uniform vec3 u_horizon;\n"
-    "uniform float u_dip;          /* how far below level the curved horizon sits, radians */\n"
-    "uniform vec4 u_misc;          /* seconds, night 0-1, overcast 0-1, camera heading */\n"
-    "uniform int u_have;           /* 1 clouds, 2 stars, 4 moon */\n"
-    "uniform float u_rainbow;      /* 0-1 */\n"
-    "uniform float u_turn;         /* sky azimuth = view azimuth - u_turn */\n"
-    "uniform vec4 u_lines[" PC_SKY_LINE_MAX_STR "]; /* constellation links in sky coordinates */\n"
-    "uniform int u_line_num;\n"
-    "uniform int u_edit_num;       /* the first u_edit_num lines are being edited */\n"
-    "uniform int u_ground;         /* 1: dark ground below the horizon */\n"
-    "uniform vec4 u_hl;            /* cursor star, picked star (sky az, up) */\n"
-    "uniform int u_hl_on;          /* 1 cursor, 2 picked */\n"
-    "uniform sampler2D u_cloud;\n"
-    "uniform sampler2D u_star;\n"
-    "uniform sampler2D u_moon;\n"
-    "const float PI = 3.14159265;\n"
-    /* the star grid, shared with pc_constellation.c */
-    "const float COL_W = 2.0 * PI / float(" PC_SKY_STR(PC_CONST_COLS) ");\n"
-    "const float ROW_H = " PC_SKY_STR(PC_CONST_CELL) ";\n"
-    "float hashi(ivec2 c, uint k) {\n"
-    "    uint h = uint(c.x) * 0x8DA6B343u + uint(c.y) * 0xD8163841u + k * 0xCB1AB31Fu;\n"
-    "    h ^= h >> 13u; h *= 0x5BD1E995u; h ^= h >> 15u;\n"
-    "    return float(h & 0xFFFFFFu) / 16777216.0;\n"
-    "}\n"
-    "float wrap(float a) { return mod(a + PI, 2.0 * PI) - PI; }\n"
-    "float seg_dist(vec2 p, vec2 a, vec2 b) {\n"
-    "    vec2 ab = b - a; float t = clamp(dot(p - a, ab) / max(dot(ab, ab), 1e-9), 0.0, 1.0);\n"
-    "    return length(p - a - ab * t);\n"
-    "}\n"
-    "bool inside(vec2 uv) { return all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0))); }\n"
-    "void main() {\n"
-    "    vec3 d_eye = vec3((v_ndc.x + u_proj.z) * u_proj.x, (v_ndc.y + u_proj.w) * u_proj.y, -1.0);\n"
-    "    vec3 d = normalize(u_eye_to_world * d_eye);\n"
-    "    /* angles above the curved horizon and around from north; the camera only ever\n"
-    "       sees a few degrees of sky, so everything lives low like City Folk's backdrop */\n"
-    "    float above = asin(clamp(d.y, -1.0, 1.0)) + u_dip;\n"
-    "    float az = atan(d.x, -d.z);\n"
-    "    float night = u_misc.y;\n"
-    "    float overcast = u_misc.z;\n"
-    "    vec3 col = mix(u_horizon, u_zenith, smoothstep(-0.01, 0.16, above));\n"
-    "    float saz = mod(az - u_turn, 2.0 * PI);\n"
-    "    if ((u_have & 2) != 0 && night > 0.0) {\n"
-    "        vec2 g = vec2(saz / COL_W, above / ROW_H);\n"
-    "        ivec2 cell = ivec2(floor(g));\n"
-    "        cell.x = cell.x % " PC_SKY_STR(PC_CONST_COLS) ";\n"
-    "        if (cell.y >= 0 && hashi(cell, 0u) > 0.84) {\n"
-    "            vec2 c = vec2(0.35) + 0.3 * vec2(hashi(cell, 1u), hashi(cell, 2u));\n"
-    "            vec2 uv = (fract(g) - c) * (ROW_H / 0.009) + 0.5;\n"
-    "            if (inside(uv)) {\n"
-    "                float h = hashi(cell, 3u);\n"
-    "                float twinkle = 0.6 + 0.4 * sin(u_misc.x * (1.5 + 3.0 * h) + h * 40.0);\n"
-    "                col += texture(u_star, uv).r * twinkle * night * (1.0 - overcast) * smoothstep(0.0, 0.02, above);\n"
-    "            }\n"
-    "        }\n"
-    "        /* constellations: soft lines between their stars */\n"
-    "        float glow = 0.0, edit = 0.0;\n"
-    "        for (int i = 0; i < u_line_num; i++) {\n"
-    "            vec4 l = u_lines[i];\n"
-    "            vec2 p = vec2(l.x + wrap(saz - l.x), above);\n"
-    "            float g = 1.0 - smoothstep(0.0008, 0.0028, seg_dist(p, l.xy, l.zw));\n"
-    "            if (i < u_edit_num) edit = max(edit, g); else glow = max(glow, g);\n"
-    "        }\n"
-    "        float vis = night * (1.0 - overcast) * smoothstep(0.0, 0.02, above);\n"
-    "        col = mix(col, vec3(0.72, 0.84, 1.0), glow * 0.55 * vis);\n"
-    "        col = mix(col, vec3(1.0, 0.86, 0.45), edit * 0.85 * vis);\n"
-    "        for (int i = 0; i < 2; i++) {\n"
-    "            if ((u_hl_on & (1 << i)) == 0) continue;\n"
-    "            vec2 c = i == 0 ? u_hl.xy : u_hl.zw;\n"
-    "            float r = length(vec2(wrap(saz - c.x), above - c.y));\n"
-    "            float ring = 1.0 - smoothstep(0.0006, 0.0016, abs(r - 0.0085));\n"
-    "            col = mix(col, i == 0 ? vec3(1.0) : vec3(1.0, 0.8, 0.3), ring * (0.6 + 0.3 * sin(u_misc.x * 6.0)));\n"
-    "        }\n"
-    "    }\n"
-    "    if ((u_have & 4) != 0 && night > 0.0) {\n"
-    "        vec2 uv = (vec2(az, above) - vec2(u_misc.w + 0.16, 0.034)) / 0.032 + 0.5;\n"
-    "        uv.y = 1.0 - uv.y;\n"
-    "        if (inside(uv)) {\n"
-    "            vec4 m = texture(u_moon, uv);\n"
-    "            col = mix(col, m.rgb, m.a * night * (1.0 - 0.8 * overcast));\n"
-    "        }\n"
-    "    }\n"
-    "    if (u_rainbow > 0.0) {\n"
-    "        /* an arc a little left of ahead, red outside to violet inside */\n"
-    "        const float R = 0.35, PEAK = 0.075, W = 0.03;\n"
-    "        float daz = mod(az - (u_misc.w - 0.12) + PI, 2.0 * PI) - PI;\n"
-    "        float x = (R - length(vec2(daz, above - (PEAK - R)))) / W;\n"
-    "        if (x > 0.0 && x < 1.0) {\n"
-    "            vec3 c = clamp(abs(mod(x * 4.5 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);\n"
-    "            float a = 0.35 * u_rainbow * sqrt(sin(PI * x)) * smoothstep(-0.005, 0.02, above) * (1.0 - night);\n"
-    "            col = mix(col, c, a);\n"
-    "        }\n"
-    "    }\n"
-    "    if ((u_have & 1) != 0) {\n"
-    "        float v = above / 0.10;\n"
-    "        if (v < 1.0) {\n"
-    "            vec2 uv = vec2(az / (2.0 * PI) * 10.0 + u_misc.x * 0.012, v * 0.6);\n"
-    "            float cover = mix(0.62, 0.25, overcast);\n"
-    "            float a = smoothstep(cover, cover + 0.3, texture(u_cloud, uv).r) * (1.0 - v);\n"
-    "            vec3 cloud = mix(u_horizon, vec3(1.0), 0.8) * (1.0 - 0.55 * night);\n"
-    "            col = mix(col, cloud, a * 0.9);\n"
-    "        }\n"
-    "    }\n"
-    "    if (u_ground != 0) {\n"
-    "        col = mix(col, vec3(0.04, 0.07, 0.10), 1.0 - smoothstep(-0.003, 0.003, above));\n"
-    "    }\n"
-    "    frag = vec4(col, 1.0);\n"
-    "}\n";
-
-/* Uncompressed 32-bit .tga as written by pc/tools/extract_cf_sky.py; 0 if missing */
-static GLuint sky_load_tga(const char* path, int repeat) {
+/* Uncompressed 32-bit .tga as written by pc/tools/extract_cf_sky.py; not ready if missing. red_alpha: the red
+ * channel goes into alpha too (the clouds' cover is cut from it, in the TEV) */
+static void sky_load_tga(PCGXHTex* t, const char* path, int repeat, int red_alpha) {
     unsigned char hdr[18];
     unsigned char* px;
     FILE* f = fopen(path, "rb");
-    GLuint tex = 0;
     int w, h, y, x;
 
+    memset(t, 0, sizeof(*t));
     if (f == NULL) {
-        return 0;
+        return;
     }
     if (fread(hdr, 1, sizeof(hdr), f) != sizeof(hdr) || hdr[2] != 2 || hdr[16] != 32) {
         printf("[Sky] %s: not an uncompressed 32-bit tga\n", path);
         fclose(f);
-        return 0;
+        return;
     }
     w = hdr[12] | (hdr[13] << 8);
     h = hdr[14] | (hdr[15] << 8);
@@ -192,104 +77,51 @@ static GLuint sky_load_tga(const char* path, int repeat) {
     if (px == NULL || fread(px, 4, (size_t)w * h, f) != (size_t)w * h) {
         free(px);
         fclose(f);
-        return 0;
+        return;
     }
     fclose(f);
 
     for (y = 0; y < h; y++) { /* BGRA -> RGBA */
         for (x = 0; x < w; x++) {
             unsigned char* p = px + ((size_t)y * w + x) * 4;
-            unsigned char t = p[0];
+            unsigned char tmp = p[0];
             p[0] = p[2];
-            p[2] = t;
+            p[2] = tmp;
+            if (red_alpha) {
+                p[3] = p[0];
+            }
         }
     }
     if (!(hdr[17] & 0x20)) { /* bottom-up: flip so row 0 is the top */
         for (y = 0; y < h / 2; y++) {
             for (x = 0; x < w * 4; x++) {
-                unsigned char t = px[(size_t)y * w * 4 + x];
+                unsigned char tmp = px[(size_t)y * w * 4 + x];
                 px[(size_t)y * w * 4 + x] = px[(size_t)(h - 1 - y) * w * 4 + x];
-                px[(size_t)(h - 1 - y) * w * 4 + x] = t;
+                px[(size_t)(h - 1 - y) * w * 4 + x] = tmp;
             }
         }
     }
-
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
-    glGenerateMipmap(GL_TEXTURE_2D);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, repeat ? GL_REPEAT : GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, repeat ? GL_REPEAT : GL_CLAMP_TO_EDGE);
+    pc_gxh_tex_init(t, px, w, h, repeat, repeat, 1);
     free(px);
-    printf("[Sky] loaded %s (%dx%d)\n", path, w, h);
-    return tex;
+    if (t->ready) {
+        printf("[Sky] loaded %s (%dx%d)\n", path, w, h);
+    }
 }
 
-static GLuint sky_compile(GLenum type, const char* src) {
-    GLuint sh = glCreateShader(type);
-    GLint ok = 0;
-
-    glShaderSource(sh, 1, &src, NULL);
-    glCompileShader(sh);
-    glGetShaderiv(sh, GL_COMPILE_STATUS, &ok);
-    if (!ok) {
-        char log[512];
-        glGetShaderInfoLog(sh, sizeof(log), NULL, log);
-        printf("[Sky] shader compile failed: %s\n", log);
+static void sky_init(void) {
+    if (s_inited) {
+        return;
     }
-    return sh;
-}
-
-static int sky_init(void) {
-    GLuint vs, fs;
-    GLint ok = 0;
-
-    if (s_prog != 0) {
-        return 1;
-    }
-    vs = sky_compile(GL_VERTEX_SHADER, s_vert_src);
-    fs = sky_compile(GL_FRAGMENT_SHADER, s_frag_src);
-    s_prog = glCreateProgram();
-    glAttachShader(s_prog, vs);
-    glAttachShader(s_prog, fs);
-    glLinkProgram(s_prog);
-    glDeleteShader(vs);
-    glDeleteShader(fs);
-    glGetProgramiv(s_prog, GL_LINK_STATUS, &ok);
-    if (!ok) {
-        printf("[Sky] shader link failed\n");
-        glDeleteProgram(s_prog);
-        s_prog = 0;
-        return 0;
-    }
-    s_u_proj = glGetUniformLocation(s_prog, "u_proj");
-    s_u_eye_to_world = glGetUniformLocation(s_prog, "u_eye_to_world");
-    s_u_zenith = glGetUniformLocation(s_prog, "u_zenith");
-    s_u_horizon = glGetUniformLocation(s_prog, "u_horizon");
-    s_u_dip = glGetUniformLocation(s_prog, "u_dip");
-    s_u_misc = glGetUniformLocation(s_prog, "u_misc");
-    s_u_have = glGetUniformLocation(s_prog, "u_have");
-    s_u_rainbow = glGetUniformLocation(s_prog, "u_rainbow");
-    s_u_turn = glGetUniformLocation(s_prog, "u_turn");
-    s_u_lines = glGetUniformLocation(s_prog, "u_lines");
-    s_u_line_num = glGetUniformLocation(s_prog, "u_line_num");
-    s_u_edit_num = glGetUniformLocation(s_prog, "u_edit_num");
-    s_u_ground = glGetUniformLocation(s_prog, "u_ground");
-    s_u_hl = glGetUniformLocation(s_prog, "u_hl");
-    s_u_hl_on = glGetUniformLocation(s_prog, "u_hl_on");
-    glUseProgram(s_prog);
-    glUniform1i(glGetUniformLocation(s_prog, "u_cloud"), 0);
-    glUniform1i(glGetUniformLocation(s_prog, "u_star"), 1);
-    glUniform1i(glGetUniformLocation(s_prog, "u_moon"), 2);
-    glGenVertexArrays(1, &s_vao);
-
+    s_inited = 1;
     /* City Folk's own art, if extracted from the player's disc (pc/tools/extract_cf_sky.py) */
-    s_tex_cloud = sky_load_tga("cf_sky/cloud.tga", 1);
-    s_tex_star = sky_load_tga("cf_sky/star.tga", 0);
-    s_tex_moon = sky_load_tga("cf_sky/moon.tga", 0);
-    return 1;
+    sky_load_tga(&s_tex_cloud, "cf_sky/cloud.tga", 1, 1);
+    sky_load_tga(&s_tex_star, "cf_sky/star.tga", 0, 0);
+    sky_load_tga(&s_tex_moon, "cf_sky/moon.tga", 0, 0);
+}
+
+/* how much wider the game's projection was made for widescreen (pc_widescreen_set_projection) */
+static float sky_x_scale(void) {
+    return g_pc_widescreen_stretch == 0 ? pc_widescreen_get_aspect_factor() : 1.0f;
 }
 
 void pc_sky_set_frame(const float center[3], const float zenith[3], const float horizon[3], float curve_k, float night,
@@ -301,7 +133,7 @@ void pc_sky_set_frame(const float center[3], const float zenith[3], const float 
         s_sky.zenith[i] = zenith[i];
         s_sky.horizon[i] = horizon[i];
     }
-    s_sky.k = curve_k;
+    s_sky.k = PC_SKY_CAN_CURVE ? curve_k : 0.0f;
     s_sky.night = night;
     s_sky.overcast = overcast;
     s_sky.rainbow = 0.0f;
@@ -310,11 +142,7 @@ void pc_sky_set_frame(const float center[3], const float zenith[3], const float 
 }
 
 static void sky_set_active(int active) {
-    if (active != s_sky.active) {
-        pc_gx_flush_if_begin_complete();
-        s_sky.active = active;
-        DIRTY(PC_GX_DIRTY_PROJECTION); /* curve uniforms ride with the projection */
-    }
+    s_sky.active = active;
 }
 
 void pc_sky_set_rainbow(float strength) {
@@ -395,52 +223,440 @@ typedef struct {
     int hl_on;    /* 1 cursor, 2 picked */
 } SkyParams;
 
+/* --- drawing: the old full-screen shader, as a grid of vertex colours (the gradient) with the rest drawn over it as
+ * geometry (stars, lines, moon, rainbow, clouds), all in screen space ---------------------------------------------- */
+
+#define SKY_GRID_W 40
+#define SKY_GRID_H 30
+
+static float sky_smoothstep(float e0, float e1, float x) {
+    float t = (x - e0) / (e1 - e0);
+
+    t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+    return t * t * (3.0f - 2.0f * t);
+}
+
+static float sky_clamp01(float x) {
+    return x < 0.0f ? 0.0f : x > 1.0f ? 1.0f : x;
+}
+
+static float sky_wrap(float a) {
+    a = fmodf(a + SKY_PI, 2.0f * SKY_PI);
+    if (a < 0.0f) {
+        a += 2.0f * SKY_PI;
+    }
+    return a - SKY_PI;
+}
+
+static float sky_hash(int col, int row, u32 k) {
+    u32 h = (u32)col * 0x8DA6B343u + (u32)row * 0xD8163841u + k * 0xCB1AB31Fu;
+
+    h ^= h >> 13;
+    h *= 0x5BD1E995u;
+    h ^= h >> 15;
+    return (float)(h & 0xFFFFFFu) / 16777216.0f;
+}
+
+/* colour for GXColor4u8 through the x2 TEV of pc_gxh_mesh_state */
+static u8 sky_c(float v) {
+    v *= 127.5f;
+    return (u8)(v <= 0.0f ? 0 : v >= 255.0f ? 255 : v + 0.5f);
+}
+
+static u8 sky_a(float v) {
+    v *= 255.0f;
+    return (u8)(v <= 0.0f ? 0 : v >= 255.0f ? 255 : v + 0.5f);
+}
+
+/* screen (ndc) -> az and angle above the horizon */
+static void sky_ndc_to_sky(const SkyParams* sp, float nx, float ny, float* az, float* above) {
+    float e[3] = { (nx + sp->proj[2]) * sp->proj[0], (ny + sp->proj[3]) * sp->proj[1], -1.0f };
+    float d[3], len;
+    int k;
+
+    for (k = 0; k < 3; k++) {
+        d[k] = sp->eye_to_world[0 * 3 + k] * e[0] + sp->eye_to_world[1 * 3 + k] * e[1] +
+               sp->eye_to_world[2 * 3 + k] * e[2];
+    }
+    len = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+    d[0] /= len, d[1] /= len, d[2] /= len;
+    *above = asinf(d[1] < -1.0f ? -1.0f : d[1] > 1.0f ? 1.0f : d[1]) + sp->dip;
+    *az = atan2f(d[0], -d[2]);
+}
+
+/* az and angle above the horizon -> screen (ndc); FALSE when behind the camera */
+static int sky_to_ndc(const SkyParams* sp, float az, float above, float* nx, float* ny) {
+    float el = above - sp->dip;
+    float d[3] = { sinf(az) * cosf(el), sinf(el), -cosf(az) * cosf(el) };
+    float e[3];
+    int i;
+
+    for (i = 0; i < 3; i++) {
+        e[i] = sp->eye_to_world[i * 3 + 0] * d[0] + sp->eye_to_world[i * 3 + 1] * d[1] +
+               sp->eye_to_world[i * 3 + 2] * d[2];
+    }
+    if (e[2] > -0.02f) {
+        return FALSE;
+    }
+    *nx = e[0] / -e[2] / sp->proj[0] - sp->proj[2];
+    *ny = e[1] / -e[2] / sp->proj[1] - sp->proj[3];
+    return TRUE;
+}
+
+static void sky_vtx(float nx, float ny, u8 r, u8 g, u8 b, u8 a) {
+    GXPosition3f32(nx, ny, 0.0f);
+    GXColor4u8(r, g, b, a);
+}
+
+static void sky_vtx_uv(float nx, float ny, u8 r, u8 g, u8 b, u8 a, float u, float v) {
+    GXPosition3f32(nx, ny, 0.0f);
+    GXColor4u8(r, g, b, a);
+    GXTexCoord2f32(u, v);
+}
+
+/* The view's sky: what range of angles the screen covers */
+typedef struct {
+    float az[SKY_GRID_H + 1][SKY_GRID_W + 1];
+    float above[SKY_GRID_H + 1][SKY_GRID_W + 1];
+    float daz_min, daz_max; /* around sp->heading */
+    float above_min, above_max;
+} SkyView;
+
+static SkyView s_view;
+
+static void sky_view(const SkyParams* sp) {
+    int x, y;
+
+    s_view.daz_min = 10.0f, s_view.daz_max = -10.0f;
+    s_view.above_min = 10.0f, s_view.above_max = -10.0f;
+    for (y = 0; y <= SKY_GRID_H; y++) {
+        for (x = 0; x <= SKY_GRID_W; x++) {
+            float az, above, daz;
+
+            sky_ndc_to_sky(sp, -1.0f + 2.0f * x / SKY_GRID_W, -1.0f + 2.0f * y / SKY_GRID_H, &az, &above);
+            s_view.az[y][x] = az;
+            s_view.above[y][x] = above;
+            daz = sky_wrap(az - sp->heading);
+            if (daz < s_view.daz_min) s_view.daz_min = daz;
+            if (daz > s_view.daz_max) s_view.daz_max = daz;
+            if (above < s_view.above_min) s_view.above_min = above;
+            if (above > s_view.above_max) s_view.above_max = above;
+        }
+    }
+    if (s_view.above_max > 1.2f) { /* the zenith in view: all the way round */
+        s_view.daz_min = -SKY_PI, s_view.daz_max = SKY_PI;
+    }
+}
+
+/* the gradient, with the gaze view's dark ground below the horizon */
+static void sky_draw_gradient(const SkyParams* sp) {
+    int x, y;
+
+    pc_gxh_mesh_state(NULL, sp->alpha < 1.0f ? 1 : 0, FALSE, 0, GX_CULL_NONE);
+    for (y = 0; y < SKY_GRID_H; y++) {
+        GXBegin(GX_TRIANGLESTRIP, PC_GXH_VTXFMT, (SKY_GRID_W + 1) * 2);
+        for (x = 0; x <= SKY_GRID_W; x++) {
+            int r;
+
+            for (r = 1; r >= 0; r--) {
+                float above = s_view.above[y + r][x];
+                float t = sky_smoothstep(-0.01f, 0.16f, above);
+                float col[3];
+                int k;
+
+                for (k = 0; k < 3; k++) {
+                    col[k] = sp->horizon[k] + (sp->zenith[k] - sp->horizon[k]) * t;
+                }
+                if (sp->ground) {
+                    static const float dark[3] = { 0.04f, 0.07f, 0.10f };
+                    float g = 1.0f - sky_smoothstep(-0.003f, 0.003f, above);
+
+                    for (k = 0; k < 3; k++) {
+                        col[k] += (dark[k] - col[k]) * g;
+                    }
+                }
+                sky_vtx(-1.0f + 2.0f * x / SKY_GRID_W, -1.0f + 2.0f * (y + r) / SKY_GRID_H, sky_c(col[0]),
+                        sky_c(col[1]), sky_c(col[2]), sky_a(sp->alpha));
+            }
+        }
+        GXEnd();
+    }
+}
+
+static float sky_star_vis(const SkyParams* sp, float above) {
+    return sp->night * (1.0f - sp->overcast) * sky_smoothstep(0.0f, 0.02f, above);
+}
+
+/* A quad in sky space (saz, above): centre, half sizes; FALSE if not drawable */
+static int sky_quad(const SkyParams* sp, float saz, float above, float hw, float hh, float q[4][2]) {
+    float az = saz + sp->turn;
+
+    return sky_to_ndc(sp, az - hw, above + hh, &q[0][0], &q[0][1]) &&
+           sky_to_ndc(sp, az + hw, above + hh, &q[1][0], &q[1][1]) &&
+           sky_to_ndc(sp, az + hw, above - hh, &q[2][0], &q[2][1]) &&
+           sky_to_ndc(sp, az - hw, above - hh, &q[3][0], &q[3][1]);
+}
+
+static void sky_draw_stars(const SkyParams* sp, float secs) {
+    int row, row_max, n = 0;
+    float saz0, saz1, c;
+
+    if (!s_tex_star.ready || sp->night <= 0.0f || sp->overcast >= 1.0f) {
+        return;
+    }
+    row_max = (int)(s_view.above_max / SKY_ROW_H) + 1;
+    if (row_max > (int)(SKY_PI * 0.5f / SKY_ROW_H) + 1) {
+        row_max = (int)(SKY_PI * 0.5f / SKY_ROW_H) + 1;
+    }
+    saz0 = sp->heading + s_view.daz_min - sp->turn - SKY_COL_W;
+    saz1 = sp->heading + s_view.daz_max - sp->turn + SKY_COL_W;
+    pc_gxh_mesh_state(&s_tex_star, 3, FALSE, 0, GX_CULL_NONE);
+    GXBegin(GX_QUADS, PC_GXH_VTXFMT, GX_AUTO);
+    for (row = s_view.above_min > 0.0f ? (int)(s_view.above_min / SKY_ROW_H) : 0; row < row_max; row++) {
+        for (c = floorf(saz0 / SKY_COL_W); c <= saz1 / SKY_COL_W; c += 1.0f) {
+            int col = ((int)c % PC_CONST_COLS + PC_CONST_COLS) % PC_CONST_COLS;
+            float cx, cy, above, saz, h, twinkle, i;
+            float q[4][2];
+            u8 v;
+
+            if (sky_hash(col, row, 0) <= 0.84f) {
+                continue;
+            }
+            cx = 0.35f + 0.3f * sky_hash(col, row, 1);
+            cy = 0.35f + 0.3f * sky_hash(col, row, 2);
+            saz = (c + cx) * SKY_COL_W;
+            above = (row + cy) * SKY_ROW_H;
+            h = sky_hash(col, row, 3);
+            twinkle = 0.6f + 0.4f * sinf(secs * (1.5f + 3.0f * h) + h * 40.0f);
+            i = twinkle * sky_star_vis(sp, above) * sp->alpha;
+            /* the star image spans 0.009 rad of the cell (its uv runs 0-1 there) */
+            if (i <= 0.0f || !sky_quad(sp, saz, above, 0.375f * SKY_COL_W, 0.0045f, q)) {
+                continue;
+            }
+            v = sky_c(i);
+            sky_vtx_uv(q[0][0], q[0][1], v, v, v, 255, 0.0f, 0.0f);
+            sky_vtx_uv(q[1][0], q[1][1], v, v, v, 255, 1.0f, 0.0f);
+            sky_vtx_uv(q[2][0], q[2][1], v, v, v, 255, 1.0f, 1.0f);
+            sky_vtx_uv(q[3][0], q[3][1], v, v, v, 255, 0.0f, 1.0f);
+            n++;
+        }
+    }
+    GXEnd(); /* (GX_AUTO: nothing written draws nothing) */
+    (void)n;
+}
+
+/* A band along the sky-space segment a-b: full colour within core of it, fading out by edge */
+static void sky_band(const SkyParams* sp, const float a[2], const float b[2], float core, float edge,
+                     const float col[3], float alpha, int with_stars) {
+    float dx = b[0] - a[0], dy = b[1] - a[1];
+    float len = sqrtf(dx * dx + dy * dy), px, py;
+    int steps, i, j;
+
+    if (len < 1e-6f) {
+        return;
+    }
+    px = -dy / len, py = dx / len;
+    steps = 2 + (int)(len / 0.01f);
+    if (steps > 24) {
+        steps = 24;
+    }
+    for (j = 0; j < 3; j++) { /* the three strips across: fade in, core, fade out */
+        GXBegin(GX_TRIANGLESTRIP, PC_GXH_VTXFMT, (u16)((steps + 1) * 2));
+        for (i = 0; i <= steps; i++) {
+            float t = (float)i / steps;
+            float sx = a[0] + dx * t, sy = a[1] + dy * t;
+            int r;
+
+            for (r = 0; r < 2; r++) {
+                int k = j + r;
+                float off = k == 0 ? -edge : k == 1 ? -core : k == 2 ? core : edge;
+                float vs = sx + px * off, va = sy + py * off;
+                float al = (k == 1 || k == 2) ? alpha * (with_stars ? sky_star_vis(sp, va) : 1.0f) : 0.0f;
+                float nx = 0.0f, ny = 0.0f;
+
+                if (!sky_to_ndc(sp, vs + sp->turn, va, &nx, &ny)) {
+                    nx = ny = 2.0f, al = 0.0f;
+                }
+                sky_vtx(nx, ny, sky_c(col[0]), sky_c(col[1]), sky_c(col[2]), sky_a(al));
+            }
+        }
+        GXEnd();
+    }
+}
+
+static void sky_draw_lines(const SkyParams* sp, float secs) {
+    static const float glow[3] = { 0.72f, 0.84f, 1.0f };
+    static const float edit[3] = { 1.0f, 0.86f, 0.45f };
+    int i;
+
+    if (sp->night <= 0.0f || (sp->line_num <= 0 && sp->hl_on == 0)) {
+        return;
+    }
+    pc_gxh_mesh_state(NULL, 1, FALSE, 0, GX_CULL_NONE);
+    for (i = 0; i < sp->line_num; i++) {
+        const float* l = sp->lines[i];
+        float a[2] = { l[0], l[1] }, b[2] = { l[2], l[3] };
+        int ed = i < sp->edit_num;
+
+        sky_band(sp, a, b, 0.0008f, 0.0028f, ed ? edit : glow, (ed ? 0.85f : 0.55f) * sp->alpha, TRUE);
+    }
+    /* rings around the cursor star and the picked one */
+    for (i = 0; i < 2; i++) {
+        static const float white[3] = { 1.0f, 1.0f, 1.0f };
+        static const float gold[3] = { 1.0f, 0.8f, 0.3f };
+        const float* col = i == 0 ? white : gold;
+        float al = (0.6f + 0.3f * sinf(secs * 6.0f)) * sp->alpha;
+        int seg;
+
+        if ((sp->hl_on & (1 << i)) == 0) {
+            continue;
+        }
+        for (seg = 0; seg < 32; seg++) {
+            float t0 = seg * 2.0f * SKY_PI / 32.0f, t1 = (seg + 1) * 2.0f * SKY_PI / 32.0f;
+            float a[2] = { sp->hl[i * 2] + 0.0085f * cosf(t0), sp->hl[i * 2 + 1] + 0.0085f * sinf(t0) };
+            float b[2] = { sp->hl[i * 2] + 0.0085f * cosf(t1), sp->hl[i * 2 + 1] + 0.0085f * sinf(t1) };
+
+            sky_band(sp, a, b, 0.0006f, 0.0016f, col, al, FALSE);
+        }
+    }
+}
+
+static void sky_draw_moon(const SkyParams* sp) {
+    float q[4][2];
+    float vis = sp->night * (1.0f - 0.8f * sp->overcast) * sp->alpha;
+    float az = sp->heading + 0.16f;
+    u8 a = sky_a(vis);
+    u8 w = sky_c(1.0f);
+
+    if (!s_tex_moon.ready || vis <= 0.0f) {
+        return;
+    }
+    if (!sky_to_ndc(sp, az - 0.016f, 0.034f + 0.016f, &q[0][0], &q[0][1]) ||
+        !sky_to_ndc(sp, az + 0.016f, 0.034f + 0.016f, &q[1][0], &q[1][1]) ||
+        !sky_to_ndc(sp, az + 0.016f, 0.034f - 0.016f, &q[2][0], &q[2][1]) ||
+        !sky_to_ndc(sp, az - 0.016f, 0.034f - 0.016f, &q[3][0], &q[3][1])) {
+        return;
+    }
+    pc_gxh_mesh_state(&s_tex_moon, 1, FALSE, 0, GX_CULL_NONE);
+    GXBegin(GX_QUADS, PC_GXH_VTXFMT, 4);
+    sky_vtx_uv(q[0][0], q[0][1], w, w, w, a, 0.0f, 0.0f);
+    sky_vtx_uv(q[1][0], q[1][1], w, w, w, a, 1.0f, 0.0f);
+    sky_vtx_uv(q[2][0], q[2][1], w, w, w, a, 1.0f, 1.0f);
+    sky_vtx_uv(q[3][0], q[3][1], w, w, w, a, 0.0f, 1.0f);
+    GXEnd();
+}
+
+/* an arc a little left of ahead, red outside to violet inside */
+static void sky_draw_rainbow(const SkyParams* sp) {
+    const float R = 0.35f, PEAK = 0.075f, W = 0.03f;
+    const int XS = 10, PS = 48;
+    float strength = 0.35f * sp->rainbow * (1.0f - sp->night) * sp->alpha;
+    int xi, pi;
+
+    if (strength <= 0.0f) {
+        return;
+    }
+    pc_gxh_mesh_state(NULL, 1, FALSE, 0, GX_CULL_NONE);
+    for (xi = 0; xi < XS; xi++) {
+        GXBegin(GX_TRIANGLESTRIP, PC_GXH_VTXFMT, (u16)((PS + 1) * 2));
+        for (pi = 0; pi <= PS; pi++) {
+            float phi = -0.75f + 1.5f * pi / PS;
+            int r;
+
+            for (r = 0; r < 2; r++) {
+                float x = (float)(xi + r) / XS;
+                float dist = R - x * W;
+                float daz = dist * sinf(phi), above = (PEAK - R) + dist * cosf(phi);
+                float col[3], al, nx = 2.0f, ny = 2.0f;
+                int k;
+
+                for (k = 0; k < 3; k++) {
+                    float h = fmodf(x * 4.5f + (k == 0 ? 0.0f : k == 1 ? 4.0f : 2.0f), 6.0f);
+                    col[k] = sky_clamp01(fabsf(h - 3.0f) - 1.0f);
+                }
+                al = strength * sqrtf(sinf(SKY_PI * x)) * sky_smoothstep(-0.005f, 0.02f, above);
+                if (!sky_to_ndc(sp, daz + sp->heading - 0.12f, above, &nx, &ny)) {
+                    al = 0.0f;
+                }
+                sky_vtx(nx, ny, sky_c(col[0]), sky_c(col[1]), sky_c(col[2]), sky_a(al));
+            }
+        }
+        GXEnd();
+    }
+}
+
+/* the clouds along the horizon; their cover is cut from the texture in the TEV (alpha = (red - cover) x 4) */
+static void sky_draw_clouds(const SkyParams* sp, float secs) {
+    const int ROWS = 6;
+    float az0 = sp->heading + s_view.daz_min - 0.05f, az1 = sp->heading + s_view.daz_max + 0.05f;
+    int cols = (int)((az1 - az0) / 0.03f) + 1, x, y;
+    float cover = 0.62f + (0.25f - 0.62f) * sp->overcast;
+    float cloud[3];
+    int k;
+    GXColor kc = { 0, 0, 0, 0 };
+
+    if (!s_tex_cloud.ready || s_view.above_min > 0.10f) {
+        return;
+    }
+    if (cols > 400) {
+        cols = 400;
+    }
+    for (k = 0; k < 3; k++) {
+        cloud[k] = (sp->horizon[k] + (1.0f - sp->horizon[k]) * 0.8f) * (1.0f - 0.55f * sp->night);
+    }
+    pc_gxh_mesh_state(&s_tex_cloud, 1, FALSE, 0, GX_CULL_NONE);
+    kc.a = sky_a(cover);
+    GXSetTevKColor(GX_KCOLOR0, kc);
+    GXSetTevKAlphaSel(GX_TEVSTAGE0, GX_TEV_KASEL_K0_A);
+    GXSetNumTevStages(2);
+    GXSetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_RASC);
+    GXSetTevAlphaIn(GX_TEVSTAGE0, GX_CA_KONST, GX_CA_ZERO, GX_CA_ZERO, GX_CA_TEXA);
+    GXSetTevAlphaOp(GX_TEVSTAGE0, GX_TEV_SUB, GX_TB_ZERO, GX_CS_SCALE_4, GX_TRUE, GX_TEVPREV);
+    GXSetTevDirect(GX_TEVSTAGE1);
+    GXSetTevSwapMode(GX_TEVSTAGE1, GX_TEV_SWAP0, GX_TEV_SWAP0);
+    GXSetTevOrder(GX_TEVSTAGE1, GX_TEXCOORD_NULL, GX_TEXMAP_NULL, GX_COLOR0A0);
+    GXSetTevColorIn(GX_TEVSTAGE1, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, GX_CC_CPREV);
+    GXSetTevAlphaIn(GX_TEVSTAGE1, GX_CA_ZERO, GX_CA_APREV, GX_CA_RASA, GX_CA_ZERO);
+    GXSetTevColorOp(GX_TEVSTAGE1, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
+    GXSetTevAlphaOp(GX_TEVSTAGE1, GX_TEV_ADD, GX_TB_ZERO, GX_CS_SCALE_1, GX_TRUE, GX_TEVPREV);
+
+    for (y = 0; y < ROWS; y++) {
+        GXBegin(GX_TRIANGLESTRIP, PC_GXH_VTXFMT, (u16)((cols + 1) * 2));
+        for (x = 0; x <= cols; x++) {
+            float az = az0 + (az1 - az0) * x / cols;
+            int r;
+
+            for (r = 1; r >= 0; r--) {
+                /* (the gaze view's ground hides what's below the horizon) */
+                float above0 = sp->ground ? 0.0f : -0.01f;
+                float above = above0 + (0.10f - above0) * (float)(y + r) / ROWS;
+                float v = above / 0.10f;
+                float fade = sky_clamp01(1.0f - v) * 0.9f * sp->alpha;
+                float nx = 2.0f, ny = 2.0f;
+
+                if (!sky_to_ndc(sp, az, above, &nx, &ny)) {
+                    fade = 0.0f;
+                }
+                sky_vtx_uv(nx, ny, sky_c(cloud[0]), sky_c(cloud[1]), sky_c(cloud[2]), sky_a(fade),
+                           az / (2.0f * SKY_PI) * 10.0f + secs * 0.012f, v * 0.6f);
+            }
+        }
+        GXEnd();
+    }
+}
+
 static void sky_render(const SkyParams* sp) {
-    glViewport(0, 0, g_pc_window_w, g_pc_window_h);
-    glDisable(GL_SCISSOR_TEST);
-    glDisable(GL_DEPTH_TEST);
-    glDepthMask(GL_FALSE);
-    if (sp->alpha < 1.0f) {
-        glEnable(GL_BLEND);
-        glBlendColor(0.0f, 0.0f, 0.0f, sp->alpha);
-        glBlendFunc(GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA);
-    } else {
-        glDisable(GL_BLEND);
-    }
-    glDisable(GL_CULL_FACE);
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    float secs = (float)SDL_GetTicks() / 1000.0f;
 
-    glUseProgram(s_prog);
-    glUniform4fv(s_u_proj, 1, sp->proj);
-    glUniformMatrix3fv(s_u_eye_to_world, 1, GL_FALSE, sp->eye_to_world);
-    glUniform3fv(s_u_zenith, 1, sp->zenith);
-    glUniform3fv(s_u_horizon, 1, sp->horizon);
-    glUniform1f(s_u_dip, sp->dip);
-    glUniform4f(s_u_misc, (float)SDL_GetTicks() / 1000.0f, sp->night, sp->overcast, sp->heading);
-    glUniform1f(s_u_rainbow, sp->rainbow);
-    glUniform1f(s_u_turn, sp->turn);
-    glUniform1i(s_u_line_num, sp->line_num);
-    glUniform1i(s_u_edit_num, sp->edit_num);
-    if (sp->line_num > 0) {
-        glUniform4fv(s_u_lines, sp->line_num, &sp->lines[0][0]);
-    }
-    glUniform1i(s_u_ground, sp->ground);
-    glUniform4fv(s_u_hl, 1, sp->hl);
-    glUniform1i(s_u_hl_on, sp->hl_on);
-    glUniform1i(s_u_have, (s_tex_cloud ? 1 : 0) | (s_tex_star ? 2 : 0) | (s_tex_moon ? 4 : 0));
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, s_tex_cloud);
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, s_tex_star);
-    glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, s_tex_moon);
-    glActiveTexture(GL_TEXTURE0);
-    glBindVertexArray(s_vao);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
-
-    glDisable(GL_BLEND);
-    glDepthMask(GL_TRUE);
-    pc_gx_restore_after_nes(); /* rebinds the game's GL objects and marks all GX state dirty */
+    pc_gxh_screen();
+    sky_view(sp);
+    sky_draw_gradient(sp);
+    sky_draw_stars(sp, secs);
+    sky_draw_lines(sp, secs);
+    sky_draw_moon(sp);
+    sky_draw_rainbow(sp);
+    sky_draw_clouds(sp, secs);
+    pc_gxh_screen_end();
 }
 
 static void sky_draw(const float proj[4][4], const float view[3][4]) {
@@ -498,11 +714,7 @@ static void sky_draw(const float proj[4][4], const float view[3][4]) {
         }
     }
 
-    if (!sky_init()) {
-        return;
-    }
-
-    pc_gx_draw_pending();
+    sky_init();
 
     /* eye -> world is R^T; GL reads column-major, so R row-major works as-is */
     for (i = 0; i < 3; i++) {
@@ -515,7 +727,7 @@ static void sky_draw(const float proj[4][4], const float view[3][4]) {
         SkyParams sp;
 
         memset(&sp, 0, sizeof(sp));
-        sp.proj[0] = 1.0f / (proj[0][0] * pc_gx_projection_x_scale());
+        sp.proj[0] = 1.0f / (proj[0][0] * sky_x_scale());
         sp.proj[1] = 1.0f / proj[1][1];
         sp.proj[2] = proj[0][2];
         sp.proj[3] = proj[1][2];
@@ -547,10 +759,7 @@ static void sky_draw_gaze(void) {
     float t = tanf(s_gaze.fov_y * 0.5f);
     int i;
 
-    if (!sky_init()) {
-        return;
-    }
-    pc_gx_draw_pending();
+    sky_init();
     memset(&sp, 0, sizeof(sp));
     sp.proj[0] = t * (float)g_pc_window_w / (float)(g_pc_window_h > 0 ? g_pc_window_h : 1);
     sp.proj[1] = t;
@@ -581,7 +790,6 @@ void pc_sky_noop(unsigned int tag, const float proj[4][4], const float view[3][4
             if (s_sky.requested) {
                 sky_draw(proj, view);
                 sky_set_active(s_sky.k > 0.0f);
-                DIRTY(PC_GX_DIRTY_PROJECTION);
             }
             break;
         case PC_NOOP_WORLD_BEGIN:

@@ -67,7 +67,7 @@ typedef struct _MUSEUM_FISH_INIT_DATA {
 
 typedef struct fish_keyframe_s {
     cKF_SkeletonInfo_R_c keyframe; // offset 0, size 0x70
-    Mtx mtx[2][9];
+    N64Mtx mtx[2][9];
     s_xyz work[6];
     s_xyz morph[6];
     s_xyz _538;
@@ -79,7 +79,7 @@ typedef struct fish_keyframe_s {
 
 typedef struct hasu_s {
     /* 0x000 */ cKF_SkeletonInfo_R_c keyframe; // offset 0, size 0x70
-    /* 0x070 */ Mtx mtx[2][9];
+    /* 0x070 */ N64Mtx mtx[2][9];
     /* 0x4F0 */ s_xyz work[9];
     /* 0x526 */ s_xyz morph[9];
     /* 0x55C */ f32 _55C;
@@ -166,7 +166,11 @@ typedef struct _MUSEUM_FISH_ACTOR {
     xyz_t lightPosition[2];
     int numFishDisplayed;                         // offset: 0x14d20, size: 4
     int fishDisplayMsgIter;                       // offset: 0x14d24, size: 4
+#ifdef TARGET_PC
+    FISH_DISPLAY_MSG_INFO fishDisplayMsgInfo[10 + 28]; /* and City Folk's fish (pc_cf_creature.c) */
+#else
     FISH_DISPLAY_MSG_INFO fishDisplayMsgInfo[10]; // offset: 0x14d28, size: 4*10
+#endif
 
     s16 _14d50[20];
     s16 _14d78[20];

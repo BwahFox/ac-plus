@@ -440,6 +440,9 @@ static void Camera2_Normal_Swing(GAME_PLAY* play, f32* distance, s_xyz* dir) {
 }
 
 static const f32 add_distance_array[3] = { -280.0f, 0.0f, 300.0f };
+#ifdef PC_ENHANCEMENTS
+static const f32 add_distance_array_field[3] = { -200.0f, 0.0f, 200.0f };
+#endif
 
 static const s16 add_directionY_array[3] = {
     DEG2SHORT_ANGLE(-16.1f), // -2930
@@ -499,8 +502,8 @@ static void Camera2_Get_GoalDistanceAndDirection(GAME_PLAY* play, f32* dist, s_x
     *dir = direction_array[main_index];
 
 #ifdef PC_ENHANCEMENTS
-    /* C-stick camera now works in every scene */
-    if (main_index == CAMERA2_PROCESS_NORMAL) {
+    if ((main_index == CAMERA2_PROCESS_NORMAL || main_index == CAMERA2_PROCESS_WADE) &&
+        (!mEv_CheckFirstIntro() || Camera2_InDoorCheck())) {
 #else
     if (main_index == CAMERA2_PROCESS_NORMAL && Camera2_InDoorCheck()) {
 #endif
@@ -512,7 +515,11 @@ static void Camera2_Get_GoalDistanceAndDirection(GAME_PLAY* play, f32* dist, s_x
             add_dir_idx = 1;
         }
 
+#ifdef PC_ENHANCEMENTS
+        *dist += Camera2_InDoorCheck() ? add_distance_array[add_dist_idx] : add_distance_array_field[add_dist_idx];
+#else
         *dist += add_distance_array[add_dist_idx];
+#endif
         dir->y += add_directionY_array[add_dir_idx];
         dir->x += add_directionX_array[add_dist_idx]; // adjust by add_dist_idx since rotation on X axis should be
                                                       // defined by distance of camera
@@ -992,15 +999,6 @@ static void Camera2_setup_main_Wade(GAME_PLAY* play) {
 
     Camera2_setup_main_Base(play);
     play->camera.requested_main_index_priority = 9;
-
-#ifdef PC_ENHANCEMENTS
-    /* Reset any outdoor C-stick camera changes instead of a weird double transition */
-    if (!mPlib_IsWadeDisabled()){
-        play->camera.indoor_distance_addition_idx = 1;
-        play->camera.indoor_direction_addition_idx = 1;
-    }
-  
-#endif
 }
 
 static void Camera2_SetPos_Wade(GAME_PLAY* play) {
@@ -2156,7 +2154,7 @@ extern int Camera2_request_main_needlework_talk(GAME_PLAY* play, ACTOR* speaker,
     s16 angle_y;
     f32 diff_x = listener->eye.position.x - speaker->eye.position.x;
 
-    angle_y = (s16)(diff_x * (20.0f / 3.0f) + -32768.0f);
+    angle_y = F32_TO_S16(diff_x * (20.0f / 3.0f) + -32768.0f);
 
     if (angle_y > 0) {
         angle_y = DEG2SHORT_ANGLE(-180.0f);
@@ -2503,7 +2501,7 @@ static void Camera2_Staff_Roll_Center(GAME_PLAY* play, ACTOR* speaker, ACTOR* li
         center_z = (pos0->z + pos1->z) / 2.0f;
 
         h = cKF_HermitCalc(t, 1.0f, 0.0f, 1.0f, 0.49f, 0.0f);
-        temp2 = ((f32)camera->main_data.staff_roll.r_delta / 4600.0f) * 65535.0f;
+        temp2 = F32_TO_S16(((f32)camera->main_data.staff_roll.r_delta / 4600.0f) * 65535.0f);
         h *= ((1.0f + sin_s(temp2) * 0.2f) - 0.2f) * 45.0f;
 
         // likely fakematch
@@ -2540,12 +2538,16 @@ static void Camera2_Staff_Roll_DistAngle(GAME_PLAY* play, ACTOR* speaker, ACTOR*
     s16 temp;
     f32 dist;
 
-    temp = ((f32)camera->main_data.staff_roll.r_delta / 4600.0f) * 65535.0f;
+    temp = F32_TO_S16(((f32)camera->main_data.staff_roll.r_delta / 4600.0f) * 65535.0f);
     dist = ((sin_s(temp) * 0.2f + 1.0f) - 0.2f) * 575.0f;
-    temp = ((f32)camera->main_data.staff_roll.rotation_x_delta / CAMERA2_STAFFROLL_CENTER_X_ROT_STEP_DIVISOR) * 65536.0f;
+    temp = F32_TO_S16(
+        ((f32)camera->main_data.staff_roll.rotation_x_delta / CAMERA2_STAFFROLL_CENTER_X_ROT_STEP_DIVISOR) * 65536.0f);
 
     angle->x = (s16)(sin_s(temp) * 5000.0f);
-    angle->y = (s16)((-(f32)camera->main_data.staff_roll.rotation_y_delta / CAMERA2_STAFFROLL_CENTER_Y_ROT_STEP_DIVISOR) * 65535.0f) +
+    angle->y = F32_TO_S16(
+                   (-(f32)camera->main_data.staff_roll.rotation_y_delta /
+                    CAMERA2_STAFFROLL_CENTER_Y_ROT_STEP_DIVISOR) *
+                   65535.0f) +
                camera->main_data.staff_roll.last_direction.y + (u16)SHT_MIN_S;
     angle->z = 0;
 

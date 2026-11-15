@@ -741,7 +741,7 @@ static void mCL_DrawSkelShape(mCL_Item_c* item, aFTR_PROFILE* profile, GAME* gam
     if (profile->rig != NULL) {
         cKF_SkeletonInfo_R_c* keyframe = &item->ftr_actor.keyframe;
         int mtx_idx = game->frame_counter & 1;
-        Mtx* mtx = item->ftr_actor.skeleton_mtx[mtx_idx];
+        N64Mtx* mtx = item->ftr_actor.skeleton_mtx[mtx_idx];
 
         cKF_Si3_draw_R_SV(game, keyframe, mtx, NULL, NULL, NULL);
     }
@@ -1516,7 +1516,7 @@ extern void mCL_catalog_ovl_construct(Submenu* submenu) {
             seg0_p += 0x2000;
 
             overlay->catalog_ovl->item_data[i].seg1 =
-                (u8*)ALIGN_NEXT((u32)overlay->catalog_ovl->item_data[i].segment_data, 32);
+                (u8*)ALIGN_NEXT((uintptr_t)overlay->catalog_ovl->item_data[i].segment_data, 32);
         }
 
         submenu->next_overlay_address = (char*)seg0_p;

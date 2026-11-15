@@ -6,7 +6,8 @@
 #include "types.h"
 #include "PR/gbi.h"
 #include "pc_assets.h"
-#include "pc_disc.h"
+#include "pc_bswap.h"
+#include <dolphin/dvd.h>
 
 extern int g_pc_verbose;
 
@@ -15,6 +16,148 @@ enum { SWAP_NONE = 0, SWAP_U16 = 1, SWAP_VTX = 2, SWAP_U32 = 3 };
 
 static u8* g_rel_data = NULL;
 static u8* g_dol_data = NULL;
+static int g_rel_data_is_aligned = 0;
+
+static void* aurora_aligned_alloc(size_t alignment, size_t size) {
+#if defined(_MSC_VER)
+    return _aligned_malloc(size, alignment);
+#else
+    return aligned_alloc(alignment, size);
+#endif
+}
+
+static void aurora_aligned_free(void* ptr) {
+#if defined(_MSC_VER)
+    _aligned_free(ptr);
+#else
+    free(ptr);
+#endif
+}
+
+static void aurora_free_rel_data(void) {
+    if (g_rel_data_is_aligned) {
+        aurora_aligned_free(g_rel_data);
+    } else {
+        free(g_rel_data);
+    }
+    g_rel_data = NULL;
+    g_rel_data_is_aligned = 0;
+}
+
+static u8* aurora_yaz0_decode(const u8* src, u32 src_size, u32* out_size) {
+    u32 decoded_size, src_pos = 16, dst_pos = 0;
+    u8* dst;
+    int bit;
+
+    if (src_size < 16 || memcmp(src, "Yaz0", 4) != 0) return NULL;
+    decoded_size = pc_load_be32(src + 4);
+    dst = (u8*)malloc(decoded_size);
+    if (dst == NULL) return NULL;
+
+    while (dst_pos < decoded_size && src_pos < src_size) {
+        u8 flags = src[src_pos++];
+        for (bit = 7; bit >= 0 && dst_pos < decoded_size; --bit) {
+            if (src_pos >= src_size) break;
+            if (flags & (1 << bit)) {
+                dst[dst_pos++] = src[src_pos++];
+            } else {
+                u8 b1, b2;
+                u32 distance, length, copy_pos;
+                if (src_pos + 1 >= src_size) break;
+                b1 = src[src_pos++];
+                b2 = src[src_pos++];
+                distance = ((u32)(b1 & 0x0F) << 8) | b2;
+                if ((b1 >> 4) == 0) {
+                    if (src_pos >= src_size) break;
+                    length = (u32)src[src_pos++] + 0x12;
+                } else {
+                    length = (u32)(b1 >> 4) + 2;
+                }
+                if (distance >= dst_pos) {
+                    free(dst);
+                    return NULL;
+                }
+                copy_pos = dst_pos - distance - 1;
+                while (length-- != 0 && dst_pos < decoded_size) {
+                    dst[dst_pos++] = dst[copy_pos++];
+                }
+            }
+        }
+    }
+
+    if (dst_pos != decoded_size) {
+        free(dst);
+        return NULL;
+    }
+    *out_size = decoded_size;
+    return dst;
+}
+
+static u8* aurora_load_dvd_file(const char* path, u32* out_size) {
+    DVDFileInfo file_info;
+    u32 file_size, transfer_size;
+    u8* buffer;
+    s32 result;
+
+    if (!DVDOpen(path, &file_info)) return NULL;
+    file_size = file_info.length;
+    transfer_size = (file_size + 31u) & ~31u;
+    buffer = (u8*)aurora_aligned_alloc(32, transfer_size);
+    if (buffer == NULL) {
+        DVDClose(&file_info);
+        return NULL;
+    }
+    result = DVDReadPrio(&file_info, buffer, (s32)transfer_size, 0, 2);
+    DVDClose(&file_info);
+    if (result < (s32)file_size) {
+        aurora_aligned_free(buffer);
+        return NULL;
+    }
+    *out_size = file_size;
+    return buffer;
+}
+
+static int aurora_load_rom_images(void) {
+    const u8* mounted_dol;
+    s32 dol_size = 0;
+    u32 rel_size = 0;
+    u8* rel_raw;
+
+    mounted_dol = DVDGetDOLLocation(&dol_size);
+    if (mounted_dol == NULL || dol_size <= 0) return 0;
+    g_dol_data = (u8*)malloc((size_t)dol_size);
+    if (g_dol_data == NULL) return 0;
+    memcpy(g_dol_data, mounted_dol, (size_t)dol_size);
+
+    rel_raw = aurora_load_dvd_file("/foresta.rel.szs", &rel_size);
+    if (rel_raw == NULL) {
+        free(g_dol_data);
+        g_dol_data = NULL;
+        return 0;
+    }
+    if (rel_size >= 16 && memcmp(rel_raw, "Yaz0", 4) == 0) {
+        u32 decoded_size = 0;
+        g_rel_data = aurora_yaz0_decode(rel_raw, rel_size, &decoded_size);
+        aurora_aligned_free(rel_raw);
+        if (g_pc_verbose && g_rel_data != NULL) {
+            printf("[PC] Aurora DVD: DOL %d bytes, REL %u -> %u bytes\n",
+                   dol_size, rel_size, decoded_size);
+        }
+    } else {
+        g_rel_data = rel_raw;
+        g_rel_data_is_aligned = 1;
+        if (g_pc_verbose) {
+            printf("[PC] Aurora DVD: DOL %d bytes, REL %u bytes\n", dol_size, rel_size);
+        }
+    }
+
+    if (g_rel_data == NULL) {
+        free(g_dol_data);
+        g_dol_data = NULL;
+        return 0;
+    }
+    return 1;
+}
 
 void pc_bswap_asset_u16(void* data, unsigned int size) {
     u16* p = (u16*)data;
@@ -4738,7 +4881,7 @@ extern u8 cal_win_nen6_tex_rgb_i4[];
 extern u8 cal_win_nen7_tex_rgb_i4[];
 extern u8 cal_win_nen8_tex_rgb_i4[];
 extern u8 cal_win_nen9_tex_rgb_i4[];
-extern u8 cal_win_nen_before[];
+extern Gfx cal_win_nen_before[];
 extern u8 cal_win_november_tex_rgb_ia8[];
 extern u8 cal_win_october_tex_rgb_ia8[];
 extern u8 cal_win_pick_tex[];
@@ -5570,7 +5713,7 @@ extern u8 des_win_aw5_tex[];
 extern u8 des_win_aw6_tex[];
 extern u8 des_win_aw7_tex[];
 extern u8 des_win_aw8_tex[];
-extern u8 des_win_before[];
+extern Gfx des_win_before[];
 extern u8 des_win_color_tex[];
 extern u8 des_win_cwaku_tex[];
 extern u8 des_win_kirikae_tex[];
@@ -5588,7 +5731,7 @@ extern u8 des_win_suuji6_tex_rgb_i4[];
 extern u8 des_win_suuji7_tex_rgb_i4[];
 extern u8 des_win_suuji8_tex_rgb_i4[];
 extern u8 des_win_suuji9_tex_rgb_i4[];
-extern u8 des_win_suuji_before[];
+extern Gfx des_win_suuji_before[];
 extern u8 dia_win_april_tex_rgb_ia8[];
 extern u8 dia_win_august_tex_rgb_ia8[];
 extern u8 dia_win_december_tex_rgb_ia8[];
@@ -15655,9 +15798,9 @@ static const PCAsset s_assets[] = {
     {"assets/ef_awa01_0.bin", ef_awa01_0, 0x100, 0x949460, 0, 0},
     {"assets/ef_neboke_awa01_v.bin", ef_neboke_awa01_v, 0x40, 0x949560, 0, 2},
     {"assets/ut_mike.bin", ut_mike, 0x80, 0x948720, 0, 0},
-    {"assets/utPal_mike.bin", utPal_mike, 0x20, 0x9487A0, 0, 0},
+    {"assets/utPal_mike.bin", utPal_mike, 0x20, 0x9487A0, 0, 1},
     {"assets/ut_mouth.bin", ut_mouth, 0x80, 0x9487C0, 0, 0},
-    {"assets/utPal_mouth.bin", utPal_mouth, 0x20, 0x948840, 0, 0},
+    {"assets/utPal_mouth.bin", utPal_mouth, 0x20, 0x948840, 0, 1},
     {"assets/ef_ongen_v.bin", ef_ongen_v, 0x40, 0x948860, 0, 2},
     {"assets/ef_onpu01_0.bin", ef_onpu01_0, 0x100, 0x94ABC0, 0, 0},
     {"assets/ef_onpu01_00_v.bin", ef_onpu01_00_v, 0x40, 0x94ACC0, 0, 2},
@@ -17254,7 +17397,7 @@ static const PCAsset s_assets[] = {
     {"assets/int_iid_diary_ue_tex.bin", int_iid_diary_ue_tex, 0x20, 0xAF1600, 0, 0},
     {"assets/int_iid_diary_ebody_tex.bin", int_iid_diary_ebody_tex, 0x20, 0xAF1640, 0, 0},
     {"assets/int_iid_diary_v.bin", int_iid_diary_v, 0x380, 0xAF1660, 0, 2},
-    {"assets/int_iid_funediary.bin", int_iid_funediary, 0x20, 0xAF1B00, 0, 0},
+    {"assets/int_iid_funediary.bin", int_iid_funediary, 0x20, 0xAF1B00, 0, 1},
     {"assets/int_iid_funediary_mae_tex.bin", int_iid_funediary_mae_tex, 0x20, 0xAF1B20, 0, 0},
     {"assets/int_iid_funediary_hyoushi_tex.bin", int_iid_funediary_hyoushi_tex, 0x200, 0xAF1B40, 0, 0},
     {"assets/int_iid_funediary_soko_tex.bin", int_iid_funediary_soko_tex, 0x20, 0xAF1D40, 0, 0},
@@ -17262,15 +17405,15 @@ static const PCAsset s_assets[] = {
     {"assets/int_iid_funediary_esaki_tex.bin", int_iid_funediary_esaki_tex, 0x20, 0xAF1D80, 0, 0},
     {"assets/int_iid_funediary_ebody_tex.bin", int_iid_funediary_ebody_tex, 0x20, 0xAF1DA0, 0, 0},
     {"assets/int_iid_funediary_v.bin", int_iid_funediary_v, 0x380, 0xAF1DC0, 0, 2},
-    {"assets/int_iid_mdiary.bin", int_iid_mdiary, 0x20, 0xAF2260, 0, 0},
+    {"assets/int_iid_mdiary.bin", int_iid_mdiary, 0x20, 0xAF2260, 0, 1},
     {"assets/int_iid_mdiary_mae_tex.bin", int_iid_mdiary_mae_tex, 0x20, 0xAF22A0, 0, 0},
     {"assets/int_iid_mdiary_hyoushi_tex.bin", int_iid_mdiary_hyoushi_tex, 0x200, 0xAF22C0, 0, 0},
     {"assets/int_iid_mdiary_soko_tex.bin", int_iid_mdiary_soko_tex, 0x20, 0xAF24C0, 0, 0},
     {"assets/int_iid_mdiary_ue_tex.bin", int_iid_mdiary_ue_tex, 0x20, 0xAF24E0, 0, 0},
     {"assets/int_iid_mdiary_ebody_tex.bin", int_iid_mdiary_ebody_tex, 0x20, 0xAF2520, 0, 0},
     {"assets/int_iid_mdiary_v.bin", int_iid_mdiary_v, 0x380, 0xAF2540, 0, 2},
-    {"assets/int_iid_newdiary.bin", int_iid_newdiary, 0x20, 0xAF2A00, 0, 0},
-    {"assets/int_iid_olddiary.bin", int_iid_olddiary, 0x20, 0xAF2A20, 0, 0},
+    {"assets/int_iid_newdiary.bin", int_iid_newdiary, 0x20, 0xAF2A00, 0, 1},
+    {"assets/int_iid_olddiary.bin", int_iid_olddiary, 0x20, 0xAF2A20, 0, 1},
     {"assets/int_iid_newdiary_mae_tex.bin", int_iid_newdiary_mae_tex, 0x80, 0xAF2A40, 0, 0},
     {"assets/int_iid_newdiary_hyoushi_tex.bin", int_iid_newdiary_hyoushi_tex, 0x200, 0xAF2AC0, 0, 0},
     {"assets/int_iid_newdiary_soko_tex.bin", int_iid_newdiary_soko_tex, 0x20, 0xAF2CC0, 0, 0},
@@ -17471,7 +17614,7 @@ static const PCAsset s_assets[] = {
     {"assets/int_ike_jny_sirser2tail_tex_txt.bin", int_ike_jny_sirser2tail_tex_txt, 0x100, 0xB0BB40, 0, 0},
     {"assets/int_ike_jny_sirser2foot2_tex_txt.bin", int_ike_jny_sirser2foot2_tex_txt, 0x80, 0xB0BC40, 0, 0},
     {"assets/int_ike_jny_sirser201_v.bin", int_ike_jny_sirser201_v, 0x570, 0xB0BCC0, 0, 2},
-    {"assets/int_ike_jny_syon01_tex.bin", int_ike_jny_syon01_tex, 0x20, 0xB0C3E0, 0, 0},
+    {"assets/int_ike_jny_syon01_tex.bin", int_ike_jny_syon01_tex, 0x20, 0xB0C3E0, 0, 1},
     {"assets/int_ike_jny_syonfoot2_tex_txt.bin", int_ike_jny_syonfoot2_tex_txt, 0x100, 0xB0C400, 0, 0},
     {"assets/int_ike_jny_syonfoot1_tex_txt.bin", int_ike_jny_syonfoot1_tex_txt, 0x100, 0xB0C500, 0, 0},
     {"assets/int_ike_jny_syonbody2_tex_txt.bin", int_ike_jny_syonbody2_tex_txt, 0x200, 0xB0C600, 0, 0},
@@ -17481,7 +17624,7 @@ static const PCAsset s_assets[] = {
     {"assets/int_ike_jny_syonwater1_pic_i4.bin", int_ike_jny_syonwater1_pic_i4, 0x200, 0xB0CC00, 0, 0},
     {"assets/int_ike_jny_syonwater2_pic_i4.bin", int_ike_jny_syonwater2_pic_i4, 0x200, 0xB0CE00, 0, 0},
     {"assets/int_ike_jny_syon01_v.bin", int_ike_jny_syon01_v, 0x6C0, 0xB0D000, 0, 2},
-    {"assets/int_ike_jny_tower01.bin", int_ike_jny_tower01, 0x20, 0xB0D920, 0, 0},
+    {"assets/int_ike_jny_tower01.bin", int_ike_jny_tower01, 0x20, 0xB0D920, 0, 1},
     {"assets/int_ike_jny_towerbase_tex_txt.bin", int_ike_jny_towerbase_tex_txt, 0x80, 0xB0D940, 0, 0},
     {"assets/int_ike_jny_towertem1_tex_txt.bin", int_ike_jny_towertem1_tex_txt, 0x40, 0xB0D9C0, 0, 0},
     {"assets/int_ike_jny_towertem2_tex_txt.bin", int_ike_jny_towertem2_tex_txt, 0x200, 0xB0DA00, 0, 0},
@@ -18681,7 +18824,7 @@ static const PCAsset s_assets[] = {
     {"assets/int_nog_snowman_body_tex.bin", int_nog_snowman_body_tex, 0x200, 0xBF2800, 0, 0},
     {"assets/int_nog_snowman_head_tex.bin", int_nog_snowman_head_tex, 0x200, 0xBF2A00, 0, 0},
     {"assets/int_nog_snowman_v.bin", int_nog_snowman_v, 0x360, 0xBF2C00, 0, 2},
-    {"assets/int_noga_sprinkler.bin", int_noga_sprinkler, 0x20, 0xBF3060, 0, 0},
+    {"assets/int_noga_sprinkler.bin", int_noga_sprinkler, 0x20, 0xBF3060, 0, 1},
     {"assets/int_nog_sprinkler_tex.bin", int_nog_sprinkler_tex, 0x800, 0xBF3080, 0, 0},
     {"assets/int_nog_sprinkler_fade_tex_rgb_i4.bin", int_nog_sprinkler_fade_tex_rgb_i4, 0x80, 0xBF3880, 0, 0},
     {"assets/int_nog_sprinkler_water_tex_rgb_i4.bin", int_nog_sprinkler_water_tex_rgb_i4, 0x80, 0xBF3900, 0, 0},
@@ -21763,7 +21906,7 @@ static const PCAsset s_assets[] = {
     {"assets/int_yos_gnome_pal.bin", int_yos_gnome_pal, 0x20, 0xDB4240, 0, 1},
     {"assets/int_yos_gnome_all_tex_txt.bin", int_yos_gnome_all_tex_txt, 0x800, 0xDB4260, 0, 0},
     {"assets/int_yos_gnome_v.bin", int_yos_gnome_v, 0x480, 0xDB4A60, 0, 2},
-    {"assets/int_yos_kflag_pat.bin", int_yos_kflag_pat, 0x20, 0xDB5040, 0, 0},
+    {"assets/int_yos_kflag_pat.bin", int_yos_kflag_pat, 0x20, 0xDB5040, 0, 1},
     {"assets/int_yos_kflag_pole_tex_txt.bin", int_yos_kflag_pole_tex_txt, 0x80, 0xDB5060, 0, 0},
     {"assets/int_yos_kflag_flag_tex_txt.bin", int_yos_kflag_flag_tex_txt, 0x180, 0xDB50E0, 0, 0},
     {"assets/int_yos_kflag_v.bin", int_yos_kflag_v, 0x450, 0xDB5260, 0, 2},
@@ -23388,7 +23531,7 @@ static const PCAsset s_assets[] = {
     {"assets/obj_item_nuts_pal.bin", obj_item_nuts_pal, 0x20, 0xB70880, 0, 1},
     {"assets/obj_item_nuts_tex.bin", obj_item_nuts_tex, 0x200, 0xB708A0, 0, 0},
     {"assets/obj_item_nuts_v.bin", obj_item_nuts_v, 0x40, 0xB70AA0, 0, 2},
-    {"assets/obj_item_omikuji.bin", obj_item_omikuji, 0x20, 0xB70B40, 0, 0},
+    {"assets/obj_item_omikuji.bin", obj_item_omikuji, 0x20, 0xB70B40, 0, 1},
     {"assets/obj_item_omikuji_tex.bin", obj_item_omikuji_tex, 0x200, 0xB70B60, 0, 0},
     {"assets/obj_item_omikuji_v.bin", obj_item_omikuji_v, 0x40, 0xB70D60, 0, 2},
     {"assets/obj_item_other_pal.bin", obj_item_other_pal, 0x20, 0xB710C0, 0, 1},
@@ -24667,7 +24810,7 @@ static const PCAsset s_assets[] = {
     {"assets/rom_kamakura_ring1.bin", rom_kamakura_ring1, 0x100, 0xB5BBB0, 0, 0},
     {"assets/rom_kamakura_ring_v.bin", rom_kamakura_ring_v, 0x40, 0xB5BCB0, 0, 2},
     {"assets/rom_museum4_floor_pal.bin", rom_museum4_floor_pal, 0x20, 0xBB0A00, 0, 1},
-    {"assets/rom_museum4_step_pal2.bin", rom_museum4_step_pal2, 0x20, 0xBB0A20, 0, 0},
+    {"assets/rom_museum4_step_pal2.bin", rom_museum4_step_pal2, 0x20, 0xBB0A20, 0, 1},
     {"assets/rom_museum4_wallB_tex.bin", rom_museum4_wallB_tex, 0x400, 0xBB0A40, 0, 0},
     {"assets/rom_museum4_step_tex.bin", rom_museum4_step_tex, 0x800, 0xBB0E40, 0, 0},
     {"assets/rom_museum4_floorA_tex.bin", rom_museum4_floorA_tex, 0x800, 0xBB1840, 0, 0},
@@ -24852,7 +24995,7 @@ static const PCAsset s_assets[] = {
     {"assets/tim_hari_h2_tex.bin", tim_hari_h2_tex, 0x400, 0x7BEAC0, 0, 0},
     {"assets/tim_hari_maru_tex.bin", tim_hari_maru_tex, 0x80, 0x7BEEC0, 0, 0},
     {"assets/tim_hari_v.bin", tim_hari_v, 0xC0, 0x7BEF40, 0, 2},
-    {"assets/tim_win_newtokei_tex.bin", tim_win_newtokei_tex, 0x20, 0x7BF1E0, 0, 0},
+    {"assets/tim_win_newtokei_tex.bin", tim_win_newtokei_tex, 0x20, 0x7BF1E0, 0, 1},
     {"assets/tim_win_nuno_tex_rgb_ci4_pal.bin", tim_win_nuno_tex_rgb_ci4_pal, 0x20, 0x7BF200, 0, 1},
     {"assets/tim_win_sw1_tex_rgb_ci4_pal.bin", tim_win_sw1_tex_rgb_ci4_pal, 0x20, 0x7BF220, 0, 1},
     {"assets/tim_win_sw2_tex_rgb_ci4_pal.bin", tim_win_sw2_tex_rgb_ci4_pal, 0x20, 0x7BF240, 0, 1},
@@ -29859,17 +30002,14 @@ extern void _pc_load_src_data_field_bg_rail_pal_c(void);
 extern void _pc_load_src_static_nintendo_hi_0_c(void);
 extern void _pc_load_src_game_m_choice_draw_c_inc(void);
 extern void _pc_load_src_static_bootdata_logo_nin_c(void);
+extern void _pc_load_JUTResFONT_Ascfont_fix12(void);
 
 int pc_assets_init(void) {
-    int i, loaded = 0, failed = 0, rom_mode = 0;
+    int i, loaded = 0, rom_mode = 0;
     int total = (int)(sizeof(s_assets) / sizeof(s_assets[0]));
 
-    /* Try disc image (CISO/ISO/GCM) — pc_disc_init() already called from main */
-    if (pc_disc_is_open()) {
-        g_dol_data = pc_disc_extract_dol();
-        g_rel_data = pc_disc_extract_rel();
-        if (g_dol_data && g_rel_data) rom_mode = 1;
-    }
+    /* Aurora exposes the mounted RVZ/ISO's DOL and FST through its DVD layer. */
+    rom_mode = aurora_load_rom_images();
 
     /* Fall back to pre-extracted DOL + REL files */
     if (!rom_mode) {
@@ -29879,7 +30019,7 @@ int pc_assets_init(void) {
             rom_mode = 1;
             if (g_pc_verbose) printf("[PC] ROM-direct mode: loaded pre-extracted DOL + REL\n");
         } else {
-            if (g_rel_data) { free(g_rel_data); g_rel_data = NULL; }
+            if (g_rel_data) aurora_free_rel_data();
             if (g_dol_data) { free(g_dol_data); g_dol_data = NULL; }
         }
     }
@@ -30667,11 +30807,10 @@ int pc_assets_init(void) {
     _pc_load_src_static_bootdata_logo_nin_c();
 
     /* Font data from DOL .rodata (replaces pc_fontdata.c hex blob) */
-    { extern void _pc_load_JUTResFONT_Ascfont_fix12(void);
-      _pc_load_JUTResFONT_Ascfont_fix12(); }
+    _pc_load_JUTResFONT_Ascfont_fix12();
 
     /* Free ROM data */
-    if (g_rel_data) { free(g_rel_data); g_rel_data = NULL; }
+    if (g_rel_data) aurora_free_rel_data();
     if (g_dol_data) { free(g_dol_data); g_dol_data = NULL; }
 
     if (g_pc_verbose)

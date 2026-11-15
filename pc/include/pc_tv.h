@@ -33,6 +33,7 @@ extern "C" {
  * shape), or NULL to draw the TV's own screen. Call it from the TV's draw while it's switched on, with
  * its matrix loaded; pos is where it stands, for the sound. */
 Gfx* pc_tv_screen(GAME* game, const Vtx* src, const xyz_t* pos);
+Gfx* pc_tv_screen_always(GAME* game, const Vtx* src, const xyz_t* pos); /* a City Folk TV: whatever cf_tv says */
 
 /* City Folk's program sound plays from the TVs: theirs would be in the way */
 int pc_tv_sound_on(void);

@@ -43,8 +43,8 @@ ACTOR* pc_gyoei_ctrl_actor(void) {
 #endif
 
 typedef struct gyoei_overlay_s {
-    u8 buf[0x3C00];
-} aGYO_overlay_c ATTRIBUTE_ALIGN(8);
+    ATTRIBUTE_ALIGN(8) u8 buf[0x3C00];
+} aGYO_overlay_c;
 
 static aGYO_overlay_c aGYO_overlay[aGYO_MAX_GYOEI];
 

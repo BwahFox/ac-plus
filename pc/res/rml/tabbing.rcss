@@ -1,0 +1,96 @@
+tab-bar {
+    display: flex;
+    position: relative;
+    min-width: 0;
+    overflow: auto hidden;
+    clip: always;
+}
+
+tab-bar scrollbarhorizontal,
+tab-bar scrollbarhorizontal sliderarrowdec,
+tab-bar scrollbarhorizontal sliderarrowinc,
+tab-bar scrollbarhorizontal slidertrack,
+tab-bar scrollbarhorizontal sliderbar {
+    width: 0;
+    height: 0;
+}
+
+tab-bar tab {
+    flex: 0 0 auto;
+    margin: var(--space-xs);
+    padding: 0 20dp;
+    line-height: 56dp;
+    white-space: nowrap;
+    color: var(--color-text-muted);
+    background-color: rgba(255, 226, 122, 0%);
+    border-radius: var(--radius-tab);
+    transition: background-color 0.1s linear-in-out, transform 0.08s linear-in-out;
+    cursor: pointer;
+    focus: auto;
+    font-family: var(--font-family-heading);
+    font-weight: bold;
+    font-size: var(--font-size-md);
+}
+
+tab-bar tab:focus-visible,
+tab-bar tab:hover {
+    color: var(--color-text-strong);
+    background-color: var(--color-highlight);
+}
+
+tab-bar tab:selected {
+    color: var(--color-text-on-accent);
+    background-color: var(--color-accent);
+}
+
+tab-bar tab:active {
+    color: var(--color-text-strong);
+    background-color: var(--color-pressed);
+    transform: scale(0.97);
+}
+
+tab-bar[closable] tab-end-spacer {
+    display: block;
+    flex: 0 0 68dp;
+    width: 68dp;
+    pointer-events: none;
+}
+
+tab-bar[closable] close,
+window > close {
+    display: block;
+    position: absolute;
+    top: 8dp;
+    right: 8dp;
+    z-index: 1;
+    width: 48dp;
+    height: 48dp;
+    font-family: var(--font-family-icons);
+    font-weight: normal;
+    font-size: var(--font-size-3xl);
+    color: var(--color-text-on-accent);
+    background-color: var(--color-accent);
+    border-radius: var(--radius-tab);
+    decorator: text("&#xe5cd;" center center);
+    transition: background-color 0.1s linear-in-out, transform 0.08s linear-in-out;
+    cursor: pointer;
+    focus: auto;
+}
+
+tab-bar[closable] close:hover,
+tab-bar[closable] close:focus-visible,
+window > close:hover,
+window > close:focus-visible {
+    background-color: var(--color-pressed);
+}
+
+tab-bar[closable] close:active,
+window > close:active {
+    background-color: var(--color-accent-bright);
+    transform: scale(0.94);
+}
+
+window > close {
+    top: 16dp;
+    right: 16dp;
+}

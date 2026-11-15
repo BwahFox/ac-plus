@@ -284,7 +284,7 @@ static void aKKR_actor_move(ACTOR* actorx, GAME* game) {
 static void aKKR_actor_draw(ACTOR* actorx, GAME* game) {
     NPC_KK_ROOST_ACTOR* kk = (NPC_KK_ROOST_ACTOR*)actorx;
     GRAPH* graph = game->graph;
-    Mtx* mtx;
+    N64Mtx* mtx;
 
     CLIP(npc_clip)->draw_proc(actorx, game);
     if (kk->npc_class.condition_info.hide_flg) {

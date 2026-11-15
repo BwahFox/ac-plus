@@ -19,6 +19,7 @@
 #include "m_select.h"
 #include "m_trademark.h"
 #include "m_vibctl.h"
+#include "pc_tracy.h"
 #include "player_select.h"
 #include "save_menu.h"
 #include "second_game.h"
@@ -26,11 +27,8 @@
 #include "sys_ucode.h"
 #include "zurumode.h"
 #ifdef TARGET_PC
-#include "pc_model_viewer.h"
 #include "pc_diag.h"
 #include "pc_platform.h"
-#include "pc_pause_menu.h"
-#include "pc_profiler.h"
 extern int g_pc_running;
 #endif
 
@@ -100,11 +98,6 @@ static DLFTBL_GAME* game_get_next_game_dlftbl(GAME* game) {
     } else if (ARE_INIT_PROCS_EQUAL(next_game_init_proc, prenmi_init)) {
         return &game_dlftbls[9];
     }
-#ifdef TARGET_PC
-    else if (ARE_INIT_PROCS_EQUAL(next_game_init_proc, pc_model_viewer_init)) {
-        return &game_dlftbls[10];
-    }
-#endif
 
     return NULL;
 }
@@ -166,7 +159,21 @@ int graph_dt_frame_phase(GAME* game, int period_frames) {
     return (int)graph_dt_frame_time(game) % period_frames;
 }
 
+int graph_dt_due(GAME* game, float remaining_frames) {
+    return remaining_frames <= 0.5f * (float)game->graph->dt_num_60fps_frames;
+}
+
+int graph_dt_scaled_step(GAME* game, int step, float* accum) {
+    int whole_step;
+
+    *accum += (float)step * (float)game->graph->dt_num_60fps_frames;
+    whole_step = (int)*accum;
+    *accum -= (float)whole_step;
+    return whole_step;
+}
+
 static void graph_task_set00(GRAPH* this) {
+    TracyCZone(graph_task_zone, 1);
     ucode_info ucode[2];
 
     GRAPH_SET_DOING_POINT(this, WAIT_TASK);
@@ -182,44 +189,22 @@ static void graph_task_set00(GRAPH* this) {
             ucode[1].type = UCODE_TYPE_SPRITE_TEXT;
             ucode[0].ucode_p = ucode_GetPolyTextStart();
             ucode[1].ucode_p = ucode_GetSpriteTextStart();
-#ifdef TARGET_PC
-            Uint64 pc_prof_jw = pc_profiler_begin_timer();
-#endif
             JW_BeginFrame();
             emu64_init();
             emu64_set_ucode_info(2, ucode);
             emu64_set_first_ucode(ucode[0].ucode_p);
             PC_DIAG(3, "graph_task_set00: emu64_taskstart(Gfx_list05=%p)\n", (void*)this->Gfx_list05);
-#ifdef TARGET_PC
-            {
-                Uint64 pc_prof_t = pc_profiler_begin_timer();
-                emu64_taskstart(this->Gfx_list05); /* work data */
-                pc_profiler_add_time(PC_PROF_TIMER_EMU64, pc_prof_t);
-            }
-#else
             emu64_taskstart(this->Gfx_list05); /* work data */
-#endif
-#ifdef TARGET_PC
-            {
-                extern int pc_emu64_frame_cmds, pc_emu64_frame_tri_cmds, pc_emu64_frame_vtx_cmds;
-                extern int pc_gx_draw_call_count;
-                PC_DIAG(5, "emu64 stats: cmds=%d tri=%d vtx=%d gl_draws=%d\n",
-                        pc_emu64_frame_cmds, pc_emu64_frame_tri_cmds, pc_emu64_frame_vtx_cmds,
-                        pc_gx_draw_call_count);
-            }
-#endif
             emu64_cleanup();
-#ifdef TARGET_PC
-            /* Stop before JW_EndFrame: it contains the VI wait (swap/pace) */
-            pc_profiler_add_time(PC_PROF_TIMER_JW_FRAME, pc_prof_jw);
-#endif
             JW_EndFrame();
             frame++;
         }
     }
+    TracyCZoneEnd(graph_task_zone);
 }
 
 static int graph_draw_finish(GRAPH* this) {
+    TracyCZone(graph_draw_finish_zone, 1);
     int err;
     OPEN_DISP(this);
 
@@ -301,6 +286,7 @@ static int graph_draw_finish(GRAPH* this) {
     }
 #endif
 
+    TracyCZoneEnd(graph_draw_finish_zone);
     return err;
 }
 
@@ -327,20 +313,27 @@ static void graph_audio_gameframe(GRAPH* this, GAME* game) {
     int ticks = graph_dt_60hz_ticks(game, &graph_audio_accum);
     int i;
 
+#ifdef TARGET_PC
+    sAdo_OngenGameFrameRan();
+#endif
+
     if (ticks <= 0) {
         return;
     }
 
+    TracyCZoneN(audio_game_frame_zone, "Audio game frame", 1);
     GRAPH_SET_DOING_POINT(this, AUDIO);
     for (i = 0; i < ticks; i++) {
         graph_audio_frame();
     }
     GRAPH_SET_DOING_POINT(this, AUDIO_FINISHED);
+    TracyCZoneEnd(audio_game_frame_zone);
 }
 
 // Aus version removes debug frame skip logic
 #if VERSION >= VER_GAFU01_00
 static void graph_main(GRAPH* this, GAME* game) {
+    TracyCZone(graph_main_zone, 1);
     game->disable_prenmi = FALSE;
     graph_setup_double_buffer(this);
     game_get_controller(game);
@@ -374,9 +367,11 @@ static void graph_main(GRAPH* this, GAME* game) {
     if (ResetStatus == IRQ_RESET_PRENMI && game->disable_prenmi == FALSE) {
         GAME_GOTO_NEXT(game, prenmi, PRENMI);
     }
+    TracyCZoneEnd(graph_main_zone);
 }
 #else
 static void graph_main(GRAPH* this, GAME* game) {
+    TracyCZone(graph_main_zone, 1);
     game->disable_prenmi = FALSE;
     PC_DIAG(10, "graph_main: enter, frame_counter=%d game=%p exec=%p cleanup=%p doing=%d\n",
             this->frame_counter, (void*)game, (void*)game->exec, (void*)game->cleanup, game->doing);
@@ -385,20 +380,13 @@ static void graph_main(GRAPH* this, GAME* game) {
     game->disable_display = FALSE;
     GRAPH_SET_DOING_POINT(this, GAME_MAIN);
     PC_DIAG(10, "graph_main: calling game_main (exec=%p)\n", (void*)game->exec);
-#ifdef TARGET_PC
-    {
-        Uint64 pc_prof_t;
-        pc_profiler_begin_frame();
-        pc_prof_t = pc_profiler_begin_timer();
-        game_main(game);
-        pc_profiler_add_time(PC_PROF_TIMER_GAME_LOGIC, pc_prof_t);
-    }
-#else
     game_main(game);
-#endif
     PC_DIAG(10, "graph_main: game_main returned, frame_counter=%d\n", this->frame_counter);
 #ifdef TARGET_PC
-    pc_pause_menu_draw(game);
+    {
+        extern void pc_pause_menu_draw(GAME* game); /* ac-plus's own menu (pc_pause_menu.c) */
+        pc_pause_menu_draw(game);
+    }
     {
         extern void pc_quick_save_draw(GAME* game);
         extern void pc_ground_debug_draw(GAME* game);
@@ -420,15 +408,7 @@ static void graph_main(GRAPH* this, GAME* game) {
         } else if (game->disable_display == FALSE) {
             int pc_draw_err;
             skip_frame = 0;
-#ifdef TARGET_PC
-            {
-                Uint64 pc_prof_t = pc_profiler_begin_timer();
-                pc_draw_err = graph_draw_finish(this);
-                pc_profiler_add_time(PC_PROF_TIMER_DRAW_FINISH, pc_prof_t);
-            }
-#else
             pc_draw_err = graph_draw_finish(this);
-#endif
             if (pc_draw_err == FALSE) {
                 GRAPH_SET_DOING_POINT(this, TASK_SET);
                 graph_task_set00(this);
@@ -445,13 +425,7 @@ static void graph_main(GRAPH* this, GAME* game) {
 
     PC_DIAG(10, "graph2: before audio+reset, frame_counter=%d\n", this->frame_counter);
     if (GETREG(SREG, 20) < 2) {
-#ifdef TARGET_PC
-        Uint64 pc_prof_t = pc_profiler_begin_timer();
         graph_audio_gameframe(this, game);
-        pc_profiler_add_time(PC_PROF_TIMER_AUDIO_FRAME, pc_prof_t);
-#else
-        graph_audio_gameframe(this, game);
-#endif
     }
 
     reset_check(this, game);
@@ -460,17 +434,13 @@ static void graph_main(GRAPH* this, GAME* game) {
     if (ResetStatus == IRQ_RESET_PRENMI && game->disable_prenmi == FALSE) {
         GAME_GOTO_NEXT(game, prenmi, PRENMI);
     }
+    TracyCZoneEnd(graph_main_zone);
 }
 #endif
 
 extern void graph_proc(void* arg) {
     GRAPH* __graph = &graph_class;
     DLFTBL_GAME* dlftbl = &game_dlftbls[0];
-#ifdef TARGET_PC
-    if (g_pc_model_viewer) {
-        dlftbl = &game_dlftbls[10]; /* model viewer */
-    }
-#endif
     graph_ct(&graph_class);
 
     while (dlftbl != NULL) {
@@ -518,6 +488,7 @@ extern void graph_proc(void* arg) {
             if (!dvderr_draw()) {
                 graph_main(__graph, game);
             }
+            TracyCFrameMark;
         }
 
         dlftbl = game_get_next_game_dlftbl(game);

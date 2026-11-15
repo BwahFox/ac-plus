@@ -3,6 +3,9 @@
 #include "audio.h"
 #include "sys_matrix.h"
 #include "m_font.h"
+#ifdef MOUSE_INPUT
+#include "game_pointer.h"
+#endif
 
 typedef struct warning_ovl_line_s {
   f32 pos_x;
@@ -253,7 +256,7 @@ static void mWR_move_Move(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
   mWR_Ovl_c* ovl = submenu->overlay->warning_ovl;
   f32 new_scale = ovl->scale;
 
-  new_scale += add[ovl->state];
+  new_scale += add[ovl->state] * (f32)gamePT->graph->dt_num_60fps_frames;
   if (new_scale > 1.0f) {
     menu_info->proc_status = menu_info->next_proc_status;
     new_scale = 1.0f;
@@ -266,9 +269,67 @@ static void mWR_move_Move(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
   ovl->scale = new_scale;
 }
 
+#ifdef MOUSE_INPUT
+static u32 mWR_mouse_trigger(Submenu* submenu, mSM_MenuInfo_c* menu_info, u32 trigger) {
+#ifdef MOUSE_INPUT
+    const GamePointerFrame* pointer = acgc_pointer_frame();
+#endif
+  mWR_Ovl_c* warning_ovl = submenu->overlay->warning_ovl;
+  mWR_data_c* data = &wr_win_data[menu_info->data0];
+  f32 scale = warning_ovl->scale;
+  f32 mouse_x, mouse_y;
+  f32 x, y;
+  u32 pressed;
+  int i;
+
+  mouse_x = pointer->x;
+  mouse_y = pointer->y;
+  if (submenu->current_menu_type != mSM_OVL_WARNING ||
+      !pointer->visible ||
+      !pointer->inside) {
+    return trigger;
+  }
+
+  pressed = pointer->pressed;
+  if (pressed & GAME_POINTER_RIGHT) {
+    return trigger | BUTTON_B;
+  }
+  if (menu_info->data0 != mWR_WARNING_MAILBOX) {
+    return trigger | ((pressed & GAME_POINTER_LEFT) ? BUTTON_A : 0);
+  }
+
+  x = 160.0f + menu_info->position[0] - data->scale_x * 120.0f * scale;
+  y = 120.0f - menu_info->position[1] - data->scale_y * 60.0f * scale;
+  for (i = 0; i < data->num_lines; i++) {
+    mWR_line_c* line = &data->lines[i];
+
+    y += line->pos_y * scale;
+    if (i >= 3) {
+      f32 line_x = x + line->pos_x * scale;
+      f32 width = mFont_GetStringWidth(line->str, line->str_len, TRUE) * scale;
+
+      if (mouse_x >= line_x - 2.0f && mouse_x < line_x + width + 2.0f &&
+          mouse_y >= y && mouse_y < y + 16.0f * scale) {
+        if (warning_ovl->selected != i - 3) {
+          warning_ovl->selected = i - 3;
+          sAdo_SysTrgStart(NA_SE_CURSOL);
+        }
+        return trigger | ((pressed & GAME_POINTER_LEFT) ? BUTTON_A : 0);
+      }
+    }
+  }
+
+  return trigger;
+}
+#endif
+
 static void mWR_move_Play(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
   u32 trigger = submenu->overlay->menu_control.trigger;
   mWR_Ovl_c* warning_ovl = submenu->overlay->warning_ovl;
+
+#ifdef MOUSE_INPUT
+  trigger = mWR_mouse_trigger(submenu, menu_info, trigger);
+#endif
 
   if ((trigger & (BUTTON_A | BUTTON_B | BUTTON_START)) != 0) {
     menu_info->proc_status = mSM_OVL_PROC_MOVE;

@@ -23,7 +23,7 @@ static void fITF02_mv(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game, u8
     keyframe->frame_control.speed = 0.5f;
 
     if (aFTR_CAN_PLAY_SE(ftr_actor)) {
-        sAdo_OngenPos((u32)ftr_actor, 0x5C, &ftr_actor->position);
+        sAdo_OngenPos((JaudioObjectId)(uintptr_t)ftr_actor, 0x5C, &ftr_actor->position);
     }
 }
 
@@ -78,7 +78,7 @@ static Gfx* fITF02_GetTwoTileGfx(int x0, int y0, int x1, int y1, GAME* game) {
 
 static void fITF02_dw(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game, u8* data) {
     cKF_SkeletonInfo_R_c* keyframe = &ftr_actor->keyframe;
-    Mtx* mtx = ftr_actor->skeleton_mtx[game->frame_counter & 1];
+    N64Mtx* mtx = ftr_actor->skeleton_mtx[game->frame_counter & 1];
     int ctr_ofs = (int)ftr_actor->dynamic_work_f[0];
     Gfx* scroll_gfx = fITF02_GetTwoTileGfx(0, -ctr_ofs * 3, -ctr_ofs * 2, 0, game);
 

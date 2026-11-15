@@ -7,6 +7,9 @@
 #include "sys_matrix.h"
 #include "m_font.h"
 #include "m_common_data.h"
+#ifdef TARGET_PC
+#include "pc_platform.h"
+#endif
 
 static Banti_c banti;
 
@@ -77,7 +80,11 @@ static void banti_chk_disp_left(GAME_PLAY* play) {
     Game_play_Projection_Trans(play, &get_player_actor_withoutCheck(play)->actor_class.world.position,
                                &player_pos_screen);
 
+#ifdef TARGET_PC
+    if (player_pos_screen.x >= 180.0f + pc_widescreen_get_hud_edge_offset() && player_pos_screen.y >= 150.0f) {
+#else
     if (player_pos_screen.x >= 180.0f && player_pos_screen.y >= 150.0f) {
+#endif
         if (banti.move_left == FALSE) {
             banti.move_left = TRUE;
             banti.move_timer = 0.0f;
@@ -313,7 +320,7 @@ extern void banti_move(GAME_PLAY* play) {
 static int banti_draw_before(GAME* game, cKF_SkeletonInfo_R_c* keyframe, int joint_idx, Gfx** joint_shape,
                              u8* joint_flags, void* arg, s_xyz* joint_rot, xyz_t* joint_pos) {
     Gfx** gfx_pp;
-    Mtx* mtx;
+    N64Mtx* mtx;
     Banti_callback_c* callback_data = (Banti_callback_c*)arg;
 
     gfx_pp = callback_data->gfx_pp;
@@ -388,14 +395,14 @@ static void banti_draw_hiduke_sub(Gfx** gfx_pp, GAME* game, Banti_anim_c* anim, 
 
     GRAPH* g = game->graph;
     xyz_t* set_pos = &set_pos_table[pos_idx];
-    Mtx* m;
+    N64Mtx* m;
     int joint;
     Banti_callback_c callback_data;
 
     Matrix_push();
     Matrix_translate(set_pos->x, set_pos->y, set_pos->z, MTX_MULT);
 
-    m = (Mtx*)GRAPH_ALLOC_TYPE(g, Mtx, anim->keyframe.skeleton->num_shown_joints);
+    m = (N64Mtx*)GRAPH_ALLOC_TYPE(g, N64Mtx, anim->keyframe.skeleton->num_shown_joints);
     callback_data.mtx = m;
 
     if (m != NULL) {
@@ -449,7 +456,7 @@ static void banti_draw_jikan_sub(Gfx** gfx_pp, GAME* game, Banti_anim_c* anim, i
 
     GRAPH* g = game->graph;
     xyz_t* set_pos = &set_pos_table[pos_idx];
-    Mtx* m;
+    N64Mtx* m;
     int joint;
     Banti_callback_c callback_data;
 
@@ -466,7 +473,7 @@ static void banti_draw_jikan_sub(Gfx** gfx_pp, GAME* game, Banti_anim_c* anim, i
         }
     }
 
-    m = (Mtx*)GRAPH_ALLOC_TYPE(g, Mtx, anim->keyframe.skeleton->num_shown_joints);
+    m = (N64Mtx*)GRAPH_ALLOC_TYPE(g, N64Mtx, anim->keyframe.skeleton->num_shown_joints);
     callback_data.mtx = m;
 
     if (m != NULL) {
@@ -540,7 +547,7 @@ extern void banti_draw(GAME_PLAY* play) {
     if (mFI_GET_TYPE(mFI_GetFieldId()) == mFI_FIELDTYPE_FG && mEv_CheckFirstIntro() != TRUE && banti.alpha > 0.01f) {
         GRAPH* g = play->game.graph;
         int poly_render = FALSE;
-        Mtx* m = (Mtx*)GRAPH_ALLOC_TYPE(g, Mtx, 1);
+        N64Mtx* m = (N64Mtx*)GRAPH_ALLOC_TYPE(g, N64Mtx, 1);
 
         /* TODO: submenu mode enums */
         if (play->submenu.process_status != mSM_PROCESS_WAIT && play->submenu.mode > 2) {
@@ -564,6 +571,14 @@ extern void banti_draw(GAME_PLAY* play) {
         if (banti.disp_left == TRUE) {
             Matrix_translate(-184.0f, 0.0f, 0.0f, MTX_MULT);
         }
+
+#ifdef TARGET_PC
+        {
+            f32 edge_x = pc_widescreen_get_hud_edge_offset();
+
+            Matrix_translate(banti.disp_left == TRUE ? -edge_x : edge_x, 0.0f, 0.0f, MTX_MULT);
+        }
+#endif
 
         {
             Gfx** gfx_pp;

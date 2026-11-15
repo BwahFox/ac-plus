@@ -2859,9 +2859,10 @@ static void aMR_SetReserveFurniture(MY_ROOM_ACTOR* my_room, GAME* game) {
                         s16 icon_no = aMR_ItemNo2IconNo(item);
 
                         if (ftrID != -1) {
+                            FTR_ACTOR* reserved_ftr = &l_aMR_work.ftr_actor_list[ftrID];
                             xyz_t effect_pos;
-
-                            aMR_GetFtrShapeCenter(&effect_pos, &l_aMR_work.ftr_actor_list[ftrID]);
+                            aMR_MakeFurnitureCollisionData(reserved_ftr->edge_collision, reserved_ftr);
+                            aMR_GetFtrShapeCenter(&effect_pos, reserved_ftr);
                             if (eEC_CLIP != NULL) {
                                 eEC_CLIP->effect_make_proc(eEC_EFFECT_KAGU_HAPPA, effect_pos, 2, 0, game, RSV_NO,
                                                            icon_no, 0);
@@ -3091,7 +3092,8 @@ static void My_Room_Actor_move(ACTOR* actorx, GAME* game) {
 
             if (my_room->bgm_info.md_no != BGM_SPORTSFAIR_AEROBICS) {
                 mBGMPsComp_MDPlayerPos_param_set(&md_ftr_actor->position, md_angle,
-                                                 aMR_Fname2ConpoIndex(md_ftr_actor->name), (u32)md_ftr_actor);
+                                                 aMR_Fname2ConpoIndex(md_ftr_actor->name),
+                                                 (JaudioObjectId)(uintptr_t)md_ftr_actor);
             }
 #ifdef TARGET_PC
             if (aMR_pc_field) {
@@ -3136,6 +3138,14 @@ static void aMR_SetNowPosition(xyz_t* now_pos, xyz_t pos) {
         *now_pos = pos;
     }
 }
+
+#ifdef TARGET_PC
+static int aMR_FtrMovePastHalf(MY_ROOM_ACTOR* my_room) {
+    cKF_FrameControl_c* fc = &my_room->keyframe.frame_control;
+
+    return fc->current_frame >= (fc->start_frame + fc->end_frame) * 0.5f;
+}
+#endif
 
 static int aMR_JudgePlayerAction(xyz_t* out_pos0, xyz_t* out_pos1, int ftrID) {
     static xyz_t pos0 = { 0.0f, 0.0f, 0.0f };
@@ -3189,8 +3199,20 @@ static int aMR_JudgePlayerAction(xyz_t* out_pos0, xyz_t* out_pos1, int ftrID) {
                     case 2:
                         aMR_SetNowPosition(out_pos0, my_room->nice_pos);
                         aMR_SetNowPosition(out_pos1, my_room->nice_pos);
+#ifdef TARGET_PC
+                        if (ftr_state == aFTR_STATE_PUSH && aMR_FtrMovePastHalf(my_room)) {
+                            return 1;
+                        }
+#endif
                         return 2;
                     case 3:
+#ifdef TARGET_PC
+                        if (ftr_state == aFTR_STATE_PULL && aMR_FtrMovePastHalf(my_room)) {
+                            aMR_SetNowPosition(out_pos0, my_room->nice_pos);
+                            aMR_SetNowPosition(out_pos1, my_room->nice_pos);
+                            return 1;
+                        }
+#endif
                         aMR_SetNowPosition(out_pos0, my_room->pull_target_pos0);
                         aMR_SetNowPosition(out_pos1, my_room->pull_target_pos1);
                         return 3;

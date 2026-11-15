@@ -6,9 +6,9 @@
 #include "ef_effect_control.h"
 
 #ifdef TARGET_PC
-static u8 ctl_win_tagu3_tex[0x200] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 ctl_win_tagu3_tex[0x200];
 #else
-static u8 ctl_win_tagu3_tex[] ATTRIBUTE_ALIGN(32)= {
+ATTRIBUTE_ALIGN(32) static u8 ctl_win_tagu3_tex[]= {
 #include "assets/ctl_sentaku/ctl_win_tagu3_tex.inc"
 };
 #endif
@@ -24,7 +24,7 @@ Vtx ctl_sentaku_v[] = {
 Gfx ctl_sentaku_taguT_model[] = {
 gsDPPipeSync(),
 gsDPSetCombineLERP(PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, 0, 0, 0, TEXEL0, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, 0, 0, 0, TEXEL0),
-gsSPDisplayList(anime_1_txt + 0x30),
+gsSPDisplayList(anime_1_txt + GFX_COMMAND_OFFSET(6)),
 gsDPSetRenderMode(G_RM_XLU_SURF, G_RM_XLU_SURF2),
 gsDPSetTextureImage_Dolphin(G_IM_FMT_IA, G_IM_SIZ_8b, 32, 16, ctl_win_tagu3_tex),
 gsDPSetTile_Dolphin(G_DOLPHIN_TLUT_DEFAULT_MODE, 0, 0, GX_MIRROR, GX_MIRROR, 0, 0),

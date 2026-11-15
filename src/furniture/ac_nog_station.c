@@ -58,107 +58,107 @@ static int fNSN_DrawAfter(GAME* game, cKF_SkeletonInfo_R_c* keyframe, int joint_
 }
 
 #ifdef TARGET_PC
-u16 int_nog_station1_a_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) u16 int_nog_station1_a_pal[0x20 / sizeof(u16)];
 #else
-u16 int_nog_station1_a_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) u16 int_nog_station1_a_pal[] = {
 #include "assets/int_nog_station1_a_pal.inc"
 };
 #endif
 #ifdef TARGET_PC
-u16 int_nog_station1_b_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) u16 int_nog_station1_b_pal[0x20 / sizeof(u16)];
 #else
-u16 int_nog_station1_b_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) u16 int_nog_station1_b_pal[] = {
 #include "assets/int_nog_station1_b_pal.inc"
 };
 #endif
 #ifdef TARGET_PC
-u16 int_nog_station1_c_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) u16 int_nog_station1_c_pal[0x20 / sizeof(u16)];
 #else
-u16 int_nog_station1_c_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) u16 int_nog_station1_c_pal[] = {
 #include "assets/int_nog_station1_c_pal.inc"
 };
 #endif
 #ifdef TARGET_PC
-u16 int_nog_station1_d_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) u16 int_nog_station1_d_pal[0x20 / sizeof(u16)];
 #else
-u16 int_nog_station1_d_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) u16 int_nog_station1_d_pal[] = {
 #include "assets/int_nog_station1_d_pal.inc"
 };
 #endif
 #ifdef TARGET_PC
-u16 int_nog_station1_e_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) u16 int_nog_station1_e_pal[0x20 / sizeof(u16)];
 #else
-u16 int_nog_station1_e_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) u16 int_nog_station1_e_pal[] = {
 #include "assets/int_nog_station1_e_pal.inc"
 };
 #endif
 #ifdef TARGET_PC
-u16 int_nog_station2_a_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) u16 int_nog_station2_a_pal[0x20 / sizeof(u16)];
 #else
-u16 int_nog_station2_a_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) u16 int_nog_station2_a_pal[] = {
 #include "assets/int_nog_station2_a_pal.inc"
 };
 #endif
 #ifdef TARGET_PC
-u16 int_nog_station2_b_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) u16 int_nog_station2_b_pal[0x20 / sizeof(u16)];
 #else
-u16 int_nog_station2_b_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) u16 int_nog_station2_b_pal[] = {
 #include "assets/int_nog_station2_b_pal.inc"
 };
 #endif
 #ifdef TARGET_PC
-u16 int_nog_station2_c_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) u16 int_nog_station2_c_pal[0x20 / sizeof(u16)];
 #else
-u16 int_nog_station2_c_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) u16 int_nog_station2_c_pal[] = {
 #include "assets/int_nog_station2_c_pal.inc"
 };
 #endif
 #ifdef TARGET_PC
-u16 int_nog_station2_d_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) u16 int_nog_station2_d_pal[0x20 / sizeof(u16)];
 #else
-u16 int_nog_station2_d_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) u16 int_nog_station2_d_pal[] = {
 #include "assets/int_nog_station2_d_pal.inc"
 };
 #endif
 #ifdef TARGET_PC
-u16 int_nog_station2_e_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) u16 int_nog_station2_e_pal[0x20 / sizeof(u16)];
 #else
-u16 int_nog_station2_e_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) u16 int_nog_station2_e_pal[] = {
 #include "assets/int_nog_station2_e_pal.inc"
 };
 #endif
 #ifdef TARGET_PC
-u16 int_nog_station3_a_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) u16 int_nog_station3_a_pal[0x20 / sizeof(u16)];
 #else
-u16 int_nog_station3_a_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) u16 int_nog_station3_a_pal[] = {
 #include "assets/int_nog_station3_a_pal.inc"
 };
 #endif
 #ifdef TARGET_PC
-u16 int_nog_station3_b_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) u16 int_nog_station3_b_pal[0x20 / sizeof(u16)];
 #else
-u16 int_nog_station3_b_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) u16 int_nog_station3_b_pal[] = {
 #include "assets/int_nog_station3_b_pal.inc"
 };
 #endif
 #ifdef TARGET_PC
-u16 int_nog_station3_c_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) u16 int_nog_station3_c_pal[0x20 / sizeof(u16)];
 #else
-u16 int_nog_station3_c_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) u16 int_nog_station3_c_pal[] = {
 #include "assets/int_nog_station3_c_pal.inc"
 };
 #endif
 #ifdef TARGET_PC
-u16 int_nog_station3_d_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) u16 int_nog_station3_d_pal[0x20 / sizeof(u16)];
 #else
-u16 int_nog_station3_d_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) u16 int_nog_station3_d_pal[] = {
 #include "assets/int_nog_station3_d_pal.inc"
 };
 #endif
 #ifdef TARGET_PC
-u16 int_nog_station3_e_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) u16 int_nog_station3_e_pal[0x20 / sizeof(u16)];
 #else
-u16 int_nog_station3_e_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) u16 int_nog_station3_e_pal[] = {
 #include "assets/int_nog_station3_e_pal.inc"
 };
 #endif
@@ -173,7 +173,7 @@ static u16* fMSM_palette_table[] = {
 static void fNSN_dw(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game, u8* data) {
     int mtx_idx = game->frame_counter & 1;
     cKF_SkeletonInfo_R_c* keyframe = &ftr_actor->keyframe;
-    Mtx* mtx = ftr_actor->skeleton_mtx[mtx_idx];
+    N64Mtx* mtx = ftr_actor->skeleton_mtx[mtx_idx];
     int station_idx = (ftr_actor->name - 0x42A) & 15;
     u16* pal = fMSM_palette_table[station_idx];
 

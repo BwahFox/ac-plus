@@ -1,4 +1,9 @@
+#ifdef TARGET_PC
+#include <string.h>
+#include <tracy/Tracy.hpp>
+#else
 #include <libc/string.h>
+#endif
 #include <dolphin/vi.h>
 #include "_mem.h"
 #include "JSystem/J2D/J2DGrafContext.h"
@@ -9,13 +14,21 @@
 #include "JSystem/JUtility/JUTProcBar.h"
 #include "JSystem/JFramework/JFWDisplay.h"
 
+#ifdef TARGET_PC
+#include "pc_platform.h"
+#else
+#define pc_widescreen_set_projection GXSetProjection
+#define pc_widescreen_set_viewport GXSetViewport
+#endif
+
 // Sources: https://github.com/zeldaret/tp/blob/master/libs/JSystem/JFramework/JFWDisplay.cpp
 // https://github.com/kiwi515/ogws/blob/master/src/egg/core/eggAsyncDisplay.cpp
 // gpHang: https://github.com/valentinaslover/paper-mar/blob/master/source/sdk/DEMOInit.c#L280
 
-GC_Mtx e_mtx = { { 1.0f, 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f, 0.0f } };
+Mtx e_mtx = { { 1.0f, 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f, 0.0f } };
 
 JFWDisplay* JFWDisplay::sManager;
+static GXTexObj clear_z_tobj;
 
 extern void JFWThreadAlarmHandler(OSAlarm*, OSContext*);
 extern void JFWGXAbortAlarmHandler(OSAlarm*, OSContext*);
@@ -23,11 +36,15 @@ void waitForTick(u32, u16);
 void diagnoseGpHang();
 
 inline void JFWDrawDoneAlarm() {
+#ifdef TARGET_PC
+    GXDrawDone();
+#else
     OSAlarm alarm;
     OSCreateAlarm(&alarm);
     OSSetAlarm(&alarm, (OS_TIMER_CLOCK), JFWGXAbortAlarmHandler);
     GXDrawDone();
     OSCancelAlarm(&alarm);
+#endif
 }
 
 void JFWDisplay::ctor_subroutine(const GXRenderModeObj* rmode, bool enableAlpha) {
@@ -55,13 +72,21 @@ void JFWDisplay::ctor_subroutine(const GXRenderModeObj* rmode, bool enableAlpha)
     JUTProcBar::clear();
 }
 
-JFWDisplay::JFWDisplay(const _GXRenderModeObj* rmode, JKRHeap* heap, JUTXfb::EXfbNumber bufferCount, bool p3) {
+JFWDisplay::JFWDisplay(const GXRenderModeObj* rmode, JKRHeap* heap, JUTXfb::EXfbNumber bufferCount, bool p3) {
     ctor_subroutine(rmode, p3);
     mXfb = JUTXfb::createManager(rmode, heap, bufferCount);
 }
 
 JFWDisplay::~JFWDisplay() {
+#ifdef TARGET_PC
+    /* Aurora has already stopped the host frame loop by the time JSystem is
+     * torn down, so no further retrace messages can arrive on PC. */
+#else
     waitBlanking(2);
+#endif
+#ifdef TARGET_PC
+    GXDestroyTexObj(&clear_z_tobj);
+#endif
     JUTProcBar::destroy();
     JUTXfb::destroyManager();
 }
@@ -71,14 +96,14 @@ JFWDisplay* JFWDisplay::createManager(const GXRenderModeObj* rmode, JKRHeap* hea
     JUT_CONFIRM_MESSAGE(sManager == 0);
 
     if (sManager == nullptr)
-        sManager = new JFWDisplay(rmode, heap, bufferCount, p4);
+        sManager = JKR_NEW JFWDisplay(rmode, heap, bufferCount, p4);
 
     return sManager;
 }
 
 void JFWDisplay::destroyManager() {
     JUT_CONFIRM_MESSAGE(sManager);
-    delete sManager;
+    JKR_DELETE(sManager);
     sManager = nullptr;
 }
 
@@ -220,11 +245,14 @@ void JFWDisplay::endGX() {
 }
 
 void JFWDisplay::beginRender() {
+    ZoneScoped;
     JUTProcBar::getManager()->wholeLoopEnd();
     JUTProcBar::getManager()->wholeLoopStart();
     JUTProcBar::getManager()->idleStart();
 
+#ifndef TARGET_PC
     waitForTick(mTickRate, mFrameRate);
+#endif
     JUTVideo::getManager()->waitRetraceIfNeed();
 
     u32 tick = OSGetTick();
@@ -260,6 +288,7 @@ void JFWDisplay::beginRender() {
 }
 
 void JFWDisplay::endRender() {
+    ZoneScoped;
     endGX();
 
     switch (JUTXfb::getManager()->getBufferNum()) {
@@ -278,6 +307,7 @@ void JFWDisplay::endRender() {
 }
 
 void JFWDisplay::endFrame() {
+    ZoneScoped;
     JUTProcBar::getManager()->cpuEnd();
     JUTProcBar::getManager()->gpWaitStart();
 
@@ -328,8 +358,8 @@ void waitForTick(u32 p1, u16 p2) {
             if (!OSReceiveMessage(JUTVideo::getManager()->getMessageQueue(), &msg, OS_MESSAGE_BLOCK)) {
                 msg = 0;
             }
-        } while (((int)msg - (int)nextCount) < 0);
-        nextCount = (int)msg + uVar1;
+        } while (((s32)(uintptr_t)msg - (s32)nextCount) < 0);
+        nextCount = (u32)(uintptr_t)msg + uVar1;
     }
 }
 
@@ -349,9 +379,7 @@ void JFWDisplay::threadSleep(s64 time) {
     OSRestoreInterrupts(status);
 }
 
-static GXTexObj clear_z_tobj;
-static u8 clear_z_TX[]
-    __attribute__((aligned(32))) = { 0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00,
+ATTRIBUTE_ALIGN(32) static u8 clear_z_TX[] = { 0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00,
                                      0xff, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0x00, 0xff,
                                      0x00, 0xff, 0x00, 0xff, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
                                      0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -413,6 +441,10 @@ void* JFWDisplay::changeToDoubleXfb() {
 }
 
 void JFWDisplay::clearEfb_init() {
+#ifdef TARGET_PC
+    /* clear_z_tobj is static and the display manager may be recreated. */
+    GXDestroyTexObj(&clear_z_tobj);
+#endif
     GXInitTexObj(&clear_z_tobj, &clear_z_TX, 4, 4, GX_TF_Z24X8, GX_REPEAT, GX_REPEAT, GX_FALSE);
     GXInitTexObjLOD(&clear_z_tobj, GX_NEAR, GX_NEAR, 0.0f, 0.0f, 0.0f, GX_FALSE, GX_FALSE, GX_ANISO_1);
 }
@@ -423,8 +455,8 @@ void JFWDisplay::clearEfb(GXColor color) {
     u16 width = mRMode->fbWidth;
 
     C_MTXOrtho(mtx, 0.0f, height, 0.0f, width, 0.0f, 1.0f);
-    GXSetProjection(mtx, GX_ORTHOGRAPHIC);
-    GXSetViewport(0.0f, 0.0f, width, height, 0.0f, 1.0f);
+    pc_widescreen_set_projection(mtx, GX_ORTHOGRAPHIC);
+    pc_widescreen_set_viewport(0.0f, 0.0f, width, height, 0.0f, 1.0f);
     GXSetScissor(0, 0, width, height);
 
     GXLoadPosMtxImm(e_mtx, GX_PNMTX0);

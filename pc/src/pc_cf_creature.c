@@ -623,7 +623,9 @@ void pc_cf_museum_draw_fish(struct game_s* game_, f32 scale) {
         a = t * 0.004f + (f32)i * 2.4f;
         x = k[0] + cosf(a) * k[2] * (0.6f + 0.4f * (f32)(i % 3) / 2.0f);
         z = k[1] + sinf(a) * k[3] * (0.6f + 0.4f * (f32)(i % 3) / 2.0f);
-        Matrix_translate(x, 28.0f + (f32)(i % 4) * 8.0f, z, MTX_LOAD);
+        /* (the long sea tank's bed is higher than the room tanks': its fish swim above it, not in the gravel) */
+        Matrix_translate(x, (l_fish[i].area == aSOG_SPAWN_AREA_SEA ? 50.0f : 28.0f) + (f32)(i % 4) * 8.0f, z,
+                         MTX_LOAD);
         /* along its way round (the models' heads along z) */
         Matrix_RotateY((s16)((-a) * (32768.0f / PC_CF_MUSEUM_PI)), MTX_MULT);
         {
@@ -634,6 +636,50 @@ void pc_cf_museum_draw_fish(struct game_s* game_, f32 scale) {
         }
         pc_cf_ftr_draw_model((mActor_name_t)(PC_CF_MUSEUM_MODEL + 4 * i), (struct game_s*)game, t * 0.5f + (f32)i * 7.0f);
     }
+}
+
+/* The museum's plaques (ac_museum_fish.c, ac_museum_insect.c): the City Folk fish in a tank (0-3 the room's, 4 the
+ * long sea tank, as pc_cf_museum_draw_fish puts them), or the bugs nearest a plaque at (px, pz) of those listed, as
+ * PC_CF_PLAQUE | n (its fish or bug number) with who gave it */
+int pc_cf_museum_plaque_fish(int tank, s16* names, s16* donors, int max) {
+    int i, n = 0;
+
+    for (i = 0; i < PC_CF_FISH_NUM && n < max; i++) {
+        if (l_donor[i] != 0 && (l_fish[i].area == aSOG_SPAWN_AREA_SEA ? 4 : i & 3) == tank) {
+            names[n] = (s16)(PC_CF_PLAQUE | i);
+            donors[n++] = l_donor[i];
+        }
+    }
+    return n;
+}
+
+int pc_cf_museum_plaque_bugs(int plaque, const xyz_t* plaques, int plaque_num, s16* names, s16* donors, int max) {
+    int i, k, n = 0;
+
+    for (i = 0; i < PC_CF_BUG_NUM && n < max; i++) {
+        /* where pc_cf_museum_draw_bugs keeps it */
+        f32 x = 140.0f + (f32)((i / 2) % 7) * 50.0f;
+        f32 z = ((i / 14) & 1 ? 450.0f : 170.0f) + (f32)(i & 1) * 50.0f;
+        int best = 0;
+        f32 best_d = 1e30f;
+
+        if (l_donor[PC_CF_FISH_NUM + i] == 0) {
+            continue;
+        }
+        for (k = 0; k < plaque_num; k++) {
+            f32 dx = plaques[k].x - x, dz = plaques[k].z - z, d = dx * dx + dz * dz;
+
+            if (d < best_d) {
+                best_d = d;
+                best = k;
+            }
+        }
+        if (best == plaque) {
+            names[n] = (s16)(PC_CF_PLAQUE | i);
+            donors[n++] = l_donor[PC_CF_FISH_NUM + i];
+        }
+    }
+    return n;
 }
 
 void pc_cf_museum_draw_bugs(struct game_s* game_, f32 scale) {

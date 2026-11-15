@@ -6,6 +6,7 @@
  *              except with --verbose, whose log goes to the console)
  * The window title says "jank #N saved" for a moment. Nothing here is in a release build. */
 #ifdef PC_DEV
+#include <SDL3/SDL.h>
 #include "pc_platform.h"
 #include "m_play.h"
 #include "m_common_data.h"
@@ -48,26 +49,10 @@ static void jank_mkdir(const char* path) {
 #endif
 }
 
-/* The picture on screen now (the back buffer, just before it's presented) */
+/* The game's picture (pc_acplus_shot.c: written a few frames later) */
+void pc_shot_request(const char* path);
 static void jank_shot(const char* path) {
-    int w = g_pc_window_w, h = g_pc_window_h, y;
-    unsigned char* rgb = malloc((size_t)w * h * 3);
-    unsigned char* row = malloc((size_t)w * 3);
-
-    if (rgb != NULL && row != NULL) {
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-        glReadBuffer(GL_BACK);
-        glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, rgb);
-        for (y = 0; y < h / 2; y++) { /* GL rows are bottom-up */
-            memcpy(row, rgb + (size_t)y * w * 3, (size_t)w * 3);
-            memcpy(rgb + (size_t)y * w * 3, rgb + (size_t)(h - 1 - y) * w * 3, (size_t)w * 3);
-            memcpy(rgb + (size_t)(h - 1 - y) * w * 3, row, (size_t)w * 3);
-        }
-        stbi_write_png(path, w, h, 3, rgb, w * 3);
-    }
-    free(row);
-    free(rgb);
+    pc_shot_request(path);
 }
 
 static void jank_state(FILE* f) {

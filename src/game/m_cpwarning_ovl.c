@@ -4,6 +4,9 @@
 #include "sys_matrix.h"
 #include "m_common_data.h"
 #include "m_font.h"
+#ifdef MOUSE_INPUT
+#include "game_pointer.h"
+#endif
 
 static mCW_Ovl_c cpwarning_ovl_data;
 
@@ -44,9 +47,57 @@ static void mCW_move_Move(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
     }
 }
 
+#ifdef MOUSE_INPUT
+static u32 mCW_mouse_trigger(Submenu* submenu, u32 trigger) {
+#ifdef MOUSE_INPUT
+    const GamePointerFrame* pointer = acgc_pointer_frame();
+#endif
+    mCW_Ovl_c* cpwarning_ovl = submenu->overlay->cpwarning_ovl;
+    f32 scale = cpwarning_ovl->scale;
+    f32 mouse_x, mouse_y;
+    f32 y = 120.0f + 20.0f * scale;
+    u32 pressed;
+    int i;
+
+    mouse_x = pointer->x;
+    mouse_y = pointer->y;
+    if (submenu->current_menu_type != mSM_OVL_CPWARNING ||
+        !pointer->visible ||
+        !pointer->inside) {
+        return trigger;
+    }
+
+    pressed = pointer->pressed;
+    if (pressed & GAME_POINTER_RIGHT) {
+        cpwarning_ovl->diary_edit_mode = 1;
+        return trigger | BUTTON_A;
+    }
+
+    for (i = 0; i < 2; i++) {
+        f32 x = 160.0f + (i == 0 ? -18.0f : 21.0f) * scale;
+        f32 width = mFont_GetStringWidth(i == 0 ? mCW_yes_mes : mCW_no_mes,
+                                       i == 0 ? sizeof(mCW_yes_mes) : sizeof(mCW_no_mes), TRUE) * scale;
+
+        if (mouse_x >= x - 2.0f && mouse_x < x + width + 2.0f &&
+            mouse_y >= y && mouse_y < y + 16.0f * scale) {
+            if (cpwarning_ovl->diary_edit_mode != i) {
+                cpwarning_ovl->diary_edit_mode = i;
+                sAdo_SysTrgStart(NA_SE_CURSOL);
+            }
+            return trigger | ((pressed & GAME_POINTER_LEFT) ? BUTTON_A : 0);
+        }
+    }
+    return trigger;
+}
+#endif
+
 static void mCW_move_Play(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
     u32 trigger = submenu->overlay->menu_control.trigger;
     mCW_Ovl_c* cpwarning_ovl = submenu->overlay->cpwarning_ovl;
+
+#ifdef MOUSE_INPUT
+    trigger = mCW_mouse_trigger(submenu, trigger);
+#endif
 
     if ((trigger & BUTTON_A) != 0) {
         menu_info->next_proc_status = mSM_OVL_PROC_END;

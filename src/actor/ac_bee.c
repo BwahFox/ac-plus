@@ -77,8 +77,8 @@ static void aBEE_anime_proc(BEE_ACTOR* bee) {
     kf_p->frame_control.current_frame = bee->start_frame;
     cKF_SkeletonInfo_R_play(kf_p);
     kf_p->frame_control.speed = 0.0f;
-    bee->fly_angle[0] += (s16)(500.0f * dt);
-    bee->fly_angle[1] -= (s16)(500.0f * dt);
+    bee->fly_angle[0] += F32_TO_S16(500.0f * dt);
+    bee->fly_angle[1] -= F32_TO_S16(500.0f * dt);
 }
 
 static void aBEE_fly_move_common(BEE_ACTOR* bee, GAME* game) {
@@ -115,7 +115,7 @@ static void aBEE_fly_move_common(BEE_ACTOR* bee, GAME* game) {
     bee->speed += fabsf((f32)((DEG2SHORT_ANGLE2(180.0f) - abs_speed_angle) / DEG2SHORT_ANGLE2(30.0f)));
     add_calc(&bee->actor_class.speed, bee->speed, CALC_EASE(0.3f), 0.15f, 0.0f);
 
-    bee->bobbing_counter += (s16)(0x900 * game->graph->dt_num_60fps_frames);
+    bee->bobbing_counter += F32_TO_S16(0x900 * game->graph->dt_num_60fps_frames);
     if (player != NULL) {
         bee->pos_y = player->world.position.y + 50.0f;
     }
@@ -167,7 +167,7 @@ static void aBEE_fly(ACTOR* actorx, GAME* game) {
     xyz_t pos;
 
     aBEE_calc_fly_angle(actorx);
-    if ((u32)bee == mPlib_Get_item_net_catch_label()) {
+    if ((mPlayer_label_t)bee == mPlib_Get_item_net_catch_label()) {
         aBEE_setupAction(bee, aBEE_ACT_CAUGHT, game);
     } else if (actorx->shape_info.rotation.x <= DEG2SHORT_ANGLE2(22.5f)) {
         if (mPlib_check_player_actor_main_index_Pitfall(game)) {
@@ -202,9 +202,12 @@ static void aBEE_fly(ACTOR* actorx, GAME* game) {
 
                 swing_timer = GET_PLAYER_ACTOR_NOW()->Get_Item_net_catch_swing_timer_proc(GET_PLAYER_ACTOR_NOW_ACTOR(), gamePT);
                 if ((swing_timer > 0.0f || mPlib_Check_StopNet(&pos)) && actorx->player_distance_xz < 40.0f) {
-                    GET_PLAYER_ACTOR_NOW()->Set_Item_net_catch_request_force_proc(GET_PLAYER_ACTOR_NOW_ACTOR(), gamePT, (u32)actorx, TRUE);
+                    GET_PLAYER_ACTOR_NOW()->Set_Item_net_catch_request_force_proc(
+                        GET_PLAYER_ACTOR_NOW_ACTOR(), gamePT, (mPlayer_label_t)actorx, TRUE);
                 } else {
-                    GET_PLAYER_ACTOR_NOW()->Set_Item_net_catch_request_table_proc(GET_PLAYER_ACTOR_NOW_ACTOR(), gamePT, (u32)actorx, TRUE, &actorx->world.position, 24.0f);
+                    GET_PLAYER_ACTOR_NOW()->Set_Item_net_catch_request_table_proc(
+                        GET_PLAYER_ACTOR_NOW_ACTOR(), gamePT, (mPlayer_label_t)actorx, TRUE,
+                        &actorx->world.position, 24.0f);
                 }
             }
 
@@ -228,7 +231,7 @@ static void aBEE_caught(ACTOR* actorx, GAME* game) {
     }
 
     if (bee->insect_actor != NULL) {
-        if (mPlib_Change_item_net_catch_label((u32)bee->insect_actor, 0)) {
+        if (mPlib_Change_item_net_catch_label((mPlayer_label_t)bee->insect_actor, 0)) {
             aBEE_setupAction(bee, aBEE_ACT_DISAPPEAR, game);
             return;
         }
@@ -353,7 +356,7 @@ static void aBEE_setupAction(BEE_ACTOR* bee, int action, GAME* game) {
 static void aBEE_actor_move(ACTOR* actorx, GAME* game) {
     BEE_ACTOR* bee = (BEE_ACTOR*)actorx;
     
-    sAdo_OngenPos((u32)actorx, NA_SE_B0, &actorx->world.position);
+    sAdo_OngenPos((JaudioObjectId)(uintptr_t)actorx, NA_SE_B0, &actorx->world.position);
     if ((actorx->world.position.x < 0.0f && actorx->world.position.z < 0.0f)) {
         // empty block, maybe for debug?
     } else {
@@ -372,7 +375,7 @@ static void aBEE_actor_draw(ACTOR* actorx, GAME* game) {
     GRAPH* graph;
     BEE_ACTOR* bee = (BEE_ACTOR*)actorx;
     int idx;
-    Mtx* mtx;
+    N64Mtx* mtx;
     Gfx* gfx;
 
     if (actorx->world.position.x < 0.0f || actorx->world.position.z < 0.0f) {

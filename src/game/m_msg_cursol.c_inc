@@ -54,7 +54,7 @@ static int mMsg_fast_text_allowed(mMsg_Window_c* msg_p) {
 
 static int mMsg_Check_CancelOrder(mMsg_Window_c* msg_p) {
   if (msg_p->cancelable_flag != FALSE && msg_p->cancel_flag == FALSE && (msg_p->status_flags & mMsg_STATUS_FLAG_CURSOL_JUST) == 0) {
-    if (chkTrigger(BUTTON_A) || chkTrigger(BUTTON_B)) {
+    if (mMsg_get_trigger() & (BUTTON_A | BUTTON_B)) {
       return TRUE;
     }
   }
@@ -70,6 +70,20 @@ static int mMsg_Main_Cursol_Check_ControlCursol(mMsg_Window_c* msg_p, int idx) {
   }
 
   return FALSE;
+}
+
+static int mMsg_Cursol_IsFastText(mMsg_Window_c* msg_p) {
+  return (msg_p->status_flags & mMsg_STATUS_FLAG_FAST_TEXT) != 0 && mMsg_fast_text_allowed(msg_p);
+}
+
+static f32 mMsg_Cursol_FrameStep(mMsg_Window_c* msg_p) {
+  return mMsg_Cursol_IsFastText(msg_p) ? 2.0f : 1.0f;
+}
+
+static void mMsg_Cursol_HoldTimer(mMsg_Window_c* msg_p) {
+  f32 hold = 0.5f * mMsg_Cursol_FrameStep(msg_p) * (f32)gamePT->graph->dt_num_60fps_frames;
+
+  msg_p->cursor_timer = MAX(msg_p->cursor_timer, hold);
 }
 
 static int mMsg_Main_Cursol_Last_ControlCursol(mMsg_Window_c* msg_p, int* idx_p) {
@@ -102,7 +116,7 @@ static int mMsg_Main_Cursol_Clear_ControlCursol(mMsg_Window_c* msg_p, int* idx_p
   (*idx_p) += mMsg_Set_SizeCode(msg_p, *idx_p);
   msg_p->end_text_cursor_idx = *idx_p;
   mMsg_Clear_CursolIndex(msg_p);
-  mMsg_SetTimer(msg_p, 20.0f);
+  mMsg_SetTimer(msg_p, 20.0f + MIN(msg_p->cursor_timer, 0.0f));
   return mMsg_RESULT_TRUE;
 }
 
@@ -122,9 +136,9 @@ static int mMsg_Main_Cursol_CursolSetTime_ControlCursol(mMsg_Window_c* msg_p, in
       set_time *= 0.2f;
     }
 #endif
-    msg_p->cursor_timer = set_time;
+    mMsg_SetTimer(msg_p, set_time + MIN(msg_p->cursor_timer, 0.0f));
 
-    if ((msg_p->status_flags & mMsg_STATUS_FLAG_FAST_TEXT) && mMsg_fast_text_allowed(msg_p)) {
+    if (mMsg_Cursol_IsFastText(msg_p)) {
       mMsg_sound_MessageSpeedForce(1.0f);
     }
     else {
@@ -899,6 +913,7 @@ static int mMsg_Main_Cursol_GiveOpen_ControlCursol(mMsg_Window_c* msg_p, int* id
   }
   else {
     msg_p->end_text_cursor_idx = *idx_p;
+    mMsg_Cursol_HoldTimer(msg_p);
     return mMsg_RESULT_TRUE;
   }
 }
@@ -911,6 +926,7 @@ static int mMsg_Main_Cursol_GiveClose_ControlCursol(mMsg_Window_c* msg_p, int* i
   }
   else {
     msg_p->end_text_cursor_idx = *idx_p;
+    mMsg_Cursol_HoldTimer(msg_p);
     return mMsg_RESULT_TRUE;
   }
 }
@@ -1169,17 +1185,22 @@ static int mMsg_Main_Cursol_ControlCursol(mMsg_Window_c* msg_p) {
   int choice_hidden = mChoice_check_main_index(&msg_p->choice_window) == mChoice_MAIN_HIDE;
   int res = TRUE;
   int utter = FALSE;
-  int processed = FALSE;
 
 #ifdef PC_ENHANCEMENTS
   /* B latches fast text for the rest of the message; L/R or DPAD also speed it up */
   if (mMsg_fast_text_allowed(msg_p) &&
-      (chkTrigger(BUTTON_B) || chkButton(BUTTON_L) || chkButton(BUTTON_R) || chkButton(BUTTON_DDOWN) || chkButton(BUTTON_DUP) || chkButton(BUTTON_DLEFT) || chkButton(BUTTON_DRIGHT))) {
+      ((g_pc_settings.fast_text && !mEv_IsTitleDemo()) ||
+       (mMsg_get_trigger() & BUTTON_B) || chkButton(BUTTON_L) || chkButton(BUTTON_R) ||
+       chkButton(BUTTON_DDOWN) || chkButton(BUTTON_DUP) || chkButton(BUTTON_DLEFT) || chkButton(BUTTON_DRIGHT))) {
     msg_p->status_flags |= mMsg_STATUS_FLAG_FAST_TEXT;
   }
 #else
   if ((msg_p->status_flags & mMsg_STATUS_FLAG_CURSOL_JUST) == 0) {
-    if (chkButton(BUTTON_B)) {
+    int fast_text = chkButton(BUTTON_B);
+#ifdef MOUSE_INPUT
+    fast_text = fast_text || (!mEv_IsTitleDemo() && (acgc_pointer_frame()->held & GAME_POINTER_RIGHT));
+#endif
+    if (fast_text) {
       msg_p->status_flags |= mMsg_STATUS_FLAG_FAST_TEXT;
     }
     else {
@@ -1195,8 +1216,9 @@ static int mMsg_Main_Cursol_ControlCursol(mMsg_Window_c* msg_p) {
   if (msg_p->cancel_flag  && (msg_p->status_flags & mMsg_STATUS_FLAG_CURSOL_JUST) == 0) {
     *cursor_timer = 0.0f;
   }
-  else if ((msg_p->status_flags & mMsg_STATUS_FLAG_FAST_TEXT) && mMsg_fast_text_allowed(msg_p)) {
-    /* Fast text drains at 2x. Keep negative overshoot so cadence is not quantized by host FPS. */
+  else if (mMsg_Cursol_IsFastText(msg_p)) {
+    /* Fast text drains at 2x. Also skips pauses. */
+    *cursor_timer = MIN(*cursor_timer, mMsg_Cursol_FrameStep(msg_p));
     (*cursor_timer) -= 2.0f * (f32)gamePT->graph->dt_num_60fps_frames;
   }
   else {
@@ -1213,15 +1235,15 @@ static int mMsg_Main_Cursol_ControlCursol(mMsg_Window_c* msg_p) {
   }
   else {
     msg_p->hide_choice_window_timer = 3;
-    if (*cursor_timer < 0.0f) {
-      *cursor_timer = 0.0f;
-    }
+    mMsg_Cursol_HoldTimer(msg_p);
   }
 
   mMsg_Unset_NowUtter(msg_p);
   msg_p->force_voice_enable_flag = FALSE;
 
   if ((*cursor_timer <= 0.0f) && choice_hidden) {
+    mMsg_cursor_waiting = FALSE;
+
     while (TRUE) {
       u8 code = msg_p->msg_data->text_buf.data[idx];
 
@@ -1238,6 +1260,10 @@ static int mMsg_Main_Cursol_ControlCursol(mMsg_Window_c* msg_p) {
       else if (mMsg_Main_Cursol_Check_ControlCursol(msg_p, idx)) {
         int proc_res = mMsg_Main_Cursol_Proc_ControlCursol(msg_p, &idx);
 
+        if (proc_res != mMsg_RESULT_VOID) {
+          msg_p->status_flags &= ~mMsg_STATUS_FLAG_NOT_PAUSE_FRAME;
+        }
+
         if (proc_res == mMsg_RESULT_FALSE) {
           if (msg_p->hide_choice_window_timer == 0 && msg_p->free_str_color_idx[3] == 1) {
             mMsg_sound_voice_endcode_set(msg_p);
@@ -1247,26 +1273,33 @@ static int mMsg_Main_Cursol_ControlCursol(mMsg_Window_c* msg_p) {
           break;
         }
         else if (proc_res == mMsg_RESULT_TRUE) {
+          if ((msg_p->status_flags & mMsg_STATUS_FLAG_LAST_DELAY) != 0) {
+            *cursor_timer += mMsg_Cursol_FrameStep(msg_p);
+          }
+
           msg_p->force_voice_enable_flag = TRUE;
           break;
         }
       }
       else {
         int cur_idx = idx;
+        int fast_text = mMsg_Cursol_IsFastText(msg_p);
 
-        if ((msg_p->status_flags & mMsg_STATUS_FLAG_FAST_TEXT) != 0 && mMsg_fast_text_allowed(msg_p)) {
+        if (fast_text) {
           mMsg_sound_MessageSpeedClear(1);
+          msg_p->status_flags &= ~mMsg_STATUS_FLAG_NOT_PAUSE_FRAME;
         }
         else {
           mMsg_sound_MessageSpeedClear(2);
         }
 
-        idx += mMsg_Set_SizeCode(msg_p, idx);
+        if ((msg_p->status_flags & mMsg_STATUS_FLAG_NOT_PAUSE_FRAME) == 0) {
+          idx += mMsg_Set_SizeCode(msg_p, idx);
+        }
+
         msg_p->end_text_cursor_idx = idx;
-        processed = TRUE;
-        /* 30Hz character cadence; retain overshoot and keep consuming chars
-         * while this frame's dt budget allows it. */
-        *cursor_timer += 2.0f;
+        msg_p->status_flags ^= mMsg_STATUS_FLAG_NOT_PAUSE_FRAME;
+        *cursor_timer += mMsg_Cursol_FrameStep(msg_p);
 
         if  (msg_p->cancel_flag == FALSE) {
           if (mMsg_sound_CodeVoice(msg_p, cur_idx)) {
@@ -1278,10 +1311,6 @@ static int mMsg_Main_Cursol_ControlCursol(mMsg_Window_c* msg_p) {
         }
       }
     }
-  }
-
-  if (processed == FALSE) {
-    msg_p->status_flags &= ~mMsg_STATUS_FLAG_NOT_PAUSE_FRAME;
   }
 
   if (utter) {

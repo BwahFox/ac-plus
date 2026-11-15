@@ -42,10 +42,10 @@ typedef struct {
     /* look, ready to draw */
     int gender;
     u8 name[8];
-    u8 face_tex[0xE00] ATTRIBUTE_ALIGN(32);
-    u16 face_pal[16] ATTRIBUTE_ALIGN(32);
-    u8 cloth_tex[0x200] ATTRIBUTE_ALIGN(32);
-    u16 cloth_pal[16] ATTRIBUTE_ALIGN(32);
+    ATTRIBUTE_ALIGN(32) u8 face_tex[0xE00];
+    ATTRIBUTE_ALIGN(32) u16 face_pal[16];
+    ATTRIBUTE_ALIGN(32) u8 cloth_tex[0x200];
+    ATTRIBUTE_ALIGN(32) u16 cloth_pal[16];
     struct actor_s* actor; /* the puppet in this scene, if any (ac_mp_puppet.c) */
 } pc_mp_remote;
 

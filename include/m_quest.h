@@ -47,6 +47,20 @@ enum {
 };
 
 /* sizeof(mQst_base_c) == 0xC */
+#ifdef _MSC_VER
+/* MSVC reserves the full bitfield storage unit. Use u16 so the deadline
+ * starts at 0x02, and retain the original four-byte struct alignment. */
+typedef struct ATTRIBUTE_ALIGN(4) quest_base_s {
+    /* 0x00 */ u16 quest_type : 2;
+    /* 0x00 */ u16 quest_kind : 6;
+    /* 0x01 */ u16 time_limit_enabled : 1;
+    /* 0x01 */ u16 progress : 4;
+    /* 0x01 */ u16 give_reward : 1;
+    /* 0x01 */ u16 unused : 2;
+
+    /* 0x02 */ lbRTC_time_c time_limit;
+} mQst_base_c;
+#else
 typedef struct quest_base_s {
     /* 0x00 */ u32 quest_type : 2;         /* type, 0 = delivery, 1 = errand, 2 = contest, 3 = none */
     /* 0x00 */ u32 quest_kind : 6;         /* kind, differs by type */
@@ -57,6 +71,7 @@ typedef struct quest_base_s {
 
     /* 0x02 */ lbRTC_time_c time_limit;
 } mQst_base_c;
+#endif
 
 /* Contest Quest */
 

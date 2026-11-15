@@ -18,7 +18,7 @@
  * working alongside it. Screen positions are the editor's 320x240 layout. */
 #include "pc_settings.h"
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 extern SDL_Window* g_pc_window;
 extern int g_pc_mouse_wheel;
@@ -220,7 +220,13 @@ static void mDE_pc_mouse(mDE_Ovl_c* design_ovl) {
             g_pc_mouse_wheel = 0;
             return;
         }
-        buttons = SDL_GetMouseState(&wx, &wy);
+        {
+            float fx, fy;
+
+            buttons = SDL_GetMouseState(&fx, &fy);
+            wx = (int)fx;
+            wy = (int)fy;
+        }
     }
     pressed = buttons & ~l_mDE_mouse.buttons;
     released = l_mDE_mouse.buttons & ~buttons;
@@ -346,7 +352,7 @@ static void mDE_pc_mouse(mDE_Ovl_c* design_ovl) {
  * again redoes. Works with any mouse setting. */
 static void mDE_pc_keys(mDE_Ovl_c* design_ovl) {
     static int l_held = FALSE;
-    const Uint8* keys = SDL_GetKeyboardState(NULL);
+    const bool* keys = SDL_GetKeyboardState(NULL);
     int held = ((keys[SDL_SCANCODE_LCTRL] || keys[SDL_SCANCODE_RCTRL]) && keys[SDL_SCANCODE_Z]) ||
                pc_devtest_ctrl_z();
 

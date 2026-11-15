@@ -1,0 +1,345 @@
+body {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    padding: 64dp;
+    font-family: var(--font-family-body);
+    font-weight: normal;
+    font-style: normal;
+    font-size: var(--font-size-sm);
+}
+
+window {
+    display: flex;
+    flex-flow: column;
+    position: relative;
+    height: 100%;
+    width: 100%;
+    max-width: 1088dp;
+    max-height: 768dp;
+    margin: auto;
+    overflow: hidden;
+    background-color: var(--color-surface);
+    border: 4dp var(--color-surface-border);
+    border-radius: var(--radius-window);
+    box-shadow: 0 14dp 36dp 2dp var(--color-shadow);
+    filter: opacity(0);
+    transform: scale(0.96);
+    transform-origin: center;
+    transition: filter transform 0.18s cubic-in-out;
+}
+
+window.small {
+    height: auto;
+    width: auto;
+}
+
+window[open] {
+    filter: opacity(1);
+    transform: scale(1);
+}
+
+background {
+    display: block;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    z-index: -1;
+    pointer-events: none;
+}
+
+window > tab-bar,
+window > content,
+window > modal-dialog {
+    position: relative;
+    z-index: 1;
+}
+
+@media (max-height: 640dp) {
+    body {
+        padding: var(--space-lg);
+    }
+
+    window {
+        border-radius: var(--radius-window-compact);
+        box-shadow: none;
+    }
+}
+
+window tab-bar {
+    flex: 0 0 72dp;
+    height: 72dp;
+    padding: var(--space-xs) var(--space-sm);
+    background-color: var(--color-surface-raised);
+    border-bottom: 2dp var(--color-divider);
+}
+
+window content {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+window content pane {
+    display: flex;
+    flex-flow: column;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    padding: 26dp;
+    gap: 10dp;
+    overflow: hidden auto;
+    font-size: var(--font-size-lg);
+}
+
+window content pane:last-of-type {
+    background-color: var(--color-surface-sunken);
+    border-left: 2dp var(--color-divider);
+}
+
+window content pane > * {
+    flex: 0 0 auto;
+}
+
+window content pane:last-of-type > div {
+    line-height: 1.55;
+    word-break: break-word;
+}
+
+.data-folder-current {
+    display: block;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-faint);
+}
+
+.verification-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 10dp;
+    width: 100%;
+}
+
+.verification-file {
+    display: block;
+    font-size: var(--font-size-base);
+    color: var(--color-dialog-text);
+}
+
+.verification-detail {
+    display: block;
+    font-size: var(--font-size-xs);
+    color: var(--color-dialog-muted);
+}
+
+window.modal {
+    max-width: 680dp;
+    color: var(--color-dialog-text);
+    background-color: var(--color-dialog-surface);
+    border: 4dp var(--color-dialog-border);
+    border-radius: var(--radius-modal);
+    box-shadow: 0 16dp 42dp 4dp var(--color-dialog-shadow);
+}
+
+window.modal.danger {
+    border-color: #ef942c;
+}
+
+window.modal.light {
+    color: var(--color-text);
+    background-color: var(--color-surface);
+    border-color: var(--color-surface-border);
+    box-shadow: 0 14dp 36dp 2dp var(--color-shadow);
+}
+
+modal-dialog {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+    padding: var(--space-2xl);
+    gap: 22dp;
+    flex: 0 1 auto;
+    text-align: left;
+}
+
+modal-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    flex: 0 0 auto;
+    gap: var(--space-lg);
+}
+
+modal-header icon {
+    flex: 0 0 36dp;
+    width: 36dp;
+    height: 36dp;
+    line-height: 36dp;
+    text-align: center;
+    font-size: var(--font-size-4xl);
+    color: var(--color-dialog-accent);
+    background-color: rgba(255, 255, 255, 12%);
+    border-radius: var(--radius-button);
+}
+
+modal-title {
+    display: block;
+    flex: 1 1 auto;
+    font-family: var(--font-family-heading);
+    font-weight: bold;
+    font-size: var(--font-size-3xl);
+    color: var(--color-dialog-text);
+}
+
+window.modal.danger modal-title,
+window.modal.danger modal-header icon {
+    color: var(--color-dialog-accent);
+}
+
+window.modal.light modal-title {
+    color: var(--color-text);
+}
+
+window.modal.light modal-header icon {
+    color: var(--color-heading);
+    background-color: var(--color-surface-raised);
+}
+
+window.modal.light modal-header icon.warning {
+    color: var(--color-warning);
+    decorator: text("&#xe002;" center 46%);
+}
+
+modal-body {
+    display: block;
+    width: 100%;
+    flex: 0 1 auto;
+    min-width: 0;
+    font-size: var(--font-size-2xl);
+    line-height: 1.5;
+    color: var(--color-dialog-text);
+    font-weight: normal;
+}
+
+window.modal.light modal-body {
+    color: var(--color-text);
+}
+
+.modal-url {
+    display: block;
+    width: 100%;
+    margin-top: 6dp;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: var(--font-size-md);
+    color: var(--color-dialog-muted);
+}
+
+window.modal.light .modal-url {
+    color: var(--color-text-muted);
+}
+
+modal-body span.tip {
+    font-size: var(--font-size-xs);
+    color: var(--color-dialog-muted);
+}
+
+modal-actions {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 14dp;
+    width: 100%;
+    flex: 0 0 auto;
+    padding-top: var(--space-xs);
+}
+
+window.modal button {
+    color: var(--color-dialog-button-text);
+    background-color: var(--color-dialog-button);
+}
+
+window.modal button:not(:disabled):hover,
+window.modal button:not(:disabled):focus-visible {
+    color: var(--color-dialog-button-text);
+    background-color: var(--color-dialog-accent);
+}
+
+window.modal button:not(:disabled):selected,
+window.modal button:not(:disabled):active {
+    color: var(--color-dialog-button-text);
+    background-color: var(--color-dialog-button-active);
+}
+
+window.modal.light button {
+    color: var(--color-modal-button-text);
+    background-color: var(--color-modal-button);
+}
+
+window.modal.light button:not(:disabled):hover,
+window.modal.light button:not(:disabled):focus-visible {
+    color: var(--color-modal-button-text-strong);
+    background-color: var(--color-modal-button-hover);
+}
+
+window.modal.light button:not(:disabled):selected,
+window.modal.light button:not(:disabled):active {
+    color: var(--color-modal-button-text-strong);
+    background-color: var(--color-modal-button-active);
+}
+
+modal-content {
+    display: none;
+    width: 100%;
+    min-height: 0;
+}
+modal-content.active { display: block; }
+modal-content pane {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    max-height: 38vh;
+    overflow: hidden auto;
+}
+@media (max-height: 640dp) {
+    modal-dialog { padding: var(--space-lg); gap: var(--space-sm); }
+    modal-body { font-size: var(--font-size-sm); }
+}
+
+binding-row {
+    display: flex;
+    flex-flow: column;
+    gap: var(--space-xs);
+}
+
+binding-row > select-button {
+    width: 100%;
+}
+
+binding-row.capturing > select-button {
+    border-color: var(--color-accent);
+}
+
+.binding-help {
+    margin-top: var(--space-sm);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+    line-height: 1.5;
+}
+
+.binding-save-retry {
+    display: none;
+}
+
+.bindings-pane.save-failed .binding-save-retry {
+    display: block;
+}

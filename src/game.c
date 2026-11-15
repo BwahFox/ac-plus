@@ -1,9 +1,9 @@
 #include "game.h"
+#include "pc_tracy.h"
 
 #ifdef TARGET_PC
 #include "pc_platform.h"
 #include "pc_diag.h"
-extern int g_pc_model_viewer;
 #endif
 
 #include "m_debug.h"
@@ -22,6 +22,11 @@ extern int g_pc_model_viewer;
 #include "libc64/malloc.h"
 #include "GBA/gba.h"
 #include "m_vibctl.h"
+#ifdef MOUSE_INPUT
+#include "dolphin/os.h"
+#include "m_hand_ovl.h"
+#include "game_pointer.h"
+#endif
 
 GAME* gamePT = NULL;
 
@@ -59,7 +64,7 @@ extern void game_debug_draw_last(GAME* this, GRAPH* graph) {
 
         for (i = 0; i < MAXCONTROLLERS; i++) {
             pad_t* pad = &this->pads[i];
-            if (pad->now.errno == 0) {
+            if (pad->now.error == 0) {
                 last_now_button[i] = pad->now.button;
                 last_on_trigger[i] = pad->on.button;
                 last_button[i] = last_now_button[i] | last_on_trigger[i];
@@ -116,6 +121,10 @@ extern void game_get_controller(GAME* this) {
     } else {
         padmgr_ClearPadData(this->pads);
     }
+#ifdef MOUSE_INPUT
+    extern u32 pc_frame_counter;
+    acgc_pointer_begin_tick(pc_frame_counter);
+#endif
 }
 
 extern void SetGameFrame(int frame) {
@@ -136,6 +145,7 @@ extern void SetGameFrame(int frame) {
 }
 
 extern void game_main(GAME* this) {
+    TracyCZone(game_main_zone, 1);
     GRAPH* graph = this->graph;
 
     if (GETREG(SREG, 30) != game_GameFrame || GETREG(SREG, 29)) {
@@ -145,23 +155,30 @@ extern void game_main(GAME* this) {
     game_draw_first(graph);
     PC_DIAG(5, "game_main: draw_first done, calling mTM_time\n");
     GRAPH_SET_DOING_POINT(graph, GAME_TIME);
+    TracyCZoneN(game_time_zone, "Game time", 1);
     mTM_time();
+    TracyCZoneEnd(game_time_zone);
     GRAPH_SET_DOING_POINT(graph, GAME_TIME_FINISHED);
     PC_DIAG(5, "game_main: mTM_time done, calling exec=%p\n", (void*)this->exec);
     GRAPH_SET_DOING_POINT(graph, GAME_EXEC);
+    TracyCZoneN(game_execute_zone, "Game execute", 1);
+#ifdef MOUSE_INPUT
+    mHD_mouse_pointer_begin_frame();
+#endif
     this->exec(this);
+#ifdef MOUSE_INPUT
+    mHD_mouse_pointer_draw(this);
+#endif
+    TracyCZoneEnd(game_execute_zone);
     GRAPH_SET_DOING_POINT(graph, GAME_EXEC_FINISHED);
     GRAPH_SET_DOING_POINT(graph, GAME_BGM);
-#ifdef TARGET_PC
-    if (!g_pc_model_viewer) {
-#endif
-        mBGM_main(this);
-#ifdef TARGET_PC
-    }
-#endif
+    TracyCZoneN(bgm_zone, "BGM update", 1);
+    mBGM_main(this);
+    TracyCZoneEnd(bgm_zone);
     GRAPH_SET_DOING_POINT(graph, GAME_BGM_FINISHED);
     game_move_first(this);
     this->frame_counter++;
+    TracyCZoneEnd(game_main_zone);
 }
 
 static void game_init_hyral(GAME* this, size_t size) {

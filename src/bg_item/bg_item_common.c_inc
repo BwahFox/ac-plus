@@ -1,4 +1,5 @@
 #ifdef TARGET_PC
+#include <stdlib.h> /* getenv: ac-plus dev switches */
 #include "pc_sky.h"
 #include "pc_money_tree.h"
 #include "pc_mp.h"
@@ -540,7 +541,7 @@ static int bIT_actor_shin_effect_move(GAME* game, bg_item_shin_c* shin) {
                 exit = TRUE;
                 break;
             case 4:
-                sAdo_OngenPos((u32)shin, 0x2C, &shin->position);
+                sAdo_OngenPos((JaudioObjectId)(uintptr_t)shin, 0x2C, &shin->position);
                 break;
             case 5:
                 eEC_CLIP->effect_kill_proc(eEC_EFFECT_ANAHIKARI, (u16)i);
@@ -1544,7 +1545,7 @@ static void bIT_actor_drop_destruct(bg_item_drop_table_c* drop_info) {
 static void bIT_actor_drop_move_plant(bg_item_drop_c* drop) {
     s16 last_58 = drop->_58;
     f32 dt = (f32)gamePT->graph->dt_num_60fps_frames;
-    s16 step = (s16)((f32)drop->_5A * dt);
+    s16 step = F32_TO_S16((f32)drop->_5A * dt);
     s16 now_58;
 
     if (step == 0) {
@@ -1690,7 +1691,7 @@ static void bIT_actor_drop_move_fly(bg_item_drop_c* drop) {
         f32 percent_y = dist_y / drop->total_distance_y;
         f32 temp0 = scale * 65536.0f;
         int dir0 = (int)(temp0 * (1.0f / 65536.0f));
-        s16 angle = (s16)(temp0 - dir0 * 65536.0f);
+        s16 angle = F32_TO_S16(temp0 - dir0 * 65536.0f);
 
         drop->offset.x = 18.0f * sin_s(angle) * percent_y;
     }
@@ -1731,7 +1732,7 @@ static void bIT_actor_drop_move_fly(bg_item_drop_c* drop) {
     }
 
     if ((drop->flags & 0x10)) {
-        s16 angle_step = (s16)((f32)0x123 * dt);
+        s16 angle_step = F32_TO_S16((f32)0x123 * dt);
 
         if (angle_step < 1) {
             angle_step = 1;

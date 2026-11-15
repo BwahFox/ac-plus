@@ -46,6 +46,29 @@
 
 static Submenu_Overlay_c ovl_base;
 
+#ifdef MOUSE_INPUT
+extern int mSM_mouse_over_quad(const Vtx* vertices, f32 x, f32 y, f32 padding) {
+    f32 min_x = vertices[0].v.ob[0];
+    f32 max_x = min_x;
+    f32 min_y = vertices[0].v.ob[1];
+    f32 max_y = min_y;
+    int i;
+
+    for (i = 1; i < 4; i++) {
+        f32 vx = vertices[i].v.ob[0];
+        f32 vy = vertices[i].v.ob[1];
+
+        if (vx < min_x) min_x = vx;
+        if (vx > max_x) max_x = vx;
+        if (vy < min_y) min_y = vy;
+        if (vy > max_y) max_y = vy;
+    }
+
+    return x >= min_x - padding && x < max_x + padding &&
+           y >= min_y - padding && y < max_y + padding;
+}
+#endif
+
 static f32 mSM_dt_triangle(int period) {
     f32 frame_per = ((f32)graph_dt_frame_phase(gamePT, period) / (f32)period) * 2.0f;
 
@@ -57,10 +80,10 @@ static f32 mSM_dt_triangle(int period) {
 }
 
 static void mSM_setup_view(Submenu* submenu, GRAPH* graph, int init_flag) {
-    Mtx* mtx;
+    N64Mtx* mtx;
 
     if (init_flag) {
-        mtx = GRAPH_ALLOC_TYPE(graph, Mtx, 1);
+        mtx = GRAPH_ALLOC_TYPE(graph, N64Mtx, 1);
         mFont_CulcOrthoMatrix(mtx);
         submenu->overlay->projection_matrix = mtx;
     } else {
@@ -101,7 +124,7 @@ static void mSM_setup_view(Submenu* submenu, GRAPH* graph, int init_flag) {
     CLOSE_POLY_OPA_DISP(graph);
 }
 
-static void mSM_change_view(GRAPH* graph, f32 eye_dist, f32 y_lookAt, f32 vp_x, f32 vp_y, s16 angle, int width,
+extern void mSM_change_view(GRAPH* graph, f32 eye_dist, f32 y_lookAt, f32 vp_x, f32 vp_y, s16 angle, int width,
                             int height) {
     static Vp viewport_data = { 0, 0, 511, 0, 0, 0, 511, 0 };
 
@@ -111,8 +134,8 @@ static void mSM_change_view(GRAPH* graph, f32 eye_dist, f32 y_lookAt, f32 vp_x, 
     };
 
     Vp* viewport = GRAPH_ALLOC_TYPE(graph, Vp, 1);
-    Mtx* mtx = GRAPH_ALLOC_TYPE(graph, Mtx, 1);
-    Mtx* view_mtx = GRAPH_ALLOC_TYPE(graph, Mtx, 1);
+    N64Mtx* mtx = GRAPH_ALLOC_TYPE(graph, N64Mtx, 1);
+    N64Mtx* view_mtx = GRAPH_ALLOC_TYPE(graph, N64Mtx, 1);
     u16 persp_norm;
     f32 y_eye;
     f32 z_eye;
@@ -348,8 +371,8 @@ static void mSM_set_drawMode(GRAPH* graph, PreRender* prerender, f32 eye_dist, f
 
     {
         Vp* vp = GRAPH_ALLOC_TYPE(graph, Vp, 1);
-        Mtx* projMtx = GRAPH_ALLOC_TYPE(graph, Mtx, 1);
-        Mtx* viewMtx = GRAPH_ALLOC_TYPE(graph, Mtx, 1);
+        N64Mtx* projMtx = GRAPH_ALLOC_TYPE(graph, N64Mtx, 1);
+        N64Mtx* viewMtx = GRAPH_ALLOC_TYPE(graph, N64Mtx, 1);
         u16 perspNorm;
 
         if (vp == NULL) {
@@ -2023,7 +2046,8 @@ static void mSM_ovl_prog_seg(Submenu* submenu, mSM_Ovl_dlftbl_c* dlftbl) {
 
         dlftbl->seg_start = NULL;
         dlftbl->seg_end = NULL;
-        submenu->next_overlay_address = (char*)ALIGN_NEXT((u32)dlftbl->seg_end - (u32)dlftbl->seg_start, 64);
+        submenu->next_overlay_address =
+            (char*)ALIGN_NEXT((uintptr_t)dlftbl->seg_end - (uintptr_t)dlftbl->seg_start, 64);
         ct_proc = dlftbl->ct_proc;
         (*ct_proc)(submenu);
         dlftbl->ct_proc = ct_proc;

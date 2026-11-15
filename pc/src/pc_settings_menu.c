@@ -1,6 +1,9 @@
+/* DEPRECATED (2026-11-05): ac-plus's settings are in Nookery's menu now (Esc -> ac-plus, ui/acplus.cpp). This
+ * in-game settings page isn't reachable from the menus any more; it's kept, unchanged, so nothing that still refers to
+ * it breaks. Don't add settings here. */
+#include <SDL3/SDL.h>
 #include "pc_settings_menu.h"
 #include "pc_settings.h"
-#include "pc_keybindings.h"
 #include "pc_menu_util.h"
 #include "pc_text_draw.h"
 
@@ -57,25 +60,14 @@ typedef struct {
     int         restart;
 } Item;
 
-static const Item tab_video_items[] = {
-    { "Display",    ITEM_DISPLAY,  0 },
-    { "VSync",      ITEM_VSYNC,    0 },
-    { "Max FPS",    ITEM_MAX_FPS,  0 },
-    { "MSAA",       ITEM_MSAA,     1 },
-    { "Texture filter", ITEM_TEXTURE_FILTERING, 0 },
-    { "Resolution", ITEM_RES,      0 },
-    { "Textures",   ITEM_TEXTURES, 1 },
-};
-
-static const Item tab_gameplay_items[] = {
-    { "Resetti",          ITEM_RESETTI,          0 },
-    { "Shop upgrade",     ITEM_SHOP_VISITOR,     0 },
-    { "Borderless acres", ITEM_BORDERLESS_ACRES, 0 },
-    { "NES aspect",       ITEM_NES_ASPECT,       0 },
+/* Nookery's own settings window has the video, audio, controls and its gameplay options; these are ac-plus's */
+static const Item tab_cf_items[] = {
     { "Curved world",     ITEM_WORLD_CURVE,      0 },
     { "Weather",          ITEM_CF_WEATHER,       0 },
     { "TV",               ITEM_CF_TV,            0 },
     { "Tanning",          ITEM_TANNING,          0 },
+    { "Custom music",     ITEM_MUSIC_CUSTOM,     0 },
+    { "Rain music",       ITEM_RAIN_SPRING,      0 },
 };
 
 static const Item tab_saving_items[] = {
@@ -94,19 +86,6 @@ static const Item tab_online_items[] = {
     { "Open to everyone",   ITEM_MP_PUBLIC, 0 },
 };
 
-static const Item tab_audio_items[] = {
-    { "Master volume", ITEM_MASTER_VOLUME, 0 },
-    { "Custom music",  ITEM_MUSIC_CUSTOM,  0 },
-    { "Rain music",    ITEM_RAIN_SPRING,   0 },
-};
-
-static const Item tab_controls_items[] = {
-    { "Stick deadzone",   ITEM_STICK_DEADZONE,  0 },
-    { "C-stick deadzone", ITEM_CSTICK_DEADZONE, 0 },
-    { "Mouse",            ITEM_MOUSE,           0 },
-    { "Keybindings",      ITEM_BINDINGS,        0 },
-};
-
 typedef struct {
     const char* name;
     const Item* items;
@@ -115,12 +94,9 @@ typedef struct {
 
 #define TAB_ITEMS(a) (a), (int)(sizeof(a) / sizeof((a)[0]))
 static const Tab s_tabs[] = {
-    { "Video",    TAB_ITEMS(tab_video_items) },
-    { "Audio",    TAB_ITEMS(tab_audio_items) },
-    { "Controls", TAB_ITEMS(tab_controls_items) },
-    { "Gameplay", TAB_ITEMS(tab_gameplay_items) },
-    { "Saving",   TAB_ITEMS(tab_saving_items) },
-    { "Online",   TAB_ITEMS(tab_online_items) },
+    { "City Folk", TAB_ITEMS(tab_cf_items) },
+    { "Saving",    TAB_ITEMS(tab_saving_items) },
+    { "Online",    TAB_ITEMS(tab_online_items) },
 };
 #define TAB_COUNT ((int)(sizeof(s_tabs) / sizeof(s_tabs[0])))
 
@@ -129,7 +105,6 @@ typedef enum {
     SUB_SETTINGS = 0,
     SUB_CONFIRM_RES = 1,
     SUB_CONFIRM_BACK = 2,
-    SUB_BINDINGS = 3,
 } SubPage;
 
 static int     s_active = 0;
@@ -151,112 +126,13 @@ static int    s_res_sel = 1;
 /* Back-confirm state (Discard vs Keep editing when Back hit while dirty). */
 static int    s_back_sel = 0; /* 0 = Keep editing (safe default), 1 = Discard */
 
-/* --- Bindings editor (SUB_BINDINGS) state --- */
-typedef struct {
-    const char* label;
-    int kb_off;            /* offset into PCKeybindings */
-    int pad_off;           /* offset into PCPadBindings, -1 = not pad-bindable */
-    const char* pad_fixed; /* pad column text when pad_off < 0 */
-} BindRow;
-
-#define BROW(lbl, kf, pf)      { lbl, offsetof(PCKeybindings, kf), offsetof(PCPadBindings, pf), NULL }
-#define BROW_K(lbl, kf, fixed) { lbl, offsetof(PCKeybindings, kf), -1, fixed }
-
-static const BindRow s_bind_rows[] = {
-    BROW("A",     a,     a),
-    BROW("B",     b,     b),
-    BROW("X",     x,     x),
-    BROW("Y",     y,     y),
-    BROW("Start", start, start),
-    BROW("Z",     z,     z),
-    BROW("L",     l,     l),
-    BROW("R",     r,     r),
-    BROW_K("Stick Up",    stick_up,    "L-Stick"),
-    BROW_K("Stick Down",  stick_down,  "L-Stick"),
-    BROW_K("Stick Left",  stick_left,  "L-Stick"),
-    BROW_K("Stick Right", stick_right, "L-Stick"),
-    BROW_K("C-Stick Up",    cstick_up,    "R-Stick"),
-    BROW_K("C-Stick Down",  cstick_down,  "R-Stick"),
-    BROW_K("C-Stick Left",  cstick_left,  "R-Stick"),
-    BROW_K("C-Stick Right", cstick_right, "R-Stick"),
-    BROW("D-Pad Up",    dpad_up,    dpad_up),
-    BROW("D-Pad Down",  dpad_down,  dpad_down),
-    BROW("D-Pad Left",  dpad_left,  dpad_left),
-    BROW("D-Pad Right", dpad_right, dpad_right),
-    BROW("Chat (online)", chat, chat),
-};
-#define BIND_ROW_COUNT    ((int)(sizeof(s_bind_rows) / sizeof(s_bind_rows[0])))
-#define BIND_VISIBLE      9
-#define BIND_IDX_DEFAULTS BIND_ROW_COUNT
-#define BIND_IDX_BACK     (BIND_ROW_COUNT + 1)
-
-static int s_bind_sel = 0;
-static int s_bind_col = 0;      /* 0 = keyboard, 1 = gamepad */
-static int s_bind_scroll = 0;
-static int s_capture = 0;       /* waiting for the next key/button press */
+static int s_capture = 0;       /* (no key capture now: Nookery's controls window rebinds) */
+static int s_capture_grace = 0;
 static int s_text_edit = 0;     /* typing one of the text items (s_text_id) */
 static int s_text_id = 0;       /* ITEM_SERVER_HOST, ITEM_SYNC_URL, ITEM_SYNC_TOKEN or ITEM_MP_SERVER */
 static char s_text_before[256]; /* restored if the typing is cancelled */
 static void text_edit_begin(int id);
 static char* text_field(int id, size_t* size);
-static int s_capture_grace = 0; /* frames pad-driven hosts stay blocked after capture */
-
-static PCInputCode* bind_kb_slot(int row) {
-    return (PCInputCode*)((char*)&g_pc_keybindings + s_bind_rows[row].kb_off);
-}
-
-static PCPadCode* bind_pad_slot(int row) {
-    if (s_bind_rows[row].pad_off < 0) return NULL;
-    return (PCPadCode*)((char*)&g_pc_padbindings + s_bind_rows[row].pad_off);
-}
-
-/* Rebinding swaps with whichever action already used the code, so no
- * action ends up silently double-bound. */
-static void bind_assign_kb(int row, PCInputCode code) {
-    PCInputCode* dst = bind_kb_slot(row);
-    for (int i = 0; i < BIND_ROW_COUNT; i++) {
-        if (i == row) continue;
-        PCInputCode* other = bind_kb_slot(i);
-        if (*other == code) { *other = *dst; break; }
-    }
-    *dst = code;
-}
-
-static void bind_assign_pad(int row, PCPadCode code) {
-    PCPadCode* dst = bind_pad_slot(row);
-    if (!dst) return;
-    if (code >= 0) {
-        for (int i = 0; i < BIND_ROW_COUNT; i++) {
-            if (i == row) continue;
-            PCPadCode* other = bind_pad_slot(i);
-            if (other && *other == code) { *other = *dst; break; }
-        }
-    }
-    *dst = code;
-}
-
-static void bind_enter_page(void) {
-    s_sub = SUB_BINDINGS;
-    s_bind_sel = 0;
-    s_bind_col = 0;
-    s_bind_scroll = 0;
-    s_capture = 0;
-}
-
-static void bind_fix_scroll_and_col(void) {
-    if (s_bind_sel < BIND_ROW_COUNT) {
-        if (s_bind_sel < s_bind_scroll) s_bind_scroll = s_bind_sel;
-        if (s_bind_sel >= s_bind_scroll + BIND_VISIBLE)
-            s_bind_scroll = s_bind_sel - BIND_VISIBLE + 1;
-        if (s_bind_col == 1 && s_bind_rows[s_bind_sel].pad_off < 0) s_bind_col = 0;
-    }
-}
-
-static void capture_finish(int changed) {
-    s_capture = 0;
-    s_capture_grace = 15;
-    if (changed) pc_keybindings_save();
-}
 
 /* The game font atlas only covers a subset of ASCII (see CHAR_* in
  * m_font.h): '*' is a tilde, '+' a heart, '/' a music note, ';' a droplet,
@@ -294,8 +170,6 @@ static void recompute_dirty(void) {
         (s_pending.fullscreen       != g_pc_settings.fullscreen) ||
         (s_pending.vsync            != g_pc_settings.vsync) ||
         (s_pending.max_fps          != g_pc_settings.max_fps) ||
-        (s_pending.msaa             != g_pc_settings.msaa) ||
-        (s_pending.texture_filtering != g_pc_settings.texture_filtering) ||
         (s_pending.window_width     != g_pc_settings.window_width) ||
         (s_pending.window_height    != g_pc_settings.window_height) ||
         (s_pending.preload_textures != g_pc_settings.preload_textures) ||
@@ -350,19 +224,6 @@ static void item_cycle(int id, int dir) {
             idx = (idx + (dir > 0 ? 1 : count - 1)) % count;
             s_pending.max_fps = steps[idx];
         } break;
-        case ITEM_MSAA: {
-            static const int steps[] = { 0, 2, 4, 8 };
-            int idx = 0;
-            for (int i = 0; i < 4; i++) if (s_pending.msaa == steps[i]) { idx = i; break; }
-            idx = (idx + (dir > 0 ? 1 : 3)) % 4;
-            s_pending.msaa = steps[idx];
-        } break;
-        case ITEM_TEXTURE_FILTERING:
-            s_pending.texture_filtering = !s_pending.texture_filtering;
-            break;
-        case ITEM_RES:
-            pc_settings_cycle_resolution(&s_pending.window_width, &s_pending.window_height, dir);
-            break;
         case ITEM_TEXTURES: {
             int v = s_pending.preload_textures + (dir > 0 ? 1 : -1);
             if (v < 0) v = 2;
@@ -473,13 +334,6 @@ static void item_format(int id, char* buf, size_t n) {
         case ITEM_MAX_FPS:
             if (s_pending.max_fps > 0) snprintf(buf, n, "< %d >", s_pending.max_fps);
             else                       snprintf(buf, n, "< Uncapped >");
-            break;
-        case ITEM_MSAA:
-            if (s_pending.msaa > 0) snprintf(buf, n, "< %dx >", s_pending.msaa);
-            else                    snprintf(buf, n, "< Off >");
-            break;
-        case ITEM_TEXTURE_FILTERING:
-            snprintf(buf, n, "%s", s_pending.texture_filtering ? "< On >" : "< Off >");
             break;
         case ITEM_RES:
             snprintf(buf, n, "< %dx%d >", s_pending.window_width, s_pending.window_height);
@@ -607,9 +461,6 @@ static int item_changed(int id) {
         case ITEM_DISPLAY:    return s_pending.fullscreen       != g_pc_settings.fullscreen;
         case ITEM_VSYNC:      return s_pending.vsync            != g_pc_settings.vsync;
         case ITEM_MAX_FPS:    return s_pending.max_fps          != g_pc_settings.max_fps;
-        case ITEM_MSAA:       return s_pending.msaa             != g_pc_settings.msaa;
-        case ITEM_TEXTURE_FILTERING:
-            return s_pending.texture_filtering != g_pc_settings.texture_filtering;
         case ITEM_RES:        return (s_pending.window_width  != g_pc_settings.window_width) ||
                                      (s_pending.window_height != g_pc_settings.window_height);
         case ITEM_TEXTURES:   return s_pending.preload_textures != g_pc_settings.preload_textures;
@@ -647,7 +498,6 @@ static int item_changed(int id) {
  * the "restart required" banner should show. */
 static int item_differs_from_startup(int id) {
     switch (id) {
-        case ITEM_MSAA:     return g_pc_settings.msaa             != s_startup.msaa;
         case ITEM_TEXTURES: return g_pc_settings.preload_textures != s_startup.preload_textures;
     }
     return 0;
@@ -685,7 +535,6 @@ static void res_confirm_revert(void) {
     g_pc_settings.window_height = s_res_old_h;
     s_pending.window_width      = s_res_old_w;
     s_pending.window_height     = s_res_old_h;
-    pc_settings_apply();
     pc_settings_save();
     recompute_dirty();
     printf("[SETTINGS] resolution reverted to %dx%d\n", s_res_old_w, s_res_old_h);
@@ -709,7 +558,6 @@ static void apply_pending(void) {
     }
 
     g_pc_settings = s_pending;
-    pc_settings_apply();
     s_pending_dirty = 0;
     recompute_restart_needed();
 
@@ -755,12 +603,6 @@ int pc_settings_menu_active(void) {
 
 int pc_settings_menu_nav_up(void) {
     if (!s_active) return 0;
-    if (s_sub == SUB_BINDINGS) {
-        if (s_capture) return 1;
-        if (s_bind_sel > 0) s_bind_sel--;
-        bind_fix_scroll_and_col();
-        return 1;
-    }
     if (s_sub != SUB_SETTINGS) return 1;
     /* Clamp at the top - no wrap. */
     if (s_sel == 0)      s_sel = -1;            /* first item -> tab row */
@@ -770,12 +612,6 @@ int pc_settings_menu_nav_up(void) {
 
 int pc_settings_menu_nav_down(void) {
     if (!s_active) return 0;
-    if (s_sub == SUB_BINDINGS) {
-        if (s_capture) return 1;
-        if (s_bind_sel < BIND_IDX_BACK) s_bind_sel++;
-        bind_fix_scroll_and_col();
-        return 1;
-    }
     if (s_sub != SUB_SETTINGS) return 1;
     /* Clamp at the bottom - no wrap. */
     if (s_sel == -1)             s_sel = 0;     /* tab row -> first item */
@@ -787,14 +623,6 @@ int pc_settings_menu_nav_down(void) {
  * switching on the tab row, and value cycling on a selected item. */
 static int nav_horizontal(int dir) {
     if (!s_active) return 0;
-    if (s_sub == SUB_BINDINGS) {
-        if (s_capture) return 1;
-        if (s_bind_sel < BIND_ROW_COUNT) {
-            if (dir > 0 && s_bind_rows[s_bind_sel].pad_off >= 0) s_bind_col = 1;
-            else if (dir < 0)                                    s_bind_col = 0;
-        }
-        return 1;
-    }
     if (s_sub == SUB_CONFIRM_RES) {
         s_res_sel = (s_res_sel + 1) % 2;
         return 1;
@@ -818,18 +646,6 @@ int pc_settings_menu_nav_right(void) { return nav_horizontal(+1); }
 
 int pc_settings_menu_confirm(void) {
     if (!s_active) return 0;
-    if (s_sub == SUB_BINDINGS) {
-        if (s_capture) return 1;
-        if (s_bind_sel < BIND_ROW_COUNT) {
-            if (s_bind_col == 0 || bind_pad_slot(s_bind_sel)) s_capture = 1;
-        } else if (s_bind_sel == BIND_IDX_DEFAULTS) {
-            pc_keybindings_reset_defaults();
-            pc_keybindings_save();
-        } else { /* Back */
-            s_sub = SUB_SETTINGS;
-        }
-        return 1;
-    }
     if (s_sub == SUB_CONFIRM_RES) {
         res_confirm_finish();
         return 1;
@@ -848,8 +664,7 @@ int pc_settings_menu_confirm(void) {
         s_sel = 0;
     } else if (s_sel < cur_item_count()) {
         int id = s_tabs[s_tab].items[s_sel].id;
-        if (id == ITEM_BINDINGS)         bind_enter_page();
-        else if (id == ITEM_SERVER_HOST || id == ITEM_SYNC_URL || id == ITEM_SYNC_TOKEN || id == ITEM_MP_SERVER)
+        if (id == ITEM_SERVER_HOST || id == ITEM_SYNC_URL || id == ITEM_SYNC_TOKEN || id == ITEM_MP_SERVER)
             text_edit_begin(id);
         else                             item_cycle(id, +1);
     } else if (s_sel == idx_apply()) {
@@ -868,11 +683,6 @@ int pc_settings_menu_confirm(void) {
 
 int pc_settings_menu_cancel(void) {
     if (!s_active) return 0;
-    if (s_sub == SUB_BINDINGS) {
-        if (s_capture) { capture_finish(0); return 1; }
-        s_sub = SUB_SETTINGS;
-        return 1;
-    }
     if (s_sub == SUB_CONFIRM_RES) {
         s_res_sel = 1; /* safer default on Esc/B */
         res_confirm_finish();
@@ -920,7 +730,7 @@ static void text_edit_begin(int id) {
     s_text_id = id;
     snprintf(s_text_before, sizeof(s_text_before), "%s", text_field(id, &size));
     s_text_edit = 1;
-    SDL_StartTextInput();
+    SDL_StartTextInput(g_pc_window);
 }
 
 static void text_edit_finish(int keep) {
@@ -932,7 +742,7 @@ static void text_edit_finish(int keep) {
     }
     s_text_edit = 0;
     s_capture_grace = 15;
-    SDL_StopTextInput();
+    SDL_StopTextInput(g_pc_window);
     recompute_dirty();
 }
 
@@ -958,16 +768,16 @@ static int text_edit_event(const SDL_Event* e) {
     size_t len = strlen(text);
 
     switch (e->type) {
-        case SDL_TEXTINPUT:
+        case SDL_EVENT_TEXT_INPUT:
             text_edit_add(text, size, e->text.text);
             break;
-        case SDL_KEYDOWN:
-            switch (e->key.keysym.sym) {
+        case SDL_EVENT_KEY_DOWN:
+            switch (e->key.key) {
                 case SDLK_BACKSPACE:
                     if (len > 0) text[len - 1] = '\0';
                     break;
-                case SDLK_v:
-                    if (e->key.keysym.mod & KMOD_CTRL) {
+                case SDLK_V:
+                    if (e->key.mod & SDL_KMOD_CTRL) {
                         char* clip = SDL_GetClipboardText();
 
                         if (clip != NULL) {
@@ -985,9 +795,9 @@ static int text_edit_event(const SDL_Event* e) {
                     break;
             }
             break;
-        case SDL_CONTROLLERBUTTONDOWN:
-            if (e->cbutton.button == SDL_CONTROLLER_BUTTON_A) text_edit_finish(1);
-            if (e->cbutton.button == SDL_CONTROLLER_BUTTON_B) text_edit_finish(0);
+        case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+            if (e->gbutton.button == SDL_GAMEPAD_BUTTON_SOUTH) text_edit_finish(1);
+            if (e->gbutton.button == SDL_GAMEPAD_BUTTON_EAST) text_edit_finish(0);
             break;
     }
     return 1;
@@ -1005,58 +815,7 @@ int pc_settings_menu_capture_blocking(void) {
 
 int pc_settings_menu_handle_capture_event(const SDL_Event* e) {
     if (!pc_settings_menu_capture_active()) return 0;
-    if (s_text_edit) return text_edit_event(e);
-    int row = s_bind_sel;
-    if (row >= BIND_ROW_COUNT) { s_capture = 0; return 1; }
-
-    switch (e->type) {
-        case SDL_KEYDOWN: {
-            if (e->key.repeat) return 1;
-            SDL_Scancode sc = e->key.keysym.scancode;
-            if (sc == SDL_SCANCODE_ESCAPE) { capture_finish(0); return 1; }
-            if (s_bind_col == 1) {
-                /* Delete/Backspace clears a pad binding; other keys ignored. */
-                if (sc == SDL_SCANCODE_DELETE || sc == SDL_SCANCODE_BACKSPACE) {
-                    bind_assign_pad(row, PC_PAD_NONE);
-                    capture_finish(1);
-                }
-                return 1;
-            }
-            bind_assign_kb(row, (PCInputCode)sc);
-            capture_finish(1);
-            return 1;
-        }
-        case SDL_MOUSEBUTTONDOWN: {
-            int b = e->button.button;
-            if (s_bind_col == 0 &&
-                (b == SDL_BUTTON_LEFT || b == SDL_BUTTON_RIGHT || b == SDL_BUTTON_MIDDLE)) {
-                bind_assign_kb(row, PC_INPUT_MOUSE_BIT | b);
-                capture_finish(1);
-            }
-            return 1;
-        }
-        case SDL_CONTROLLERBUTTONDOWN: {
-            int b = e->cbutton.button;
-            /* Back/Select is reserved for the pause menu - treat as cancel. */
-            if (b == SDL_CONTROLLER_BUTTON_BACK) { capture_finish(0); return 1; }
-            if (s_bind_col == 1) {
-                bind_assign_pad(row, (PCPadCode)b);
-                capture_finish(1);
-            }
-            return 1;
-        }
-        case SDL_CONTROLLERAXISMOTION: {
-            int ax = e->caxis.axis;
-            if (s_bind_col == 1 && e->caxis.value > 16000 &&
-                (ax == SDL_CONTROLLER_AXIS_TRIGGERLEFT ||
-                 ax == SDL_CONTROLLER_AXIS_TRIGGERRIGHT)) {
-                bind_assign_pad(row, PC_PAD_AXIS_BIT | ax);
-                capture_finish(1);
-            }
-            return 1;
-        }
-    }
-    return 0;
+    return text_edit_event(e);
 }
 
 /* =========================================================================
@@ -1205,103 +964,10 @@ static void draw_back_confirm_page(struct game_s* game) {
     pc_menu_draw_two_choice(game, "Keep editing", "Discard", s_back_sel, 160.0f);
 }
 
-/* Keyboard/gamepad columns for every remappable action, with scrolling.
- * Cells are selected with left/right; confirm arms capture for the cell. */
-static void draw_bindings_page(struct game_s* game) {
-    int r, g, b, a;
-    f32 lx = 36.0f, kx = 128.0f, px = 232.0f;
-    f32 y0 = 62.0f, line_h = 13.0f;
-
-    pc_menu_draw_centered(game, "- Keybindings -", 28.0f, 255, 255, 255, 255, 1.0f);
-
-    pc_menu_draw_left(game, "Action",   lx, 46.0f, 150, 150, 150, 200, 1.0f);
-    pc_menu_draw_left(game, "Keyboard", kx, 46.0f, 150, 150, 150, 200, 1.0f);
-    pc_menu_draw_left(game, "Gamepad",  px, 46.0f, 150, 150, 150, 200, 1.0f);
-
-    for (int i = 0; i < BIND_VISIBLE; i++) {
-        int row = s_bind_scroll + i;
-        if (row >= BIND_ROW_COUNT) break;
-        const BindRow* br = &s_bind_rows[row];
-        f32 y = y0 + i * line_h;
-        int row_sel = (s_bind_sel == row);
-        char buf[48];
-
-        pc_menu_row_colors(row_sel, &r, &g, &b, &a);
-        pc_menu_draw_left(game, br->label, lx, y, r, g, b, a, 1.0f);
-
-        /* Only game-charset ASCII renders (see glyph_ok), so the selected
-         * cell is marked with <...> instead of brackets. */
-
-        /* keyboard cell */
-        {
-            int cell_sel = row_sel && (s_bind_col == 0);
-            if (cell_sel && s_capture) {
-                snprintf(buf, sizeof(buf), "<press key>");
-                r = 255; g = 140; b = 90; a = 255;
-            } else {
-                snprintf(buf, sizeof(buf), cell_sel ? "<%s>" : "%s",
-                         pc_input_code_name(*bind_kb_slot(row)));
-                sanitize_glyphs(buf);
-                pc_menu_row_colors(cell_sel, &r, &g, &b, &a);
-            }
-            pc_menu_draw_left(game, buf, kx, y, r, g, b, a, 1.0f);
-        }
-
-        /* gamepad cell */
-        {
-            int cell_sel = row_sel && (s_bind_col == 1);
-            if (br->pad_off < 0) {
-                snprintf(buf, sizeof(buf), "%s", br->pad_fixed);
-                r = 110; g = 110; b = 110; a = 160;
-            } else if (cell_sel && s_capture) {
-                snprintf(buf, sizeof(buf), "<press btn>");
-                r = 255; g = 140; b = 90; a = 255;
-            } else {
-                snprintf(buf, sizeof(buf), cell_sel ? "<%s>" : "%s",
-                         pc_pad_code_name(*bind_pad_slot(row)));
-                pc_menu_row_colors(cell_sel, &r, &g, &b, &a);
-            }
-            pc_menu_draw_left(game, buf, px, y, r, g, b, a, 1.0f);
-        }
-    }
-
-    /* scroll indicators (position implies direction; no arrow glyphs
-     * exist in the game font) */
-    if (s_bind_scroll > 0)
-        pc_menu_draw_left(game, "...", 14.0f, y0, 180, 180, 180, 200, 1.0f);
-    if (s_bind_scroll + BIND_VISIBLE < BIND_ROW_COUNT)
-        pc_menu_draw_left(game, "...", 14.0f, y0 + (BIND_VISIBLE - 1) * line_h, 180, 180, 180, 200, 1.0f);
-
-    /* footer rows */
-    {
-        int sel_def = (s_bind_sel == BIND_IDX_DEFAULTS);
-        pc_menu_row_colors(sel_def, &r, &g, &b, &a);
-        pc_menu_draw_centered(game, "Restore Defaults", 186.0f, r, g, b, a,
-                              sel_def ? PC_MENU_SCALE_SELECTED : 1.0f);
-    }
-    {
-        int sel_back = (s_bind_sel == BIND_IDX_BACK);
-        pc_menu_row_colors(sel_back, &r, &g, &b, &a);
-        pc_menu_draw_centered(game, "Back", 200.0f, r, g, b, a,
-                              sel_back ? PC_MENU_SCALE_SELECTED : 1.0f);
-    }
-
-    /* hint line */
-    if (s_capture) {
-        pc_menu_draw_centered(game,
-            s_bind_col == 0 ? "Press a key or mouse button (Esc cancels)"
-                            : "Press a controller button (Del clears, Esc cancels)",
-            218.0f, 255, 195, 85, 230, 1.0f);
-    } else if (s_bind_sel < BIND_ROW_COUNT) {
-        pc_menu_draw_centered(game, "Confirm to rebind", 218.0f, 150, 150, 150, 180, 1.0f);
-    }
-}
-
 void pc_settings_menu_draw(struct game_s* game, int with_dim_backdrop) {
     if (!s_active || !game || !game->graph) return;
     if (with_dim_backdrop) pc_menu_dim_rect(game->graph, 180);
     if (s_sub == SUB_SETTINGS)          draw_settings_page(game);
     else if (s_sub == SUB_CONFIRM_RES)  draw_res_confirm_page(game);
-    else if (s_sub == SUB_BINDINGS)     draw_bindings_page(game);
     else                                draw_back_confirm_page(game);
 }

@@ -262,7 +262,7 @@ void pc_mp_town_apply_extras(void) {
 
 /* the visited town's door designs: drawn on its houses' doors, nothing more (the visitor's patterns stay theirs) */
 static struct {
-    u8 tex[mNW_DESIGN_TEX_SIZE] ATTRIBUTE_ALIGN(32); /* drawn from here: aligned as the game's own designs are */
+    ATTRIBUTE_ALIGN(32) u8 tex[mNW_DESIGN_TEX_SIZE]; /* drawn from here: aligned as the game's own designs are */
     int has;
     u8 palette;
 } l_doors[PLAYER_NUM];
@@ -279,7 +279,7 @@ int pc_mp_town_door(int home, u8* palette, u8** tex) {
 /* the visited town's signboard designs, by sign (pc_pattern_sign_key): as for doors, only what's drawn on them */
 #define SIGNS_MAX 128
 static struct {
-    u8 tex[mNW_DESIGN_TEX_SIZE] ATTRIBUTE_ALIGN(32); /* drawn from here: aligned as the game's own designs are */
+    ATTRIBUTE_ALIGN(32) u8 tex[mNW_DESIGN_TEX_SIZE]; /* drawn from here: aligned as the game's own designs are */
     u32 key;
     u8 palette;
 } l_signs[SIGNS_MAX];

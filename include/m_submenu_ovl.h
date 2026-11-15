@@ -113,7 +113,7 @@ typedef struct submenu_menu_info_s {
     int data0;
     int data1;
     void* data2;
-    int data3;
+    mSM_param3_t data3;
 } mSM_MenuInfo_c;
 
 typedef void (*mSM_HAND_MOVE_FUNC)(Submenu*);
@@ -213,12 +213,18 @@ struct submenu_overlay_s {
     /* 0x9FA */ u8 _9FA;
     /* 0x9FB */ u8 _9FB;
     /* 0x9FC */ int _9FC;
-    /* 0xA00 */ Mtx* projection_matrix;
+    /* 0xA00 */ N64Mtx* projection_matrix;
 };
 
 extern void mSM_menu_ovl_init(Submenu* submenu);
+#ifdef MOUSE_INPUT
+extern int mSM_mouse_over_quad(const Vtx* vertices, f32 x, f32 y, f32 padding);
+#endif
 extern void mSM_draw_original(Submenu* submenu, GRAPH* graph, f32 pos_x, f32 pos_y, f32 scale, mActor_name_t item,
                               int color_flag);
+
+extern void mSM_change_view(GRAPH* graph, f32 eye_dist, f32 y_lookAt, f32 vp_x, f32 vp_y, s16 angle,
+                           int width, int height);
 
 #ifdef __cplusplus
 }

@@ -1,16 +1,15 @@
 /* pc_cf_char.c - City Folk characters drawn in the GameCube game. See pc_cf_char.h. */
-#include "pc_gx_internal.h"
 #include "pc_cf_char.h"
+#include "pc_acplus_gx.h"
+#include "pc_platform.h"
 
 #include "m_play.h"
 #include "graph.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-extern void pc_gx_restore_after_nes(void);
-extern void GXGetProjectionv(f32* p);
 
 #define PC_CF_CHAR_MAX 12
 #define PC_CF_CHAR_BONES 32
@@ -29,7 +28,6 @@ typedef struct {
     u8 xlu, cull, alpha_test, wrap_s, wrap_t, eyes;
     int vert_num;
     float* verts;
-    GLuint vao, vbo;
 } pc_cf_char_mesh_c;
 
 typedef struct {
@@ -41,7 +39,7 @@ typedef struct {
     int* tex_w;
     int* tex_h;
     u8** tex_px;
-    GLuint* tex_gl;
+    PCGXHTex* tex_gx;
     int eye_tex[8]; /* e.0-e.7, or -1 */
     int mesh_num;
     pc_cf_char_mesh_c* mesh;
@@ -103,7 +101,7 @@ static void pc_cf_char_load(pc_cf_char_c* c) {
     c->tex_w = calloc(n, sizeof(int));
     c->tex_h = calloc(n, sizeof(int));
     c->tex_px = calloc(n, sizeof(u8*));
-    c->tex_gl = calloc(n, sizeof(GLuint));
+    c->tex_gx = calloc(n, sizeof(PCGXHTex));
     for (i = 0; i < n; i++) {
         char name[32];
         u16 wh[2];
@@ -330,217 +328,86 @@ int pc_cf_char_play_draw_mtx(GAME_PLAY* play, const char* name, int bone_num, co
 
 /* --- render side --- */
 
-static const char* l_vert_src =
-    "#version 330 core\n"
-    "layout(location = 0) in float a_bone;\n"
-    "layout(location = 1) in vec3 a_pos;\n"
-    "layout(location = 2) in vec3 a_nrm;\n"
-    "layout(location = 3) in vec2 a_uv;\n"
-    "uniform mat4 u_proj;\n"
-    "uniform mat4 u_view;\n"
-    "uniform mat4 u_bones[32];\n"
-    "out vec2 v_uv;\n"
-    "out vec3 v_nrm;\n"
-    "void main() {\n"
-    "    mat4 b = u_bones[int(a_bone + 0.5)];\n"
-    "    gl_Position = u_proj * (u_view * (b * vec4(a_pos, 1.0)));\n"
-    "    v_uv = a_uv;\n"
-    "    v_nrm = mat3(b) * a_nrm;\n"
-    "}\n";
-
-static const char* l_frag_src =
-    "#version 330 core\n"
-    "in vec2 v_uv;\n"
-    "in vec3 v_nrm;\n"
-    "out vec4 frag;\n"
-    "uniform sampler2D u_tex;\n"
-    "uniform int u_has_tex;\n"
-    "uniform int u_alpha_test;\n"
-    "uniform float u_light;\n"
-    "void main() {\n"
-    "    vec4 c = vec4(1.0);\n"
-    "    if (u_has_tex != 0) c = texture(u_tex, v_uv);\n"
-    "    if (u_alpha_test != 0 && c.a < 0.5) discard;\n"
-    "    /* soft light from above and in front, as the game's own characters */\n"
-    "    float d = dot(normalize(v_nrm), normalize(vec3(0.2, 1.0, 0.8)));\n"
-    "    float shade = 0.62 + 0.38 * clamp(d * 0.5 + 0.5, 0.0, 1.0);\n"
-    "    frag = vec4(c.rgb * shade * u_light, c.a);\n"
-    "}\n";
-
-static GLuint l_prog;
-static GLint l_u_proj, l_u_view, l_u_bones, l_u_has_tex, l_u_alpha_test, l_u_light;
-
-static GLuint pc_cf_char_compile(GLenum type, const char* src) {
-    GLuint sh = glCreateShader(type);
-    GLint ok = 0;
-
-    glShaderSource(sh, 1, &src, NULL);
-    glCompileShader(sh);
-    glGetShaderiv(sh, GL_COMPILE_STATUS, &ok);
-    if (!ok) {
-        char log[512];
-        glGetShaderInfoLog(sh, sizeof(log), NULL, log);
-        printf("[CFChar] shader compile failed: %s\n", log);
-    }
-    return sh;
-}
-
-static int pc_cf_char_init(void) {
-    GLuint vs, fs;
-    GLint ok = 0;
-
-    if (l_prog != 0) {
-        return TRUE;
-    }
-    vs = pc_cf_char_compile(GL_VERTEX_SHADER, l_vert_src);
-    fs = pc_cf_char_compile(GL_FRAGMENT_SHADER, l_frag_src);
-    l_prog = glCreateProgram();
-    glAttachShader(l_prog, vs);
-    glAttachShader(l_prog, fs);
-    glLinkProgram(l_prog);
-    glDeleteShader(vs);
-    glDeleteShader(fs);
-    glGetProgramiv(l_prog, GL_LINK_STATUS, &ok);
-    if (!ok) {
-        printf("[CFChar] shader link failed\n");
-        glDeleteProgram(l_prog);
-        l_prog = 0;
-        return FALSE;
-    }
-    l_u_proj = glGetUniformLocation(l_prog, "u_proj");
-    l_u_view = glGetUniformLocation(l_prog, "u_view");
-    l_u_bones = glGetUniformLocation(l_prog, "u_bones");
-    l_u_has_tex = glGetUniformLocation(l_prog, "u_has_tex");
-    l_u_alpha_test = glGetUniformLocation(l_prog, "u_alpha_test");
-    l_u_light = glGetUniformLocation(l_prog, "u_light");
-    glUseProgram(l_prog);
-    glUniform1i(glGetUniformLocation(l_prog, "u_tex"), 0);
-    return TRUE;
-}
-
 static void pc_cf_char_upload(pc_cf_char_c* c) {
     int i;
 
     for (i = 0; i < c->tex_num; i++) {
-        if (c->tex_gl[i] != 0 || c->tex_px[i] == NULL) {
-            continue;
+        if (!c->tex_gx[i].ready && c->tex_px[i] != NULL) {
+            pc_gxh_tex_init(&c->tex_gx[i], c->tex_px[i], c->tex_w[i], c->tex_h[i], 1, 1, TRUE);
         }
-        glGenTextures(1, &c->tex_gl[i]);
-        glBindTexture(GL_TEXTURE_2D, c->tex_gl[i]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, c->tex_w[i], c->tex_h[i], 0, GL_RGBA, GL_UNSIGNED_BYTE, c->tex_px[i]);
-        glGenerateMipmap(GL_TEXTURE_2D);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     }
-    for (i = 0; i < c->mesh_num; i++) {
-        pc_cf_char_mesh_c* m = &c->mesh[i];
-        GLsizei stride = PC_CF_CHAR_VERT_FLOATS * sizeof(float);
-
-        if (m->vao != 0 || m->verts == NULL) {
-            continue;
-        }
-        glGenVertexArrays(1, &m->vao);
-        glBindVertexArray(m->vao);
-        glGenBuffers(1, &m->vbo);
-        glBindBuffer(GL_ARRAY_BUFFER, m->vbo);
-        glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)m->vert_num * stride, m->verts, GL_STATIC_DRAW);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 1, GL_FLOAT, GL_FALSE, stride, (void*)0);
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(1 * sizeof(float)));
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, stride, (void*)(4 * sizeof(float)));
-        glEnableVertexAttribArray(3);
-        glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, stride, (void*)(7 * sizeof(float)));
-    }
-    glBindVertexArray(0);
 }
 
 int pc_cf_char_is_tag(unsigned int tag) {
     return tag >= PC_NOOP_CF_CHAR && tag < PC_NOOP_CF_CHAR + PC_CF_CHAR_INSTANCES;
 }
 
-void pc_cf_char_noop(unsigned int tag, const float proj_unused[4][4], const float view[3][4]) {
-    static const GLint wraps[] = { GL_CLAMP_TO_EDGE, GL_REPEAT, GL_MIRRORED_REPEAT, GL_REPEAT };
+void pc_cf_char_noop(unsigned int tag, const float proj[4][4], const float view[3][4]) {
+    static const float L[3] = { 0.1543f, 0.7715f, 0.6172f }; /* normalize(0.2, 1.0, 0.8) */
     int slot = (int)(tag - PC_NOOP_CF_CHAR);
     pc_cf_char_c* c;
-    float proj[16], v[16], bones[PC_CF_CHAR_BONES][16];
-    int pass, i, r;
+    float(*bones)[3][4];
+    float light;
+    int pass, i, n;
 
-    (void)proj_unused;
-    if (!pc_cf_char_is_tag(tag) || (c = l_inst[slot].chr) == NULL || c->loaded != 1 || !pc_cf_char_init()) {
+    if (!pc_cf_char_is_tag(tag) || (c = l_inst[slot].chr) == NULL || c->loaded != 1) {
         return;
     }
     l_inst[slot].chr = NULL;
-    pc_gx_draw_pending();
     pc_cf_char_upload(c);
+    bones = l_inst[slot].bones;
+    light = l_inst[slot].light;
 
-    GXGetProjectionv(proj);
-    memset(v, 0, sizeof(v));
-    for (r = 0; r < 3; r++) {
-        memcpy(&v[r * 4], view[r], 4 * sizeof(float));
-    }
-    v[15] = 1.0f;
-    memset(bones, 0, sizeof(bones));
-    for (i = 0; i < c->bone_num; i++) {
-        for (r = 0; r < 3; r++) {
-            memcpy(&bones[i][r * 4], l_inst[slot].bones[i][r], 4 * sizeof(float));
-        }
-        bones[i][15] = 1.0f;
-    }
-
-    glUseProgram(l_prog);
-    glUniformMatrix4fv(l_u_proj, 1, GL_TRUE, proj); /* row-major, as pc_gx.c uploads them */
-    glUniformMatrix4fv(l_u_view, 1, GL_TRUE, v);
-    glUniformMatrix4fv(l_u_bones, c->bone_num, GL_TRUE, &bones[0][0]);
-    glUniform1f(l_u_light, l_inst[slot].light);
-    glDisable(GL_SCISSOR_TEST);
-    glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LEQUAL);
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    glActiveTexture(GL_TEXTURE0);
+    /* posed on the CPU: each vertex follows its one bone into the world, then the camera takes it */
+    pc_gxh_camera(proj, view);
     for (pass = 0; pass < 2; pass++) {
         for (i = 0; i < c->mesh_num; i++) {
             pc_cf_char_mesh_c* m = &c->mesh[i];
-            int tex = m->tex;
+            const PCGXHTex* tex = NULL;
+            int t = m->tex;
+            GXCullMode cull;
 
-            if (m->xlu != pass || m->vao == 0) {
+            if (m->xlu != pass || m->verts == NULL || m->vert_num <= 0) {
                 continue;
             }
             if (m->eyes && c->eye_tex[l_inst[slot].eye] >= 0) {
-                tex = c->eye_tex[l_inst[slot].eye];
+                t = c->eye_tex[l_inst[slot].eye];
             }
-            if (m->cull == 0) {
-                glDisable(GL_CULL_FACE);
-            } else {
-                /* GX culls by its own winding; the converter keeps the model's, so cull the other side */
-                glEnable(GL_CULL_FACE);
-                glFrontFace(GL_CW);
-                glCullFace(m->cull == 1 ? GL_FRONT : m->cull == 2 ? GL_BACK : GL_FRONT_AND_BACK);
+            if (t >= 0 && t < c->tex_num && c->tex_gx[t].ready) {
+                tex = &c->tex_gx[t];
+                pc_gxh_tex_set_wrap(&c->tex_gx[t], m->wrap_s, m->wrap_t);
             }
-            if (pass == 1) {
-                glEnable(GL_BLEND);
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                glDepthMask(GL_FALSE);
-            } else {
-                glDisable(GL_BLEND);
-                glDepthMask(GL_TRUE);
+            /* GX culls by its own winding; the converter keeps the model's, so cull the other side */
+            cull = m->cull == 0 ? GX_CULL_NONE : m->cull == 1 ? GX_CULL_FRONT : m->cull == 2 ? GX_CULL_BACK : GX_CULL_ALL;
+            pc_gxh_mesh_state(tex, pass == 1 ? 1 : 0, pass == 0 && m->alpha_test, pass == 1 ? 1 : 2, cull);
+
+            GXBegin(GX_TRIANGLES, PC_GXH_VTXFMT, GX_AUTO);
+            for (n = 0; n < m->vert_num; n++) {
+                const float* d = &m->verts[n * PC_CF_CHAR_VERT_FLOATS];
+                const float(*b)[4] = bones[(int)(d[0] + 0.5f)];
+                float x = b[0][0] * d[1] + b[0][1] * d[2] + b[0][2] * d[3] + b[0][3];
+                float y = b[1][0] * d[1] + b[1][1] * d[2] + b[1][2] * d[3] + b[1][3];
+                float z = b[2][0] * d[1] + b[2][1] * d[2] + b[2][2] * d[3] + b[2][3];
+                float nx = b[0][0] * d[4] + b[0][1] * d[5] + b[0][2] * d[6];
+                float ny = b[1][0] * d[4] + b[1][1] * d[5] + b[1][2] * d[6];
+                float nz = b[2][0] * d[4] + b[2][1] * d[5] + b[2][2] * d[6];
+                float len = sqrtf(nx * nx + ny * ny + nz * nz);
+                float dot = len > 0.0f ? (nx * L[0] + ny * L[1] + nz * L[2]) / len : 0.0f;
+                float h, shade;
+                u8 v;
+
+                /* soft light from above and in front, as the game's own characters */
+                h = dot * 0.5f + 0.5f;
+                h = h < 0.0f ? 0.0f : h > 1.0f ? 1.0f : h;
+                shade = (0.62f + 0.38f * h) * light * 0.5f * 255.0f; /* halved: the TEV doubles it back */
+                v = (u8)(shade >= 255.0f ? 255 : shade <= 0.0f ? 0 : shade + 0.5f);
+                GXPosition3f32(x, y, z);
+                GXColor4u8(v, v, v, 255);
+                if (tex != NULL) {
+                    GXTexCoord2f32(d[7], d[8]);
+                }
             }
-            glUniform1i(l_u_alpha_test, pass == 0 && m->alpha_test);
-            glUniform1i(l_u_has_tex, tex >= 0 && tex < c->tex_num);
-            if (tex >= 0 && tex < c->tex_num) {
-                glBindTexture(GL_TEXTURE_2D, c->tex_gl[tex]);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wraps[m->wrap_s]);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wraps[m->wrap_t]);
-            }
-            glBindVertexArray(m->vao);
-            glDrawArrays(GL_TRIANGLES, 0, m->vert_num);
+            GXEnd();
         }
     }
-    glBindVertexArray(0);
-    glDisable(GL_BLEND);
-    glDisable(GL_CULL_FACE);
-    glFrontFace(GL_CCW);
-    glDepthMask(GL_TRUE);
-    pc_gx_restore_after_nes(); /* rebinds the game's GL objects and marks all GX state dirty */
 }

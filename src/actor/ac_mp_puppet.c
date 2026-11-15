@@ -290,7 +290,7 @@ static int aMPP_draw_after(GAME* game, cKF_SkeletonInfo_R_c* kf, int joint_no, G
 static void aMPP_draw_catch(MP_PUPPET_ACTOR* pp, pc_mp_remote* r, GAME* game) {
     GRAPH* graph = game->graph;
     int type = r->catch_item - ITM_FISH_START;
-    Mtx* mtx;
+    N64Mtx* mtx;
 
     if (r->catch_item == 0 || type < 0 || (type < aGYO_TYPE_PC_CF && type >= (int)(sizeof(aGYO_displayList) / sizeof(aGYO_displayList[0]))) ||
         aGYO_PC_DL(type) == NULL) {
@@ -312,7 +312,7 @@ static void aMPP_draw_catch(MP_PUPPET_ACTOR* pp, pc_mp_remote* r, GAME* game) {
 
 static void aMPP_draw_item(MP_PUPPET_ACTOR* pp, pc_mp_remote* r, GAME* game) {
     GRAPH* graph = game->graph;
-    Mtx* mtx;
+    N64Mtx* mtx;
 
     if (!pp->hand_set) {
         return;
@@ -340,7 +340,7 @@ static void aMPP_draw_item(MP_PUPPET_ACTOR* pp, pc_mp_remote* r, GAME* game) {
             gSPDisplayList(POLY_OPA_DISP++, mPlib_Get_Item_DataPointer(r->item_shape));
             CLOSE_POLY_OPA_DISP(graph);
         } else if (pp->item_shape == r->item_shape) {
-            Mtx* item_mtx = (Mtx*)GRAPH_ALLOC_TYPE(graph, Mtx, pp->item_kf.skeleton->num_shown_joints);
+            N64Mtx* item_mtx = (N64Mtx*)GRAPH_ALLOC_TYPE(graph, N64Mtx, pp->item_kf.skeleton->num_shown_joints);
             if (item_mtx != NULL) {
                 cKF_Si3_draw_R_SV(game, &pp->item_kf, item_mtx, NULL, NULL, &pp->actor_class);
             }
@@ -353,12 +353,12 @@ static void aMPP_actor_draw(ACTOR* actorx, GAME* game) {
     MP_PUPPET_ACTOR* pp = (MP_PUPPET_ACTOR*)actorx;
     pc_mp_remote* r = pc_mp_get_remote(pp->slot);
     GRAPH* graph = game->graph;
-    Mtx* mtx;
+    N64Mtx* mtx;
 
     if (r == NULL || !pp->posed || !r->has_look) {
         return;
     }
-    mtx = (Mtx*)GRAPH_ALLOC_TYPE(graph, Mtx, pp->kf0.skeleton->num_shown_joints);
+    mtx = (N64Mtx*)GRAPH_ALLOC_TYPE(graph, N64Mtx, pp->kf0.skeleton->num_shown_joints);
     if (mtx == NULL) {
         return;
     }

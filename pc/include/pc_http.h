@@ -1,7 +1,7 @@
 #ifndef PC_HTTP_H
 #define PC_HTTP_H
 
-/* HTTP(S) for the updater and save sync (pc_http.c: WinHTTP; nothing elsewhere), and SHA-256 */
+/* HTTP(S) for the updater and save sync (pc_http.c: WinHTTP on Windows, libcurl elsewhere), and SHA-256 */
 
 #include <stddef.h>
 

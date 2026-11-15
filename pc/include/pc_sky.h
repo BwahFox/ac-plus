@@ -20,6 +20,8 @@ extern "C" {
 #endif
 
 struct game_play_s;
+struct game_s;
+struct xyz_s;
 
 /* Game side (m_play.c), while building the frame's display lists */
 void pc_sky_play_draw(struct game_play_s* play);

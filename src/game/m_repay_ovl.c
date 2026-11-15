@@ -5,6 +5,9 @@
 #include "m_name_table.h"
 #include "m_player_lib.h"
 #include "sys_matrix.h"
+#ifdef MOUSE_INPUT
+#include "game_pointer.h"
+#endif
 
 static mRP_Ovl_c rp_ovl_data;
 #ifdef TARGET_PC
@@ -14,6 +17,7 @@ static u32 mRP_money_amount[MONEY_NUM] = { 100, 1000, 10000, 30000, 90000 };
 static mActor_name_t mRP_money_name[MONEY_NUM] = { ITM_MONEY_100, ITM_MONEY_1000, ITM_MONEY_10000, ITM_MONEY_30000 };
 static u32 mRP_money_amount[MONEY_NUM] = { 100, 1000, 10000, 30000 };
 #endif
+static u8 mRP_ok_str[2] = "OK";
 
 static int mRP_money_repay(mRP_Ovl_c* repay_ovl) {
   mActor_name_t* item_p;
@@ -58,6 +62,74 @@ static void mRP_move_Move(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
   (*submenu->overlay->move_Move_proc)(submenu, menu_info);
 }
 
+#ifdef MOUSE_INPUT
+static u32 mRP_mouse_trigger(Submenu* submenu, mSM_MenuInfo_c* menu_info, u32 trigger) {
+#ifdef MOUSE_INPUT
+    const GamePointerFrame* pointer = acgc_pointer_frame();
+#endif
+  mRP_Ovl_c* repay_ovl = submenu->overlay->repay_ovl;
+  f32 mouse_x, mouse_y;
+  u32 pressed;
+  s32 wheel;
+  int selected = -1;
+
+  mouse_x = pointer->x;
+  mouse_y = pointer->y;
+  if (submenu->current_menu_type != mSM_OVL_REPAY ||
+      !pointer->visible ||
+      !pointer->inside) {
+    return trigger;
+  }
+
+  pressed = pointer->pressed;
+  if (pressed & GAME_POINTER_RIGHT) {
+    return trigger | BUTTON_B;
+  }
+
+  mouse_x -= menu_info->position[0];
+  mouse_y += menu_info->position[1];
+  if (mouse_y >= 112.0f && mouse_y < 128.0f) {
+    u8 amount_str[7];
+    f32 x;
+    int i;
+
+    mFont_UnintToString(amount_str, sizeof(amount_str), repay_ovl->repay_amount, 6, FALSE, TRUE, TRUE);
+    x = 206.0f - mFont_GetStringWidth(amount_str, sizeof(amount_str), TRUE);
+    for (i = 0; i < sizeof(amount_str); i++) {
+      int width = mFont_GetCodeWidth(amount_str[i], TRUE);
+
+      if (i != mRP_CURSOR_100 && mouse_x >= x && mouse_x < x + width) {
+        selected = i < mRP_CURSOR_100 ? i : i - 1;
+        break;
+      }
+      x += width;
+    }
+  } else if (mouse_y >= 128.0f && mouse_y < 144.0f && mouse_x >= 205.0f &&
+             mouse_x < 209.0f + mFont_GetStringWidth(mRP_ok_str, sizeof(mRP_ok_str), TRUE) * 0.875f) {
+    selected = mRP_CURSOR_OK;
+  }
+
+  if (selected < 0) {
+    return trigger;
+  }
+  if (repay_ovl->cursor_idx != selected) {
+    repay_ovl->cursor_idx = selected;
+    sAdo_SysTrgStart(NA_SE_CURSOL);
+  }
+
+  if (selected == mRP_CURSOR_OK) {
+    return trigger | ((pressed & GAME_POINTER_LEFT) ? BUTTON_A : 0);
+  }
+  wheel = pointer->scroll_steps_y;
+  if (wheel < 0 || (pressed & GAME_POINTER_LEFT)) {
+    trigger |= BUTTON_CUP;
+  } else if (wheel > 0) {
+    trigger |= BUTTON_CDOWN;
+  }
+  return trigger;
+}
+#endif
+
 static void mRP_move_Play(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
   static u32 step_money[mRP_CURSOR_NUM] = {
     100000,
@@ -71,6 +143,10 @@ static void mRP_move_Play(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
 
   mRP_Ovl_c* repay_ovl = submenu->overlay->repay_ovl;
   u32 trigger = submenu->overlay->menu_control.trigger;
+
+#ifdef MOUSE_INPUT
+  trigger = mRP_mouse_trigger(submenu, menu_info, trigger);
+#endif
 
   if ((trigger & BUTTON_B)) {
     (*submenu->overlay->move_chg_base_proc)(menu_info, mSM_MOVE_OUT_TOP);
@@ -211,7 +287,6 @@ static void mRP_set_num_str(GAME* game, u32 num, rgba_t* str_col_p, f32 x, f32 y
 
 static void mRP_set_character_dl(Submenu* submenu, GAME* game, f32 x, f32 y) {
   static u8 kingaku_str[9] = "Your Loan";
-  static u8 kettei_str[2] = "OK";
   static rgba_t money_col  = { 100,  40, 255, 255 };
   static rgba_t repay_col  = {  70, 120, 245, 255 };
   static rgba_t select_col = { 215,   0,   0, 255 };
@@ -280,7 +355,7 @@ static void mRP_set_character_dl(Submenu* submenu, GAME* game, f32 x, f32 y) {
 
   mFont_SetLineStrings(
     game,
-    kettei_str, sizeof(kettei_str),
+    mRP_ok_str, sizeof(mRP_ok_str),
     x + 207.0f, -y + 128.0f,
     color_p->r, color_p->g, color_p->b, 255,
     FALSE,

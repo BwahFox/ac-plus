@@ -1,4 +1,5 @@
 /* pc_sfx.c - one-shot sound effects from files. See pc_sfx.h. */
+#include <SDL3/SDL.h>
 #include "pc_platform.h"
 #include "pc_sfx.h"
 
@@ -26,7 +27,7 @@ typedef struct {
 
 static pc_sfx_c s_cache[SFX_CACHE];
 static pc_sfx_voice_c s_voices[SFX_VOICES];
-static SDL_mutex* s_lock;
+static SDL_Mutex* s_lock;
 
 static const pc_sfx_c* pc_sfx_get(const char* name) {
     int i;

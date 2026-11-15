@@ -53,8 +53,8 @@
 static fbdemo_c fbdemo;
 static f32 S_back_title_timer = 0.0f;
 static f32 S_se_endcheck_timeout = 0.0f;
-static u8 gxbuf[0x140] ATTRIBUTE_ALIGN(32);
-static u8 prbuf[(2*SCREEN_WIDTH) * (2*SCREEN_HEIGHT) * sizeof(u32)] ATTRIBUTE_ALIGN(32); // 0x12C000
+ATTRIBUTE_ALIGN(32) static u8 gxbuf[0x140];
+ATTRIBUTE_ALIGN(32) static u8 prbuf[(2*SCREEN_WIDTH) * (2*SCREEN_HEIGHT) * sizeof(u32)]; // 0x12C000
 
 static void Game_play_fbdemo_wipe_init(GAME_PLAY* play);
 static void Gameplay_Scene_Read(GAME_PLAY* play, s16 scene_no);
@@ -416,8 +416,8 @@ extern void play_init(GAME* game) {
     int type;
     fbdemo_fade* fade;
     int freebytes;
-    u32 alloc;
-    u32 aligned;
+    uintptr_t alloc;
+    uintptr_t aligned;
     u32 size;
 
     game_resize_hyral(game, -Game_play_HYRAL_SIZE); // reserve bytes from gamealloc
@@ -485,9 +485,9 @@ extern void play_init(GAME* game) {
     play->fade_color_value.rgba8888 = 0;
 
     freebytes = game_getFreeBytes(game);
-    alloc = (u32)THA_alloc16(&game->tha, freebytes);
+    alloc = (uintptr_t)THA_alloc16(&game->tha, freebytes);
     aligned = ALIGN_NEXT(alloc, 16);
-    size = aligned - alloc;
+    size = (u32)(aligned - alloc);
 
     zelda_InitArena((void*)aligned, freebytes - size);
 

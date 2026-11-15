@@ -963,7 +963,7 @@ static void pc_nlr_build_wall(pc_nlr_wall_c* w, Gfx* src, const pc_nlr_opening_c
         if (cmd == G_VTX) {
             int n = (g->words.w0 >> 12) & 0xFF;
             int v0 = ((g->words.w0 >> 1) & 0x7F) - n;
-            Vtx* vp = (Vtx*)(uintptr_t)g->words.w1;
+            Vtx* vp = (Vtx*)_GBI_GET_POINTER(g); /* (64-bit: the pointer is in words.address) */
 
             for (k = 0; k < n && v0 + k < 64; k++) {
                 cache[v0 + k] = &vp[k];

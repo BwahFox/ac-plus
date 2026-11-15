@@ -64,8 +64,10 @@ static f32 l_pc_sky_k;
 static f32 l_pc_sky_center[3];
 static f32 l_pc_sky_fwd[2]; /* level forward (x, z) of the camera */
 
+extern int pc_sky_curve_supported(void); /* pc_sky.c: whether the renderer bends the world */
+
 static f32 pc_sky_curve_k(void) {
-    return PC_SKY_CURVE_K * g_pc_settings.world_curve / 100.0f;
+    return pc_sky_curve_supported() ? PC_SKY_CURVE_K * g_pc_settings.world_curve / 100.0f : 0.0f;
 }
 
 static void pc_sky_blend(const pc_sky_term_c* table, int term, f32 t, f32 zenith[3], f32 horizon[3]) {
@@ -245,7 +247,7 @@ void pc_sky_play_draw_end(GAME_PLAY* play) {
 #define PC_SKY_FIREWORK_SCALE  2.6f
 
 int pc_sky_fireworks(void) {
-    return l_pc_sky_this_frame && l_pc_sky_k > 0.0f;
+    return l_pc_sky_this_frame && (l_pc_sky_k > 0.0f || !pc_sky_curve_supported());
 }
 
 /* How far above level the camera at eye sees the curved ground's edge, ground_y being the ground's height */

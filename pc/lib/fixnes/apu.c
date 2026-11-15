@@ -9,7 +9,7 @@
 #include <stdbool.h>
 #include <inttypes.h>
 #include <string.h>
-#include <malloc.h>
+#include <stdlib.h>
 #include "apu.h"
 #include "audio_fds.h"
 #include "audio_mmc5.h"
@@ -467,7 +467,7 @@ FIXNES_NOINLINE static void apuClockB()
 		apu.trireload = false;
 }
 
-FIXNES_ALWAYSINLINE void apuCycle()
+void apuCycle()
 {
 	uint8_t aExp = audioExpansion;
 #if AUDIO_LOWERFREQ

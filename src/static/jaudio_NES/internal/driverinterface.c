@@ -10,7 +10,7 @@
 #define CHANNEL_SIZE (0x100)
 
 static jcs_ GLOBAL_CHANNEL;
-static jc_ CHANNEL[CHANNEL_SIZE] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static jc_ CHANNEL[CHANNEL_SIZE];
 
 static u16 MAX_MIXERLEVEL  = 12000;
 u32 JAC_SYSTEM_OUTPUT_MODE = 1;
@@ -18,7 +18,7 @@ u32 JAC_SYSTEM_OUTPUT_MODE = 1;
 static u32 cur_waits;
 static u32 cur_top;
 static u32 cur_tail;
-static jc_* waitp[0x20] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static jc_* waitp[0x20];
 static int waittime[0x20];
 
 static u8 calc_sw_table[]
@@ -896,7 +896,7 @@ BOOL StopLogicalChannel(jc_* jc)
 	jc->dspChannel->_06 = 0;
 	DSP_PlayStop(jc->dspChannel->buffer_idx);
 	DSP_FlushChannel(jc->dspChannel->buffer_idx);
-	DeAllocDSPchannel(jc->dspChannel, (u32)jc);
+	DeAllocDSPchannel(jc->dspChannel, (JacDspOwner)(uintptr_t)jc);
 	jc->dspChannel = NULL;
 	return TRUE;
 }
@@ -1043,7 +1043,7 @@ void __Entry_WaitChannel(u8 a)
 	while (cur_waits != 0) {
 		jc = waitp[cur_top];
 		if (jc) {
-			ch = AllocDSPchannel(0, (u32)jc);
+			ch = AllocDSPchannel(0, (JacDspOwner)(uintptr_t)jc);
 			if (ch == NULL) {
 				break;
 			}

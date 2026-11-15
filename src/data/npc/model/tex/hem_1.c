@@ -1,15 +1,17 @@
+#include <dolphin/types.h>
+
 #ifdef TARGET_PC
-unsigned short hem_1_pal[0x20 / sizeof(unsigned short)] __attribute__((aligned(32)));
+ATTRIBUTE_ALIGN(32) unsigned short hem_1_pal[0x20 / sizeof(unsigned short)];
 #else
-extern unsigned short hem_1_pal[] __attribute__((aligned(32))) = {
+ATTRIBUTE_ALIGN(32) extern unsigned short hem_1_pal[] = {
 #include "assets/npc/tex/hem_1_pal.inc"
 };
 #endif
 
 #ifdef TARGET_PC
-unsigned char hem_1_tmem_txt[0x740] __attribute__((aligned(32)));
+ATTRIBUTE_ALIGN(32) unsigned char hem_1_tmem_txt[0x740];
 #else
-extern unsigned char hem_1_tmem_txt[] __attribute__((aligned(32))) = {
+ATTRIBUTE_ALIGN(32) extern unsigned char hem_1_tmem_txt[] = {
 #include "assets/npc/tex/hem_1_tmem_txt.inc"
 };
 #endif

@@ -36,14 +36,14 @@ JUTProcBar::~JUTProcBar() {
 
 JUTProcBar* JUTProcBar::create() {
     if (!sManager) {
-        sManager = new JUTProcBar();
+        sManager = JKR_NEW JUTProcBar();
     }
     return sManager;
 }
 
 void JUTProcBar::destroy() {
     if (sManager) {
-        delete sManager;
+        JKR_DELETE(sManager);
     }
     sManager = nullptr;
 }
@@ -232,7 +232,9 @@ void JUTProcBar::drawProcessBar() {
 }
 
 int addrToXPos(void* param_0, int param_1) {
-    return param_1 * (((u32)param_0 - 0x80000000) / (float)JKRHeap::getMemorySize());
+    uintptr_t address = reinterpret_cast<uintptr_t>(param_0);
+    uintptr_t memoryBase = reinterpret_cast<uintptr_t>(JKRHeap::getCodeStart());
+    return param_1 * ((address - memoryBase) / (float)JKRHeap::getMemorySize());
 }
 
 int byteToXLen(int param_0, int param_1) {

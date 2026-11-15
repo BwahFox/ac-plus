@@ -5,10 +5,10 @@
 #include "jaudio_NES/audiothread.h"
 #include "jaudio_NES/driverinterface.h"
 #include "jaudio_NES/rate.h"
-#include <dolphin/PPCArch.h>
+#include <dolphin/base/PPCArch.h>
 
 #define DSPCH_LENGTH (64)
-static dspch_ DSPCH[DSPCH_LENGTH] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static dspch_ DSPCH[DSPCH_LENGTH];
 
 static int old_time;
 static u32 history[10] = { 0xF4240 };
@@ -60,9 +60,9 @@ typedef enum DSPChannelAllocState {
  * Address:	8000AD60
  * Size:	000114
  */
-dspch_* AllocDSPchannel(u32 param_1, u32 param_2)
+dspch_* AllocDSPchannel(u32 param_1, JacDspOwner param_2)
 {
-    jc_* jc = (jc_*)param_2;
+    jc_* jc = (jc_*)(uintptr_t)param_2;
 	s32 i;
 	
 	if (param_1 == 0) {
@@ -102,12 +102,12 @@ dspch_* AllocDSPchannel(u32 param_1, u32 param_2)
  * Address:	8000AE80
  * Size:	0000DC
  */
-int DeAllocDSPchannel(dspch_* chan, u32 id)
+int DeAllocDSPchannel(dspch_* chan, JacDspOwner id)
 {
 	if (chan == NULL) {
 		return -1;
 	}
-	if (chan->_08 != (jc_*)id) {
+	if (chan->_08 != (jc_*)(uintptr_t)id) {
 		return -2;
 	}
 

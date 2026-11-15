@@ -45,7 +45,7 @@ static void fKST_mv(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game, u8* 
 
     if (ftr_actor->switch_bit != FALSE) {
         if (aFTR_CAN_PLAY_SE(ftr_actor)) {
-            sAdo_OngenPos((u32)ftr_actor, 0x2B, &ftr_actor->position);
+            sAdo_OngenPos((JaudioObjectId)(uintptr_t)ftr_actor, 0x2B, &ftr_actor->position);
         }
     }
 
@@ -141,7 +141,7 @@ static void aKonsnowtv_mv(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game
 #ifdef TARGET_PC
             if (!pc_tv_sound_on()) /* City Folk's program sound instead of the hum (pc_tv.c) */
 #endif
-                sAdo_OngenPos((u32)ftr_actor, 0x2B, &ftr_actor->position);
+                sAdo_OngenPos((JaudioObjectId)(uintptr_t)ftr_actor, 0x2B, &ftr_actor->position);
         }
 
 #ifdef TARGET_PC

@@ -47,6 +47,17 @@
 #include "types.h"
 #include "dolphin/os.h"
 
+#ifdef TARGET_PC
+#include "kyureki.h"
+
+extern int g_pc_time_override;
+extern int g_pc_min_override;
+extern int g_pc_sec_override;
+extern int g_pc_date_month;
+extern int g_pc_date_day;
+extern int g_pc_date_year;
+#endif
+
 static BOOL l_lbRTC_isInitial = TRUE;
 static lbRTC_time_c l_lbRTC_Time;
 static BOOL l_lbRTC_IsSampled;
@@ -159,6 +170,9 @@ static void lbRTC_GetGameTime(lbRTC_time_c* time) {
   t += Save_Get(time_delta);
 
   OSTicksToCalendarTime(t, &ctime);
+#ifdef TARGET_PC
+  /* ac-plus: --time / --date are a shift of the clock itself (pc_acplus_clock.c), so the town's time runs on */
+#endif
   lbRTC_CalenderTimeToRTCTime(&ctime, time);
 }
 
@@ -307,11 +321,6 @@ extern lbRTC_day_t lbRTC_GetDaysByMonth(lbRTC_year_t year, lbRTC_month_t month) 
   return days_month[year_type][month];
 }
 
-typedef union {
-  int raw;
-  lbRTC_ymd_c ymd;
-} ymd_u;
-
 /**
  * @brief Compare two dates to determine if they are equal, lesser, or greater.
  *
@@ -331,26 +340,16 @@ extern int lbRTC_IsEqualDate(
   lbRTC_year_t y0, lbRTC_month_t m0, lbRTC_day_t d0,
   lbRTC_year_t y1, lbRTC_month_t m1, lbRTC_day_t d1
 ) {
-  ymd_u ymd0, ymd1;
-  int res;
-
-  ymd0.ymd.year = y0;
-  ymd0.ymd.month = m0;
-  ymd0.ymd.day = d0;
-    
-  ymd1.ymd.year = y1;
-  ymd1.ymd.month = m1;
-  ymd1.ymd.day = d1;
-
-  res = ymd0.raw - ymd1.raw;
-  if (res == 0) {
-    return lbRTC_EQUAL;
+  if (y0 != y1) {
+    return y0 < y1 ? lbRTC_LESS : lbRTC_OVER;
   }
-
-  if (res < 0) {
-    return lbRTC_LESS;
+  if (m0 != m1) {
+    return m0 < m1 ? lbRTC_LESS : lbRTC_OVER;
   }
-  return lbRTC_OVER;
+  if (d0 != d1) {
+    return d0 < d1 ? lbRTC_LESS : lbRTC_OVER;
+  }
+  return lbRTC_EQUAL;
 }
 
 /**
@@ -548,6 +547,18 @@ extern int lbRTC_IntervalTime(const lbRTC_time_c* time0, const lbRTC_time_c* tim
  * @return Number of days between the two given dates.
  */
 extern int lbRTC_GetIntervalDays(const lbRTC_time_c* t0, const lbRTC_time_c* t1) {
+#ifdef TARGET_PC
+  qk_gregorian date0 = { t0->year, t0->month, t0->day };
+  qk_gregorian date1 = { t1->year, t1->month, t1->day };
+  long day0, day1;
+
+  if (qk_gregorian_to_jdn(&date0, &day0) != QK_OK ||
+      qk_gregorian_to_jdn(&date1, &day1) != QK_OK) {
+    return 0;
+  }
+  /* This API counts civil dates, returning zero for reversed intervals. */
+  return day1 > day0 ? (int)(day1 - day0) : 0;
+#else
   static const int total_days[2][lbRTC_MONTHS_MAX + 1] = {
     // Standard year
     {
@@ -559,10 +570,10 @@ extern int lbRTC_GetIntervalDays(const lbRTC_time_c* t0, const lbRTC_time_c* t1)
     }
   };
 
-  int year_leap_period = (t1->year - t0->year) / 4; /* Total 'leap years' (missing extra not divisible by 100, except when divisible by 400 rule) */
-  int extra_years = (t1->year - t0->year) % 4; /* Non-leap year remainder */
-  int less_leap = (t0->year % 4) == 0; /* Is the lesser year a leap year? */
-  int over_leap = (t1->year % 4) == 0; /* Is the greater year a leap year? */
+  int year_leap_period = (t1->year - t0->year) / 4;
+  int extra_years = (t1->year - t0->year) % 4;
+  int less_leap = (t0->year % 4) == 0;
+  int over_leap = (t1->year % 4) == 0;
   int leap_add = ((4 - (t0->year % 4)) % 4) < extra_years; /* Add leap day when leap day occurs during 'extra years' */
 
   int days;
@@ -599,10 +610,6 @@ extern int lbRTC_GetIntervalDays(const lbRTC_time_c* t0, const lbRTC_time_c* t1)
     }
   }
 
-  /***
-   * Every four years (incorrect) has 365 * 3 + 366 * 1 days (1461).
-   * The remaining years will be 365 * years, plus 1 if leap year occurs in range.
-   ***/
   days = year_leap_period * 1461 + extra_years * 365 + leap_add;
 
   /* Add up through t1 day */
@@ -614,6 +621,7 @@ extern int lbRTC_GetIntervalDays(const lbRTC_time_c* t0, const lbRTC_time_c* t1)
   days -= total_days[less_leap][t0->month - 1];
 
   return days;
+#endif
 }
 
 /**
@@ -998,14 +1006,6 @@ extern void lbRTC_TimeCopy(lbRTC_time_c* dst, const lbRTC_time_c* src) {
  * @return Non-zero (TRUE) if the time is valid, zero (FALSE) otherwise.
  */
 extern int lbRTC_IsValidTime(const lbRTC_time_c* time) {
-  static const u8 day_tbl[] = {
-    00,
-    31, 28, 31, 30, 31, 30,
-    31, 31, 30, 31, 30, 31
-  };
-
-  int res;
-
   if (
     (time->year < lbRTC_YEAR_MIN ||  time->year > lbRTC_YEAR_MAX) ||
     (time->month == lbRTC_MONTHS_BEGIN || time->month > lbRTC_MONTHS_MAX) ||
@@ -1014,21 +1014,10 @@ extern int lbRTC_IsValidTime(const lbRTC_time_c* time) {
     (time->min > 59) ||
     (time->sec > 59)
   ) {
-    res = FALSE;
-  }
-  else {
-    if (time->day == 29 && time->month == 2) {
-      res = lbRTC_IS_LEAPYEAR(time->year);
-    }
-    else if (time->day > day_tbl[time->month]) {
-      res = FALSE;
-    }
-    else {
-      res = TRUE;
-    }
+    return FALSE;
   }
 
-  return res;
+  return time->day <= lbRTC_GetDaysByMonth(time->year, time->month);
 }
 
 /**

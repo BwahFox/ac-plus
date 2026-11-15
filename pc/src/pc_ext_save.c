@@ -26,6 +26,7 @@
  * whenever a release adds save data older ones don't know). A town from a newer level gets a warning before it
  * loads (pc_ext_save_newer_warning), and chunks this version doesn't know are kept and written back as they were,
  * so playing an older version doesn't throw a newer one's data away. Files without MADE are level 0. */
+#include <SDL3/SDL.h>
 #include "pc_basement.h"
 #include "pc_money_tree.h"
 #include "pc_outdoor_ftr.h"
@@ -52,12 +53,14 @@ int pc_last_player_write_chunk(void* fp);
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <dirent.h>
+#include "pc_dirent.h"
 
 #define EXT_MAGIC "ACPX"
 #define EXT_VERSION 3 /* 3 = the single town file (GCIS chunk); 2 = companion next to a .gci */
-/* Raise when a release adds save data that older ones don't know (a new chunk). 1 = Alpha 6, 2 = the single town file. */
-#define EXT_SAVE_LEVEL 2
+/* Raise when a release adds save data that older ones don't know (a new chunk), or changes how it's stored.
+ * 1 = Alpha 6, 2 = the single town file, 3 = Beta 2 (Nookery 1.0: a few GameCube values stored the right way round,
+ * which Beta 1.1 would read backwards, so it warns first) */
+#define EXT_SAVE_LEVEL 3
 #define EXT_UNKNOWN_MAX 64
 
 /* Chunks from a newer version, kept to be written back */

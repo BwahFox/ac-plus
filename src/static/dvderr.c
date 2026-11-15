@@ -10,73 +10,73 @@
 
 /* imports */
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji1_1_tex[0x500] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji1_1_tex[0x500];
 #else
-static u8 dvd_keikoku_moji1_1_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji1_1_tex[] = {
 #include "assets/dvd_keikoku_moji1_1_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji1_2_tex[0x500] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji1_2_tex[0x500];
 #else
-static u8 dvd_keikoku_moji1_2_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji1_2_tex[] = {
 #include "assets/dvd_keikoku_moji1_2_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji1_3_tex[0x200] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji1_3_tex[0x200];
 #else
-static u8 dvd_keikoku_moji1_3_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji1_3_tex[] = {
 #include "assets/dvd_keikoku_moji1_3_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji1_4_tex[0x600] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji1_4_tex[0x600];
 #else
-static u8 dvd_keikoku_moji1_4_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji1_4_tex[] = {
 #include "assets/dvd_keikoku_moji1_4_tex.inc"
 };
 #endif
 
 #ifdef TARGET_PC
-static u8 ctl_att_w1_tex[0x400] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 ctl_att_w1_tex[0x400];
 #else
-static u8 ctl_att_w1_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 ctl_att_w1_tex[] = {
 #include "assets/ctl_att_w1_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 ctl_att_w2_tex[0x400] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 ctl_att_w2_tex[0x400];
 #else
-static u8 ctl_att_w2_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 ctl_att_w2_tex[] = {
 #include "assets/ctl_att_w2_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 ctl_att_w3_tex[0x400] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 ctl_att_w3_tex[0x400];
 #else
-static u8 ctl_att_w3_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 ctl_att_w3_tex[] = {
 #include "assets/ctl_att_w3_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 ctl_att_w4_tex[0x400] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 ctl_att_w4_tex[0x400];
 #else
-static u8 ctl_att_w4_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 ctl_att_w4_tex[] = {
 #include "assets/ctl_att_w4_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 ctl_att_w5_tex[0x400] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 ctl_att_w5_tex[0x400];
 #else
-static u8 ctl_att_w5_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 ctl_att_w5_tex[] = {
 #include "assets/ctl_att_w5_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 ctl_att_w6_tex[0x80] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 ctl_att_w6_tex[0x80];
 #else
-static u8 ctl_att_w6_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 ctl_att_w6_tex[] = {
 #include "assets/ctl_att_w6_tex.inc"
 };
 #endif
@@ -220,23 +220,23 @@ static Gfx keikoku1_dvd_att_winT_model[] = {
 };
 
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji2_tex[0x280] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji2_tex[0x280];
 #else
-static u8 dvd_keikoku_moji2_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji2_tex[] = {
 #include "assets/dvd_keikoku_moji2_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji2_2_tex[0x600] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji2_2_tex[0x600];
 #else
-static u8 dvd_keikoku_moji2_2_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji2_2_tex[] = {
 #include "assets/dvd_keikoku_moji2_2_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji2_3_tex[0x80] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji2_3_tex[0x80];
 #else
-static u8 dvd_keikoku_moji2_3_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji2_3_tex[] = {
 #include "assets/dvd_keikoku_moji2_3_tex.inc"
 };
 #endif
@@ -363,30 +363,30 @@ static Gfx keikoku2_dvd_att_winT_model[] = {
 };
 
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji4_tex[0x280] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji4_tex[0x280];
 #else
-static u8 dvd_keikoku_moji4_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji4_tex[] = {
 #include "assets/dvd_keikoku_moji4_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji3_1_tex[0x600] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji3_1_tex[0x600];
 #else
-static u8 dvd_keikoku_moji3_1_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji3_1_tex[] = {
 #include "assets/dvd_keikoku_moji3_1_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji3_2_tex[0x280] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji3_2_tex[0x280];
 #else
-static u8 dvd_keikoku_moji3_2_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji3_2_tex[] = {
 #include "assets/dvd_keikoku_moji3_2_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji3_3_tex[0x80] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji3_3_tex[0x80];
 #else
-static u8 dvd_keikoku_moji3_3_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji3_3_tex[] = {
 #include "assets/dvd_keikoku_moji3_3_tex.inc"
 };
 #endif
@@ -532,51 +532,51 @@ static Gfx keikoku3_dvd_att_winT_model[] = {
 };
 
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji5_tex[0x300] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji5_tex[0x300];
 #else
-static u8 dvd_keikoku_moji5_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji5_tex[] = {
 #include "assets/dvd_keikoku_moji5_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji6_2_tex[0x480] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji6_2_tex[0x480];
 #else
-static u8 dvd_keikoku_moji6_2_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji6_2_tex[] = {
 #include "assets/dvd_keikoku_moji6_2_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji6_3_tex[0x280] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji6_3_tex[0x280];
 #else
-static u8 dvd_keikoku_moji6_3_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji6_3_tex[] = {
 #include "assets/dvd_keikoku_moji6_3_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji6_tex[0x400] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji6_tex[0x400];
 #else
-static u8 dvd_keikoku_moji6_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji6_tex[] = {
 #include "assets/dvd_keikoku_moji6_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji6_1_tex[0x580] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji6_1_tex[0x580];
 #else
-static u8 dvd_keikoku_moji6_1_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji6_1_tex[] = {
 #include "assets/dvd_keikoku_moji6_1_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji6_new1_tex[0x200] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji6_new1_tex[0x200];
 #else
-static u8 dvd_keikoku_moji6_new1_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji6_new1_tex[] = {
 #include "assets/dvd_keikoku_moji6_new1_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji6_new2_tex[0x200] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji6_new2_tex[0x200];
 #else
-static u8 dvd_keikoku_moji6_new2_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji6_new2_tex[] = {
 #include "assets/dvd_keikoku_moji6_new2_tex.inc"
 };
 #endif
@@ -731,44 +731,44 @@ static Gfx keikoku4_dvd_att_winT_model[] = {
 };
 
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji7_tex[0x500] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji7_tex[0x500];
 #else
-static u8 dvd_keikoku_moji7_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji7_tex[] = {
 #include "assets/dvd_keikoku_moji7_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji8_tex[0x400] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji8_tex[0x400];
 #else
-static u8 dvd_keikoku_moji8_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji8_tex[] = {
 #include "assets/dvd_keikoku_moji8_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji10_tex[0x200] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji10_tex[0x200];
 #else
-static u8 dvd_keikoku_moji10_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji10_tex[] = {
 #include "assets/dvd_keikoku_moji10_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji11_tex[0x480] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji11_tex[0x480];
 #else
-static u8 dvd_keikoku_moji11_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji11_tex[] = {
 #include "assets/dvd_keikoku_moji11_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji12_tex[0x280] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji12_tex[0x280];
 #else
-static u8 dvd_keikoku_moji12_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji12_tex[] = {
 #include "assets/dvd_keikoku_moji12_tex.inc"
 };
 #endif
 #ifdef TARGET_PC
-static u8 dvd_keikoku_moji9_tex[0x500] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji9_tex[0x500];
 #else
-static u8 dvd_keikoku_moji9_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u8 dvd_keikoku_moji9_tex[] = {
 #include "assets/dvd_keikoku_moji9_tex.inc"
 };
 #endif
@@ -1059,6 +1059,8 @@ extern int dvderr_draw() {
   dvderr_move();
 
   if (this->now_error >= DVDERR_COVER_OPEN) {
+    /* Under Aurora this function is called only from the main graph loop. The
+     * console boot menu's secondary rendering thread is disabled at startup. */
     dvderr_mtx_set();
     JW_BeginFrame();
     this->gfx_p = this->gfx;
@@ -1086,7 +1088,6 @@ extern void dvderr_init() {
   this->draw_proc = &dvderr_move_wait;
   this->now_error = DVDERR_NONE;
   this->next_error = DVDERR_NONE;
-
   guOrtho(&this->ortho, -160.0f, 160.0f, -120.0f, 120.0f, -800.0f, 800.0f, 1.0f); /* TODO: N64 screen size macros (float) */
   guLookAt(&this->projection, 0.0f, 0.0f, 400.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
 }

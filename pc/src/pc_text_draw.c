@@ -291,3 +291,36 @@ void pc_image_draw_ci4(struct game_s* game, const void* tex, const u16* tlut, in
     SET_FONT_DISP(gfx);
     CLOSE_DISP(graph);
 }
+
+/* A solid colour over x0,y0..x1,y1 of the 320x240 screen, drawn like the text (triangles in the font list): the
+ * dark backdrop behind ac-plus's menus. (A fill or untextured texture rectangle draws nothing under Nookery.) */
+void pc_text_fill(struct game_s* game, f32 x0, f32 y0, f32 x1, f32 y1, int r, int g, int b, int a) {
+    if (!game || !game->graph) return;
+
+    GRAPH* graph = game->graph;
+    Vtx* v = GRAPH_ALLOC_TYPE(graph, Vtx, 4);
+    if (!v) return;
+
+    const f32 half_sw = (f32)SCREEN_WIDTH * 0.5f;
+    const f32 half_sh = (f32)SCREEN_HEIGHT * 0.5f;
+    int ulx = (int)((x0 - half_sw) * mFont_SCALE_F);
+    int uly = (int)(-(y0 - half_sh) * mFont_SCALE_F);
+    int lrx = (int)((x1 - half_sw) * mFont_SCALE_F);
+    int lry = (int)(-(y1 - half_sh) * mFont_SCALE_F);
+
+    OPEN_DISP(graph);
+    Gfx* gfx = NOW_FONT_DISP;
+    mFont_gppSetMode(&gfx);
+    gDPPipeSync(gfx++);
+    gDPSetCombineLERP(gfx++, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE);
+    gDPSetPrimColor(gfx++, 0, 0, r, g, b, a);
+    pc_text_set_vtx(v + 0, ulx, uly, 0, 0);
+    pc_text_set_vtx(v + 1, ulx, lry, 0, 0);
+    pc_text_set_vtx(v + 2, lrx, lry, 0, 0);
+    pc_text_set_vtx(v + 3, lrx, uly, 0, 0);
+    gSPVertex(gfx++, v, 4, 0);
+    pc_trin_init_5b(&gfx, 2, 0, 1, 2, 0, 2, 3, 0, 0, 0);
+    gDPPipeSync(gfx++);
+    SET_FONT_DISP(gfx);
+    CLOSE_DISP(graph);
+}

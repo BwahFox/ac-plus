@@ -74,10 +74,10 @@ void fIIH_mv(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game, u8* data) {
     if (aFTR_CAN_PLAY_SE(ftr_actor)) {
         if (ftr_actor->dynamic_work_s[0] != 0) {
             if (keyf->frame_control.current_frame > 25.0f) {
-                sAdo_OngenPos((u32)ftr_actor, 0x52, &ftr_actor->position);
+                sAdo_OngenPos((JaudioObjectId)(uintptr_t)ftr_actor, 0x52, &ftr_actor->position);
             }
         } else if (keyf->frame_control.current_frame < 25.0f) {
-            sAdo_OngenPos((u32)ftr_actor, 0x52, &ftr_actor->position);
+            sAdo_OngenPos((JaudioObjectId)(uintptr_t)ftr_actor, 0x52, &ftr_actor->position);
         }
     }
 }
@@ -107,10 +107,10 @@ void fIIH_mv(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game, u8* data) {
     if (aFTR_CAN_PLAY_SE(ftr_actor)) {
         if (ftr_actor->dynamic_work_s[0] != 0) {
             if (keyf->frame_control.current_frame > 25.0f) {
-                sAdo_OngenPos((u32)ftr_actor, 0x52, &ftr_actor->position);
+                sAdo_OngenPos((JaudioObjectId)(uintptr_t)ftr_actor, 0x52, &ftr_actor->position);
             }
         } else if (keyf->frame_control.current_frame < 25.0f) {
-            sAdo_OngenPos((u32)ftr_actor, 0x52, &ftr_actor->position);
+            sAdo_OngenPos((JaudioObjectId)(uintptr_t)ftr_actor, 0x52, &ftr_actor->position);
         }
     }
     if (cKF_SkeletonInfo_R_play(keyf) == cKF_STATE_STOPPED) {
@@ -122,7 +122,7 @@ void fIIH_mv(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game, u8* data) {
 void fIIH_dw(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game, u8* data) {
     GAME_PLAY* play = (GAME_PLAY*)game;
     cKF_SkeletonInfo_R_c* keyf = &ftr_actor->keyframe;
-    Mtx* mtx = ftr_actor->skeleton_mtx[game->frame_counter & 1];
+    N64Mtx* mtx = ftr_actor->skeleton_mtx[game->frame_counter & 1];
     int scroll;
     Gfx* gfx1;
     Gfx* gfx2;

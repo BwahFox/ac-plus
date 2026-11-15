@@ -10,6 +10,14 @@
 #include "m_mask_cat.h"
 #include "m_all_grow_ovl.h"
 #include "m_fishrecord.h"
+#include "ac_aprilfool_control_h.h"
+#include "ac_ev_angler.h"
+#include "ac_ev_turkey.h"
+#include "ac_ev_yomise.h"
+#include "ac_hatumode_control.h"
+#include "ac_npc_totakeke.h"
+#include "ac_tokyoso_control.h"
+#include "ac_tunahiki_control.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -40,6 +48,19 @@ static u8 reverse_bits8(u8 v) {
     v = (u8)(((v & 0xCC) >> 2) | ((v & 0x33) << 2));
     v = (u8)(((v & 0xAA) >> 1) | ((v & 0x55) << 1));
     return v;
+}
+
+/* [a:1, b:7] */
+static void repack_u8_1_7(u8* p, pc_bswap_dir_t dir) {
+    u8 v = *p;
+    *p = dir == PC_BSWAP_FROM_BE ? (u8)((v << 1) | (v >> 7))
+                               : (u8)((v >> 1) | (v << 7));
+}
+
+static void repack_u8_7_1(u8* p, pc_bswap_dir_t dir) {
+    u8 v = *p;
+    *p = dir == PC_BSWAP_FROM_BE ? (u8)((v >> 1) | (v << 7))
+                               : (u8)((v << 1) | (v >> 7));
 }
 
 /* Direction-aware u8 bitfield repackers for multi-bit fields.
@@ -199,31 +220,30 @@ static void swap_Mail_array(Mail_c* mail, u32 count) {
     for (i = 0; i < count; i++) swap_Mail(&mail[i]);
 }
 
-/* mQst_base_c u32 bitfield: direction-aware repack.
- * BE: quest_type[31:30], quest_kind[29:24], time_limit_enabled[23], progress[22:19], give_reward[18], unused[17:16]
- * LE: quest_type[1:0], quest_kind[7:2], time_limit_enabled[8], progress[12:9], give_reward[13], unused[15:14] */
+/* mQst_base_c two-byte bitfield: direction-aware repack.
+ * BE: quest_type[15:14], quest_kind[13:8], time_limit_enabled[7], progress[6:3], give_reward[2], unused[1:0]
+ * LE: quest_type[1:0], quest_kind[7:2], time_limit_enabled[8], progress[12:9], give_reward[13], unused[15:14].
+ * The deadline starts at byte 2; bytes 10-11 are trailing padding. */
 static void swap_mQst_base(mQst_base_c* qb, pc_bswap_dir_t dir) {
     u8* b = (u8*)qb;
     u32 raw;
     u32 quest_type, quest_kind, time_limit_enabled, progress, give_reward, unused_bits;
 
     if (dir == PC_BSWAP_FROM_BE) {
-        raw = ((u32)b[0] << 24) | ((u32)b[1] << 16) | ((u32)b[2] << 8) | b[3];
-        quest_type          = (raw >> 30) & 0x3;
-        quest_kind          = (raw >> 24) & 0x3F;
-        time_limit_enabled  = (raw >> 23) & 0x1;
-        progress            = (raw >> 19) & 0xF;
-        give_reward         = (raw >> 18) & 0x1;
-        unused_bits         = (raw >> 16) & 0x3;
+        raw = ((u32)b[0] << 8) | b[1];
+        quest_type          = (raw >> 14) & 0x3;
+        quest_kind          = (raw >> 8) & 0x3F;
+        time_limit_enabled  = (raw >> 7) & 0x1;
+        progress            = (raw >> 3) & 0xF;
+        give_reward         = (raw >> 2) & 0x1;
+        unused_bits         = raw & 0x3;
 
         raw = quest_type | (quest_kind << 2) | (time_limit_enabled << 8)
             | (progress << 9) | (give_reward << 13) | (unused_bits << 14);
         b[0] = (u8)(raw);
         b[1] = (u8)(raw >> 8);
-        b[2] = (u8)(raw >> 16);
-        b[3] = (u8)(raw >> 24);
     } else {
-        raw = b[0] | ((u32)b[1] << 8) | ((u32)b[2] << 16) | ((u32)b[3] << 24);
+        raw = b[0] | ((u32)b[1] << 8);
         quest_type          = raw & 0x3;
         quest_kind          = (raw >> 2) & 0x3F;
         time_limit_enabled  = (raw >> 8) & 0x1;
@@ -231,12 +251,10 @@ static void swap_mQst_base(mQst_base_c* qb, pc_bswap_dir_t dir) {
         give_reward         = (raw >> 13) & 0x1;
         unused_bits         = (raw >> 14) & 0x3;
 
-        raw = (quest_type << 30) | (quest_kind << 24) | (time_limit_enabled << 23)
-            | (progress << 19) | (give_reward << 18) | (unused_bits << 16);
-        b[0] = (u8)(raw >> 24);
-        b[1] = (u8)(raw >> 16);
-        b[2] = (u8)(raw >> 8);
-        b[3] = (u8)(raw);
+        raw = (quest_type << 14) | (quest_kind << 8) | (time_limit_enabled << 7)
+            | (progress << 3) | (give_reward << 2) | unused_bits;
+        b[0] = (u8)(raw >> 8);
+        b[1] = (u8)(raw);
     }
 
     swap_lbRTC_time(&qb->time_limit);
@@ -248,15 +266,29 @@ static void swap_mQst_delivery(mQst_delivery_c* qd, pc_bswap_dir_t dir) {
     swap_AnmPersonalID(&qd->sender);
 }
 
-static void swap_mQst_errand(mQst_errand_c* qe, pc_bswap_dir_t dir) {
+static void swap_mQst_errand(mQst_errand_c* qe, pc_bswap_dir_t dir, int legacy) {
     int j;
+    u8 flags = ((u8*)qe)[0x2A];
+    int type = dir == PC_BSWAP_FROM_BE ? flags & 7 : (flags >> 5) & 7;
     swap_mQst_base(&qe->base, dir);
     swap_AnmPersonalID(&qe->recipient);
     swap_AnmPersonalID(&qe->sender);
     swap16(&qe->item);
     repack_u8_5_3(((u8*)qe) + 0x2A, dir); /* pockets_idx:5, errand_type:3 */
-    for (j = 0; j < mQst_ERRAND_CHAIN_ANIMAL_NUM; j++) {
-        swap_AnmPersonalID(&qe->info.chain.used_ids[j]);
+    if (legacy) {
+        for (j = 0; j < mQst_ERRAND_CHAIN_ANIMAL_NUM; j++) {
+            swap_AnmPersonalID(&qe->info.chain.used_ids[j]);
+        }
+    } else if (type == mQst_ERRAND_TYPE_FIRST_JOB) {
+        for (j = 0; j < mQst_ERRAND_FIRST_JOB_ANIMAL_NUM; j++) {
+            swap_AnmPersonalID(&qe->info.first_job.used_ids[j]);
+        }
+        /* used_num:7, wrong_cloth:1 occupies the next byte, not a third ID. */
+        repack_u8_7_1((u8*)&qe->info.first_job + sizeof(qe->info.first_job.used_ids), dir);
+    } else if (type == mQst_ERRAND_TYPE_CHAIN) {
+        for (j = 0; j < mQst_ERRAND_CHAIN_ANIMAL_NUM; j++) {
+            swap_AnmPersonalID(&qe->info.chain.used_ids[j]);
+        }
     }
 }
 
@@ -527,7 +559,7 @@ static void swap_Kabu(Kabu_price_c* kabu) {
 }
 
 
-static void swap_PostOffice(PostOffice_c* po) {
+static void swap_PostOffice(PostOffice_c* po, int legacy) {
     swap16((u16*)&po->keep_mail_sum_players);
     swap16((u16*)&po->keep_mail_sum_npcs);
     swap16((u16*)&po->mail_recipient_flags);
@@ -535,7 +567,12 @@ static void swap_PostOffice(PostOffice_c* po) {
     swap_Mail_array(po->mail, mPO_MAIL_STORAGE_SIZE);
     swap_Mail(&po->leaflet);
     swap_Mail(&po->event_leaflet);
-    swap32((u32*)&po->leaflet_recipient_flags.raw);
+    if (legacy) {
+        swap32(&po->leaflet_recipient_flags.raw);
+    } else {
+        swap16(&po->leaflet_recipient_flags.leaflet_flags);
+        swap16(&po->leaflet_recipient_flags.event_flags);
+    }
     swap_lbRTC_time(&po->delivery_time);
 }
 
@@ -626,19 +663,109 @@ static void swap_mEv_event_save(mEv_event_save_c* es) {
     swap32(&es->flags);
 }
 
-static void swap_mEv_area(mEv_area_c* area) {
+static void swap_mEv_area(mEv_area_c* area, int legacy) {
+    u8* data = (u8*)area->data;
     swap16(&area->info.year);
     swap16(&area->info.start_date.raw);
     swap16(&area->info.end_date.raw);
-    swap32_array((u32*)area->data, 11);
+    if (legacy) {
+        swap32_array((u32*)area->data, 11);
+        return;
+    }
+
+    /* The int array is opaque storage. Each (type, id) uses a different
+     * payload, including byte arrays and mixed-width structs. */
+    if (area->info.id == mEv_EVENT_NUM) {
+        mEv_place_data_c* place = (mEv_place_data_c*)data;
+        swap32(&place->block.z);
+        swap32(&place->block.x);
+        swap32(&place->unit.z);
+        swap32(&place->unit.x);
+        swap16(&place->actor_name);
+        swap16(&place->flag);
+    } else if (area->info.id == 15) {
+        /* aSNMgr_event_save_c: byte-sized animal indices only. */
+    } else if (area->info.type == mEv_EVENT_NEW_YEARS_DAY && area->info.id == 7) {
+        aEv_hatumode_save_c* event = (aEv_hatumode_save_c*)data;
+        swap16(&event->state);
+        swap16(&event->flags0);
+        swap16(&event->flags1);
+        swap16_array((u16*)event->yashiro_pos, 3);
+    } else if (area->info.type == mEv_EVENT_SPORTS_FAIR_FOOT_RACE && area->info.id == 8) {
+        aEv_tokyoso_c* event = (aEv_tokyoso_c*)data;
+        swap16(&event->flags);
+        swap16_array((u16*)event->yasiro_pos, 3);
+        swap16_array((u16*)event->pos_0A, 4);
+        swap16_array((u16*)event->angle, 2);
+        swap16_array((u16*)event->next_angle, 2);
+    } else if (area->info.type == mEv_EVENT_SPORTS_FAIR_TUG_OF_WAR && area->info.id == 9) {
+        aEv_tunahiki_c* event = (aEv_tunahiki_c*)data;
+        swap32(&event->rope);
+        swap32(&event->rope_base);
+        swap32(&event->speed);
+        swap32(&event->next_speed);
+        swap16(&event->npc_state);
+        swap16(&event->flag);
+        swap16(&event->_14);
+        swap16(&event->counter);
+    } else if (area->info.type == mEv_EVENT_KK_SLIDER && area->info.id == 10) {
+        aNTT_event_save_c* event = (aNTT_event_save_c*)data;
+        swap16(&event->_00);
+        swap16(&event->bitfield);
+    } else if (area->info.type == mEv_EVENT_GHOST && area->info.id == 54) {
+        mEv_gst_c* event = (mEv_gst_c*)data;
+        swap16(&event->okoruhito_str_no);
+        swap16(&event->flags);
+        swap_lbRTC_ymd(&event->renew_time);
+    } else if ((area->info.type == mEv_EVENT_DOZAEMON && area->info.id == 13) ||
+               (area->info.type == mEv_EVENT_SONCHO_BRIDGE_MAKE && area->info.id == 34) ||
+               (area->info.type == mEv_EVENT_SUMMER_CAMPER && area->info.id == 0)) {
+        /* Gulliver flags, bridge _00, or summer camper actor ID. */
+        swap16(data);
+    } else if (area->info.id == 0) {
+        switch (area->info.type) {
+        case mEv_EVENT_APRILFOOLS_DAY:
+            swap16_array(((aAPC_event_save_data_c*)data)->talk_bitfield, PLAYER_NUM);
+            break;
+        case mEv_EVENT_FISHING_TOURNEY_1:
+        case mEv_EVENT_FISHING_TOURNEY_2: {
+            aEANG_event_data_c* event = (aEANG_event_data_c*)data;
+            swap32(&event->size);
+            swap_PersonalID(&event->pID);
+            swap16_array((u16*)event->pos, 2);
+            break;
+        }
+        case mEv_EVENT_FIREWORKS_SHOW: {
+            aEv_yomise_save_c* event = (aEv_yomise_save_c*)data;
+            swap16_array(event->goods, aEYMS_GOODS_COUNT);
+            swap16(&event->cnt);
+            swap16(&event->kind);
+            break;
+        }
+        case mEv_EVENT_HARVEST_FESTIVAL_FRANKLIN: {
+            aEv_turkey_save_c* event = (aEv_turkey_save_c*)data;
+            swap_PersonalID(&event->pid);
+            swap16(&event->given_present_bitfield);
+            break;
+        }
+        case mEv_EVENT_TOY_DAY_JINGLE: {
+            mEv_santa_event_c* event = (mEv_santa_event_c*)data;
+            swap_PersonalID(&event->pid);
+            swap16_array(event->cloth, mEv_SANTA_CLOTH_NUM_MAX);
+            break;
+        }
+        default:
+            break;
+        }
+    }
 }
 
-static void swap_mEv_save_common(mEv_save_common_data_c* sc) {
+static void swap_mEv_save_common(mEv_save_common_data_c* sc, int legacy) {
     int i;
     swap16_array(sc->dates, mEv_SAVE_DATE_NUM);
     swap32((u32*)&sc->area_use_bitfield);
     for (i = 0; i < mEv_AREA_NUM; i++) {
-        swap_mEv_area(&sc->area[i]);
+        swap_mEv_area(&sc->area[i], legacy);
     }
     swap32((u32*)&sc->last_date);
     swap32((u32*)&sc->delete_event_id);
@@ -673,11 +800,12 @@ static void swap_mMsm_record(mMsm_record_c* rec, pc_bswap_dir_t dir) {
     swap_mMsm_remail_info(&rec->remail_info);
 }
 
-static void swap_Anmremail(Anmremail_c* ar) {
+static void swap_Anmremail(Anmremail_c* ar, pc_bswap_dir_t dir, int legacy) {
     swap_lbRTC_ymd(&ar->date);
+    if (!legacy) repack_u8_1_7((u8*)&ar->flags, dir);
 }
 
-static void swap_Private(Private_c* prv, pc_bswap_dir_t dir) {
+static void swap_Private(Private_c* prv, pc_bswap_dir_t dir, int legacy) {
     int i;
 
     swap_PersonalID(&prv->player_ID);
@@ -692,7 +820,7 @@ static void swap_Private(Private_c* prv, pc_bswap_dir_t dir) {
         swap_mQst_delivery(&prv->deliveries[i], dir);
     }
     for (i = 0; i < mPr_ERRAND_QUEST_NUM; i++) {
-        swap_mQst_errand(&prv->errands[i], dir);
+        swap_mQst_errand(&prv->errands[i], dir, legacy);
     }
 
     swap16(&prv->equipment);
@@ -709,7 +837,7 @@ static void swap_Private(Private_c* prv, pc_bswap_dir_t dir) {
     }
 
     swap32_array(prv->aircheck_collect_bitfield, 2);
-    swap_Anmremail(&prv->remail);
+    swap_Anmremail(&prv->remail, dir, legacy);
     swap32(&prv->reset_code);
     swap16(&prv->animal_memory.npc_id);
     swap16(&prv->celebrated_birthday_year);
@@ -832,7 +960,7 @@ static void swap_save_check(mFRm_chk_t* chk) {
     swap16(&chk->checksum);
 }
 
-void pc_save_bswap(Save_t* save, pc_bswap_dir_t dir) {
+static void pc_save_bswap_impl(Save_t* save, pc_bswap_dir_t dir, int legacy) {
     int i;
 
     swap_save_check(&save->save_check);
@@ -840,7 +968,7 @@ void pc_save_bswap(Save_t* save, pc_bswap_dir_t dir) {
     swap16(&save->copy_protect);
 
     for (i = 0; i < PLAYER_NUM; i++)
-        swap_Private(&save->private_data[i], dir);
+        swap_Private(&save->private_data[i], dir, legacy);
 
     swap_mLd_land_info(&save->land_info);
     swap_noticeboard(save->noticeboard, mNtc_BOARD_POST_COUNT);
@@ -858,11 +986,11 @@ void pc_save_bswap(Save_t* save, pc_bswap_dir_t dir) {
     swap_Shop(&save->shop, dir);
     swap_Kabu(&save->kabu_price_schedule);
     swap_mEv_event_save(&save->event_save_data);
-    swap_mEv_save_common(&save->event_save_common);
+    swap_mEv_save_common(&save->event_save_common, legacy);
 
     swap16(&save->fruit);
     swap_lbRTC_time(&save->all_grow_renew_time);
-    swap_PostOffice(&save->post_office);
+    swap_PostOffice(&save->post_office, legacy);
     swap_PoliceBox(&save->police_box);
     swap64(&save->melody);
     swap_lbRTC_ymd(&save->renew_time);
@@ -894,6 +1022,57 @@ void pc_save_bswap(Save_t* save, pc_bswap_dir_t dir) {
     swap64((u64*)&save->travel_hard_time);
 
     swap_lbRTC_time(&save->saved_auto_nwrite_time);
+}
+
+void pc_save_bswap(Save_t* save, pc_bswap_dir_t dir) {
+    pc_save_bswap_impl(save, dir, FALSE);
+}
+
+/* Only files carrying the old PC title use the historical layout. Decode it
+ * exactly so upgrading preserves the existing town's native gameplay state.
+ * Subsequent writes always use the corrected GameCube layout. */
+void pc_save_bswap_from_legacy_pc(Save_t* save) {
+    pc_save_bswap_impl(save, PC_BSWAP_FROM_BE, TRUE);
+}
+
+static int be_time_state(const u8* t) {
+    u32 year = ((u32)t[6] << 8) | t[7];
+    int i;
+
+    for (i = 0; i < 8 && t[i] == 0; i++) {}
+    if (i == 8) return 0;
+    /* Quest day limits can extend past December of the last playable year. */
+    if (t[0] < 60 && t[1] < 60 && t[2] < 24 && t[3] >= 1 && t[3] <= 31 && t[4] < 7 &&
+        t[5] >= 1 && t[5] <= 12 && year >= lbRTC_YEAR_MIN && year <= lbRTC_YEAR_MAX + 1) {
+        return 1;
+    }
+    return -1;
+}
+
+static void relocate_quest_time_limit(mQst_base_c* qb) {
+    u8* b = (u8*)qb;
+    if (be_time_state(b + 2) < 0 && be_time_state(b + 4) > 0) {
+        memmove(b + 2, b + 4, sizeof(lbRTC_time_c));
+        b[10] = 0;
+        b[11] = 0;
+    }
+}
+
+void pc_save_relocate_quest_time_limits(Save_t* save) {
+    int p, i;
+
+    for (p = 0; p < PLAYER_NUM; p++) {
+        for (i = 0; i < mPr_DELIVERY_QUEST_NUM; i++) {
+            relocate_quest_time_limit(&save->private_data[p].deliveries[i].base);
+        }
+        for (i = 0; i < mPr_ERRAND_QUEST_NUM; i++) {
+            relocate_quest_time_limit(&save->private_data[p].errands[i].base);
+        }
+    }
+    for (i = 0; i < ANIMAL_NUM_MAX; i++) {
+        relocate_quest_time_limit(&save->animals[i].contest_quest.base);
+    }
+    relocate_quest_time_limit(&save->island.animal.contest_quest.base);
 }
 
 /* ARAM block swaps for the "Others" section of the GCI file */
@@ -943,9 +1122,7 @@ static int verify_compare(const char* label, const u8* original, const u8* round
         }
     }
 
-    if (mismatches == 0) {
-        OSReport("[PC] BSWAP verify: %s round-trip PASSED (%u bytes)\n", label, size);
-    } else {
+    if (mismatches != 0) {
         OSReport("[PC] BSWAP verify: %s total mismatches: %d / %u bytes\n", label, mismatches, size);
     }
     return mismatches;
@@ -1000,30 +1177,4 @@ int pc_save_bswap_verify_roundtrip_diary(const u8* original_be, u32 size) {
     result = verify_compare("keep_diary", original_be, temp, size);
     free(temp);
     return result;
-}
-
-void pc_save_bswap_foreigner(mCD_foreigner_c* f, pc_bswap_dir_t dir) {
-    swap16(&f->checksum);
-    swap_Private(&f->priv, dir);
-    swap_Animal(&f->remove_animal, dir, 0);
-    swap16(&f->copy_protect);
-}
-
-/* BE-aware checksum matching mFRm_GetFlatCheckSum on GC.
- * Reads byte stream as BE u16 pairs (GC reads native PPC u16 directly). */
-
-u16 pc_checksum_be(const u8* data, u32 size, u16 old_checksum) {
-    u32 i;
-    u32 sum = 0;
-    u32 num_u16 = size / 2;
-    u16 raw;
-
-    for (i = 0; i < num_u16; i++) {
-        u16 val = ((u16)data[i * 2] << 8) | data[i * 2 + 1];
-        sum += val;
-    }
-
-    /* Two's complement: subtract old_checksum (included in sum), negate */
-    raw = (u16)((sum - old_checksum) & 0xFFFF);
-    return (u16)((~raw + 1) & 0xFFFF);
 }

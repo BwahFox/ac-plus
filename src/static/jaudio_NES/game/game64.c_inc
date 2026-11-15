@@ -30,7 +30,7 @@ typedef struct SOU_LEV_ONGEN_DATA {
     u8 _01;
     u8 _02;
     u8 _03;
-    u32 _04;
+    JaudioObjectId _04;
     u8 _08;
     u8 _09;
     f32 distance;
@@ -66,7 +66,7 @@ typedef struct SOU_LEV_SE {
 } SOU_LEV_SE;
 
 typedef struct SOU_ONGEN_ENTRY {
-    u32 _00;
+    JaudioObjectId _00;
     u8 _04;
     u16 _06;
     u8 pan;
@@ -112,7 +112,7 @@ typedef struct SOU_VOICE_SE {
 } SOU_VOICE_SE;
 
 typedef struct SOU_ROOM_INS {
-    u32 _00;
+    JaudioObjectId _00;
     u8 _04;
     u8 _05;
     u8 _06;
@@ -505,6 +505,11 @@ u16 BGM_MUTE_TABLE_MUSEUM[] = {
 
 // sou_ls_stack;
 s32 sou_now_spec;
+#ifdef __cplusplus
+/* read from C (rhythm.c): C names, which MSVC's C++ would mangle even for variables */
+extern "C" u8 sou_scene_mode;
+extern "C" u8 sou_now_bgm_num;
+#endif
 u8 sou_scene_mode;
 u8 sou_chime_status;
 void (*fatalErrorCallback)();
@@ -588,7 +593,7 @@ f32 SOU_ONGEN_AREA1 = 540.f;
 f32 SOU_ONGEN_AREA2 = 533.f;
 f32 sou_md_bgm_boost_pasent = 1.f;
 
-u8 audiomemory[0x90000] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) u8 audiomemory[0x90000];
 s16* SOU_FIR_STATE;
 s16 SOU_FIR_STATE_COPY[12];
 
@@ -1278,6 +1283,32 @@ void Sou_Insect_Lev_Cont() {
     }
 }
 
+#ifdef TARGET_PC
+static u8 sou_ongen_entry_missed[ARRAY_COUNT(sou_ongen_entry)];
+static u8 sou_ongen_game_frame_ran;
+
+void Na_OngenGameFrameRan(void) {
+    sou_ongen_game_frame_ran = TRUE;
+}
+#endif
+
+static u8 Sou_Ongen_Entry_Stale(u8 i) {
+    u8 stale = sou_ongen_entry[i]._09 == sou_ongen_entry[i]._0A;
+
+#ifdef TARGET_PC
+    if (!stale) {
+        sou_ongen_entry_missed[i] = FALSE;
+    } else if (!sou_ongen_game_frame_ran) {
+        stale = FALSE;
+    } else if (!sou_ongen_entry_missed[i]) {
+        sou_ongen_entry_missed[i] = TRUE;
+        stale = FALSE;
+    }
+#endif
+
+    return stale;
+}
+
 void Sou_Ongen_Lev_Cont() {
     u8 i = 0;
     u8 j = 0;
@@ -1320,7 +1351,7 @@ void Sou_Ongen_Lev_Cont() {
 
     for (i = 0; i < ARRAY_COUNT(sou_ongen_entry); i++) {
         if (sou_ongen_entry[i]._00) {
-            if (sou_ongen_entry[i]._09 == sou_ongen_entry[i]._0A) {
+            if (Sou_Ongen_Entry_Stale(i)) {
                 for (j = 0; j < ARRAY_COUNT(sou_lev_ongen_data); j++) {
                     if (sou_lev_ongen_data[j]._04 == sou_ongen_entry[i]._00) {
 
@@ -1825,7 +1856,7 @@ void Sou_InitAudio() {
     Na_StaffRollInit();
 }
 
-void Sou_DVD_Error(char*, u8*) {
+void Sou_DVD_Error(char* message, u8* status) {
     fatalErrorCallback();
 }
 
@@ -1836,7 +1867,7 @@ void Na_InitAudio(void (*fatal_callback)(), u8* load_addr, size_t load_size, u8*
     u32 unused = SetPreCopy_NeosRom(load_addr, load_size, cut_flag);
     Jac_RegisterDVDErrorCallback(Sou_DVD_Error);
     Jac_Start(audiomemory, sizeof(audiomemory), v);
-    BootSound((u32)bootsound, bootsound_size);
+    BootSound((uintptr_t)bootsound, bootsound_size);
     sou_NeosBootCheck_ok = 1;
 }
 
@@ -1872,6 +1903,9 @@ void Na_GameFrame() {
             }
             Sou_ChimeMake();
             Sou_Ongen_Lev_Cont();
+#ifdef TARGET_PC
+            sou_ongen_game_frame_ran = FALSE;
+#endif
             Sou_Insect_Lev_Cont();
             for (i = 0; i < ARRAY_COUNT(sou_lev_ongen_data); i++) {
                 Sou_Ongen_Lev_Prog(i);
@@ -3030,7 +3064,7 @@ u8 Na_MessageSpeedGet() {
     return sou_message_speed;
 }
 
-void Na_OngenPos(u32 id, u8 index, u16 angle, f32 distance) {
+void Na_OngenPos(JaudioObjectId id, u8 index, u16 angle, f32 distance) {
     u8 pan = 0;
     u8 i = 0;
     u8 j = 0;
@@ -3429,7 +3463,7 @@ extern void Na_Pause(u8 pauseFlag) {
     sou_pause_flag = pauseFlag;
 }
 
-extern void Na_RhythmPos(u32 index, u8 unused, u16 angle, f32 distance) {
+extern void Na_RhythmPos(JaudioObjectId index, u8 unused, u16 angle, f32 distance) {
     u8 pan = 0;
     u8 subtrack = 0;
     f32 volume = 0.f;
@@ -3473,7 +3507,7 @@ extern void Na_SpecChange(int a) {
     }
 }
 
-extern void Na_MDPlayerPos(u16 angle, f32 distance, u16 b, u16 c, u32 id) {
+extern void Na_MDPlayerPos(u16 angle, f32 distance, u16 b, u16 c, JaudioObjectId id) {
     u8 pan = 0;
     f32 volume = 0.f;
     u8 filterStatus = 0;
@@ -3603,7 +3637,7 @@ extern void Na_KishaStatusTrg(u8 a) {
     }
 }
 
-extern void Na_KishaStatusLevel(f32 speed, u32 ongenNum1, u16 angle1, f32 distance1, u32 ongenNum2, u16 angle2,
+extern void Na_KishaStatusLevel(f32 speed, JaudioObjectId ongenNum1, u16 angle1, f32 distance1, JaudioObjectId ongenNum2, u16 angle2,
                                 f32 distance2) {
     f32 f30 = 0.f;
     f32 f29 = 0.f;
@@ -3685,11 +3719,17 @@ extern u8 Na_SeFadeoutCheck() {
     return ret;
 }
 
-__declspec(export) extern void Na_BgmTrOn(u8 subTrack) {
+#if defined(__MWERKS__)
+__declspec(export)
+#endif
+extern void Na_BgmTrOn(u8 subTrack) {
     NA_COMMAND_AUDIO_SUBTRACK_SET_MUTE(sou_now_bgm_handle, subTrack, FALSE);
 }
 
-__declspec(export) extern void Na_BgmTrOff(u8 subTrack) {
+#if defined(__MWERKS__)
+__declspec(export)
+#endif
+extern void Na_BgmTrOff(u8 subTrack) {
     NA_COMMAND_AUDIO_SUBTRACK_SET_MUTE(sou_now_bgm_handle, subTrack, TRUE);
 }
 
@@ -3883,7 +3923,7 @@ extern void Na_SceneMode(u8 a) {
     }
 }
 
-extern u8 Na_RoomIncectPos(int insectID, u8 index, u16 angle, f32 distance) {
+extern u8 Na_RoomIncectPos(JaudioObjectId insectID, u8 index, u16 angle, f32 distance) {
     u8 i = 0;
     u8 foundIndex = 0;
     u8 j = 0;
@@ -3994,7 +4034,7 @@ extern u8 Na_RoomIncectPos(int insectID, u8 index, u16 angle, f32 distance) {
     return ret;
 }
 
-extern void Na_FurnitureInstPos(int id, u16 angle, f32 distance) {
+extern void Na_FurnitureInstPos(JaudioObjectId id, u16 angle, f32 distance) {
     u8 i = 0;
     u8 pan = 0;
     f32 volume = 0.f;

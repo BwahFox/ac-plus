@@ -1,4 +1,5 @@
 #include "m_msg.h"
+#include <stdlib.h> /* getenv: ac-plus dev switches (m_msg_main.c_inc) */
 
 #include "main.h"
 #include "m_font.h"
@@ -7,10 +8,15 @@
 #include "m_common_data.h"
 #include "jsyswrap.h"
 #include "m_bgm.h"
+#include "m_event.h"
 #include "libforest/emu64/emu64_wrapper.h"
 #include "sys_matrix.h"
 #ifdef TARGET_PC
 #include "pc_bswap.h"
+#include "pc_settings.h"
+#endif
+#ifdef MOUSE_INPUT
+#include "game_pointer.h"
 #endif
 
 static u32 Msg_table_rom_start = 0;
@@ -24,6 +30,24 @@ typedef void (*mMsg_MAIN_PROC)(mMsg_Window_c*, GAME*);
 
 static void mMsg_MainSetup_Window(mMsg_Window_c* msg_p, GAME* game);
 static int mMsg_end_to_disappear(mMsg_Window_c* msg_p);
+
+static int mMsg_cursor_waiting = FALSE;
+
+static u16 mMsg_get_trigger(void) {
+    u16 buttons = getTrigger();
+#ifdef MOUSE_INPUT
+    if (!mEv_IsTitleDemo()) {
+        u32 mouse_buttons = acgc_pointer_frame()->pressed;
+        if (mouse_buttons & GAME_POINTER_LEFT) {
+            buttons |= BUTTON_A;
+        }
+        if (mouse_buttons & GAME_POINTER_RIGHT) {
+            buttons |= BUTTON_B;
+        }
+    }
+#endif
+    return buttons;
+}
 
 #include "../src/game/m_msg_ctrl.c_inc"
 
@@ -45,6 +69,9 @@ static void mMsg_sound_MessageStatus(u8 status);
 #include "../src/game/m_msg_draw_window.c_inc"
 #include "../src/game/m_msg_draw_font.c_inc"
 
+static int mMsg_setup_pending = FALSE;
+static f32 mMsg_time_debt = 0.0f;
+
 static void mMsg_MainSetup_Window(mMsg_Window_c* msg_p, GAME* game) {
     static mMsg_MAIN_PROC proc[mMsg_INDEX_NUM] = {
         &mMsg_MainSetup_Hide,      &mMsg_MainSetup_Appear,      &mMsg_MainSetup_Normal, &mMsg_MainSetup_Cursol,
@@ -59,6 +86,10 @@ static void mMsg_MainSetup_Window(mMsg_Window_c* msg_p, GAME* game) {
         }
 
         (*proc[idx])(msg_p, game);
+
+        if (msg_p->requested_main_index < 0) {
+            mMsg_setup_pending = TRUE;
+        }
     }
 }
 
@@ -71,11 +102,33 @@ static void mMsg_Main_Window(mMsg_Window_c* msg_p, GAME* game) {
     int idx = msg_p->main_index;
 
     if (idx >= 0) {
+        GRAPH* graph;
+        double dt;
+        f32 step;
+        f32 repay;
+
         if (idx >= mMsg_INDEX_NUM || proc[idx] == NULL) {
             return;
         }
 
+        graph = game->graph;
+        dt = graph->dt_num_60fps_frames;
+        step = (f32)dt;
+        repay = MIN(mMsg_time_debt, step);
+        mMsg_time_debt -= repay; //tfw you can't escape nooks debt even when the game is off
+        step -= repay;
+
+        if (mMsg_setup_pending) {
+            mMsg_setup_pending = FALSE;
+            if (step < 1.0f) {
+                mMsg_time_debt += 1.0f - step;
+                step = 1.0f;
+            }
+        }
+
+        graph->dt_num_60fps_frames = step;
         (*proc[idx])(msg_p, game);
+        graph->dt_num_60fps_frames = dt;
     }
 }
 
@@ -107,6 +160,9 @@ extern void mMsg_aram_init2() {
 }
 
 extern void mMsg_ct(GAME* game) {
+    mMsg_setup_pending = FALSE;
+    mMsg_time_debt = 0.0f;
+    mMsg_cursor_waiting = FALSE;
     mMsg_init(game);
     mChoice_ct(&mMsg_window.choice_window, game);
 }

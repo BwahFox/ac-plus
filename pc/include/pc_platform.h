@@ -1,16 +1,8 @@
-/* pc_platform.h - SDL2/OpenGL platform layer and global state */
+/* Shared host declarations used by game-side TARGET_PC adaptations. */
 #ifndef PC_PLATFORM_H
 #define PC_PLATFORM_H
 
-/* 32-bit required: decomp code (JSystem, emu64) casts pointers to u32 */
 #include <stdint.h>
-#if UINTPTR_MAX != 0xFFFFFFFFu
-#error "This project must be compiled as 32-bit (pointer size != 4 bytes)"
-#endif
-
-#define SDL_MAIN_HANDLED
-#include <SDL.h>
-#include <glad/gl.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +13,8 @@
 #include <time.h>
 
 #include "pc_types.h"
+
+typedef uint64_t Uint64;
 
 /* --- Configuration --- */
 #define PC_GC_WIDTH       640
@@ -45,26 +39,11 @@
 #define GC_CORE_CLOCK         486000000u
 #define GC_TIMER_CLOCK        (GC_BUS_CLOCK / 4)
 
-/* --- Platform headers --- */
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <windows.h>
-#undef near
-#undef far
-#else
-#include <sys/mman.h>
-#include <dlfcn.h>
-#include <elf.h>
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* --- Global state --- */
-extern SDL_Window*   g_pc_window;
-extern SDL_GLContext  g_pc_gl_context;
 extern int           g_pc_running;
 extern int           g_pc_verbose;
 extern int           g_pc_frame_limit_override;
@@ -82,6 +61,18 @@ extern u32           g_frame_limiter;
 extern int g_pc_window_w;
 extern int g_pc_window_h;
 void pc_platform_update_window_size(void);
+/* ac-plus: the game's window (Aurora's), for titles and message boxes (pc_acplus_host.cpp) */
+struct SDL_Window;
+extern struct SDL_Window* g_pc_window;
+
+/* Aurora always renders to the full host framebuffer. These wrappers preserve
+ * the legacy port's hor+ projection and UI sub-viewport behavior without
+ * teaching Aurora's generic GX implementation about Animal Crossing state. */
+float pc_widescreen_get_aspect_factor(void);
+void pc_widescreen_set_projection(const void* mtx, u32 type);
+void pc_widescreen_set_viewport(float left, float top, float width, float height,
+                                float nearz, float farz);
+float pc_widescreen_get_hud_edge_offset(void);
 
 /* --- Widescreen mode (3-state) ---
  * 0 = hor+ (default): full-window viewport, FOV-corrected projection. Resets each frame.
@@ -92,8 +83,8 @@ void pc_platform_update_window_size(void);
  *   ON (0xAC5701) -> 1, OFF (0xAC5700) -> 2. emu64 reads these during DL processing. */
 #define PC_NOOP_WIDESCREEN_STRETCH     0xAC5701u
 #define PC_NOOP_WIDESCREEN_STRETCH_OFF 0xAC5700u
-#define PC_NOOP_GROUND_ON              0xAC5711u /* the town's ground from here (pc_gx_set_ground) */
-#define PC_NOOP_GROUND_OFF             0xAC5710u
+#define PC_NOOP_GROUND_ON              0xAC5717u /* the town's ground from here (pc_gx_set_ground) */
+#define PC_NOOP_GROUND_OFF             0xAC5716u
 extern int g_pc_widescreen_stretch;
 
 /* --- Functions --- */
@@ -101,15 +92,19 @@ void pc_platform_init(void);
 void pc_platform_shutdown(void);
 void pc_platform_swap_buffers(void);
 int  pc_platform_poll_events(void);
+int  pc_platform_flush_file(FILE* file);
+/* Start with an empty filename; returns successive names in order. */
+int  pc_platform_next_gci(const char* directory_path, char* filename, int filename_size);
+/* Resolve a port-owned relative path below the active data directory. */
+int  pc_platform_user_path(const char* relative_path, char* output, size_t output_size);
+/* Resolve a relative path below the executable directory (SDL_GetBasePath).
+ * Used to import data from pre-Aurora installations regardless of CWD. */
+int  pc_platform_base_path(const char* relative_path, char* output, size_t output_size);
+int  pc_clock_minutes(void);
 
 /* EXE image range for seg2k0 pointer disambiguation (vs N64 segment addresses) */
 extern unsigned int pc_image_base;
 extern unsigned int pc_image_end;
-
-/* --- Model viewer --- */
-extern int g_pc_model_viewer;
-extern int g_pc_model_viewer_start;
-extern int g_pc_model_viewer_no_cull;
 
 /* --- Per-frame diagnostics --- */
 extern int pc_emu64_frame_cmds;
@@ -122,7 +117,6 @@ extern int pc_emu64_frame_cull_rejected;
 extern int pc_gx_draw_call_count;
 
 /* --- Audio --- */
-extern int pc_save_loaded;
 int  pc_audio_get_buffer_fill(void);
 int  pc_audio_is_active(void);
 void pc_audio_set_paused(int paused);

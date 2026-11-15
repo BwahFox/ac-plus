@@ -412,7 +412,7 @@ void pc_nlr_draw_wings(GAME* game, int house, int winter, void* palette, const u
     Vtx* vtx;
     Gfx* gfx;
     Gfx* g;
-    Mtx* mtx;
+    N64Mtx* mtx;
     int r, any = FALSE;
 
     for (r = 0; r < PC_NLR_ROOMS; r++) {

@@ -1,0 +1,749 @@
+#include <aurora/aurora.h>
+#include <aurora/dvd.h>
+#include <aurora/event.h>
+#include <aurora/gfx.h>
+#include <aurora/main.h>
+#include <dolphin/gx.h>
+#include <dolphin/gx/GXAurora.h>
+#include <dolphin/pad.h>
+#include <dolphin/vi.h>
+#include <SDL3/SDL.h>
+#include <tracy/Tracy.hpp>
+
+#include "pc_assets.h"
+#include "pc_platform.h"
+#include "acgc/game_editor.hpp"
+#include "acgc/game_pointer.hpp"
+#include "aurora_debug.h"
+#include "acgc/app_info.hpp"
+#include "acgc/controller_ports.hpp"
+#include "acgc/input_profiles.hpp"
+#include "acgc/data.hpp"
+#include "acgc/disc.hpp"
+#include "acgc/legacy_input.hpp"
+#include "acgc/settings.hpp"
+#include "acgc/texture_replacements.hpp"
+#include "acgc/ui/prelaunch.hpp"
+#include "acgc/ui/theme.hpp"
+#include "acgc/ui/ui.hpp"
+#include "m_kankyo.h"
+#include "borealis/aurora_log.h"
+#include "borealis/cli.hpp"
+#include "borealis/crash.hpp"
+#include "borealis/io.hpp"
+#include "borealis/log.hpp"
+
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <memory>
+#include <string>
+#include <thread>
+#include <vector>
+
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <io.h>
+#include <windows.h>
+#endif
+
+#ifdef PC_DEV
+/* Dev: dev-env.txt next to the game holds NAME=value lines to run with, for a launcher that can't set them (a Steam
+ * shortcut on the Deck). */
+static void pc_dev_env_file() {
+    FILE* f = std::fopen("dev-env.txt", "r");
+    char line[256];
+
+    if (f == nullptr) {
+        return;
+    }
+    while (std::fgets(line, sizeof(line), f) != nullptr) {
+        line[std::strcspn(line, "\r\n")] = '\0';
+        if (std::strchr(line, '=') != nullptr) {
+            putenv(strdup(line));
+        }
+    }
+    std::fclose(f);
+}
+#endif
+
+namespace {
+void update_render_size();
+void apply_frame_limit();
+} // namespace
+
+extern "C" {
+void pc_acplus_settings_load(void);
+void pc_acplus_startup(void);
+int pc_acplus_before_game(int argc, char** argv);
+void pc_acplus_after_game(void);
+int pc_acplus_sdl_event(const SDL_Event* event);
+void pc_acplus_frame(void);
+void pc_request_quit(void);
+void pc_devtest_frame_end(void);
+void ac_entry();
+int boot_main(int argc, const char** argv);
+void pc_audio_shutdown();
+void pc_audio_mq_shutdown();
+void pc_emu64_tlut_frame_drained();
+extern int g_pc_nes_active;
+int g_pc_running = 1;
+int g_pc_verbose = 0;
+int g_pc_frame_limit_override = -1;
+int g_pc_speedhack_enabled = 0;
+int g_pc_time_override = -1;
+int g_pc_min_override = -1;
+int g_pc_sec_override = -1;
+int g_pc_date_month = -1;
+int g_pc_date_day = -1;
+int g_pc_date_year = -1;
+int g_pc_weather_override = -1;
+int g_pc_weather_intensity_override = mEnv_WEATHER_INTENSITY_HEAVY;
+int g_pc_window_w = 640;
+int g_pc_window_h = 480;
+int g_pc_widescreen_stretch = 0;
+unsigned int pc_image_base = 0;
+unsigned int pc_image_end = 0;
+
+static bool s_frame_started = false;
+static bool s_speedhack_hotkey = false;
+
+static void pc_speedhack_toggle() {
+    g_pc_speedhack_enabled = !g_pc_speedhack_enabled;
+    if (g_pc_verbose) {
+        std::printf("[PC] speedhack %s\n", g_pc_speedhack_enabled ? "5x" : "off");
+    }
+}
+
+bool ac_aurora_begin_frame() {
+    ZoneScoped;
+
+    g_pc_widescreen_stretch = 0;
+    pc_emu64_frame_cmds = 0;
+    pc_emu64_frame_noop_cmds = 0;
+    pc_emu64_frame_tri_cmds = 0;
+    pc_emu64_frame_vtx_cmds = 0;
+    pc_emu64_frame_dl_cmds = 0;
+    pc_emu64_frame_cull_visible = 0;
+    pc_emu64_frame_cull_rejected = 0;
+
+    acgc::input::update_pointer_viewport();
+    const AuroraEvent* event = aurora_update();
+    update_render_size();
+    while (event != nullptr && event->type != AURORA_NONE) {
+        if (event->type == AURORA_EXIT) {
+            pc_request_quit(); /* ac-plus: saves first when save_on_quit is set (pc_quick_save.c) */
+        } else if (event->type == AURORA_SDL_EVENT) {
+            if (pc_acplus_sdl_event(&event->sdl)) {
+                ++event;
+                continue; /* ac-plus used it (pc_acplus_host.cpp) */
+            }
+            if (s_speedhack_hotkey && event->sdl.type == SDL_EVENT_KEY_DOWN && !event->sdl.key.repeat &&
+                event->sdl.key.key == SDLK_F2) {
+                pc_speedhack_toggle();
+            }
+            acgc::ui::handle_event(event->sdl);
+            acgc::input::pointer_window_event(event->sdl);
+        } else if (event->type == AURORA_PAUSED || event->type == AURORA_UNPAUSED) {
+            acgc::input::game_pointer().cancel();
+        } else if (event->type == AURORA_CONTROLLER_ADDED) {
+            acgc::controller_ports::enforce_single_port();
+            acgc::apply_runtime_settings(false);
+        } else if (event->type == AURORA_CONTROLLER_REMOVED) {
+            acgc::controller_ports::enforce_single_port();
+        }
+        ++event;
+    }
+
+    if (!g_pc_running) {
+        return false;
+    }
+
+    pc_acplus_frame();
+    acgc::controller_ports::update();
+    acgc::update_settings();
+    update_render_size();
+    s_frame_started = aurora_begin_frame();
+    acgc::input::game_pointer().set_running(s_frame_started && aurora_get_timescale() != 0.0f);
+    return s_frame_started;
+}
+
+void ac_aurora_end_frame() {
+    if (s_frame_started) {
+        acgc::ui::update();
+        ac_debug_imgui_draw();
+        pc_devtest_frame_end();
+        aurora_end_frame();
+        pc_emu64_tlut_frame_drained();
+        s_frame_started = false;
+        apply_frame_limit();
+    }
+}
+}
+
+namespace {
+
+struct WindowDimensions {
+    int width = 1280;
+    int height = 960;
+};
+
+constexpr borealis::Log MainLog{"acgc"};
+constexpr borealis::Log ConfigLog{"acgc::config"};
+constexpr borealis::Log VideoLog{"acgc::video"};
+constexpr borealis::Log ClockLog{"acgc::clock"};
+constexpr borealis::Log WeatherLog{"acgc::weather"};
+constexpr borealis::Log UiLog{"acgc::ui"};
+constexpr borealis::Log DvdLog{"acgc::dvd"};
+constexpr borealis::Log AssetsLog{"acgc::assets"};
+
+bool s_frame_limit_explicit = false;
+borealis::LogLevel s_log_level = borealis::LogLevel::Info;
+std::filesystem::path s_log_directory;
+std::filesystem::path s_user_directory;
+
+struct PortLogGuard {
+    ~PortLogGuard() {
+        borealis::log::shutdown();
+    }
+};
+
+struct SettingsGuard {
+    ~SettingsGuard()
+    {
+        acgc::shutdown_settings();
+    }
+};
+
+bool parse_nonnegative_integer(const char* text, int* value) {
+    if (text == nullptr || value == nullptr) {
+        return false;
+    }
+    char* end = nullptr;
+    const long parsed = std::strtol(text, &end, 10);
+    if (end == text || *end != '\0' || parsed < 0 || parsed > 1000000) {
+        return false;
+    }
+    *value = static_cast<int>(parsed);
+    return true;
+}
+
+int parse_rain_intensity(const char* text) {
+    if (text == nullptr)
+        return -1;
+    if (std::strcmp(text, "light") == 0)
+        return mEnv_WEATHER_INTENSITY_LIGHT;
+    if (std::strcmp(text, "normal") == 0)
+        return mEnv_WEATHER_INTENSITY_NORMAL;
+    if (std::strcmp(text, "heavy") == 0)
+        return mEnv_WEATHER_INTENSITY_HEAVY;
+    return -1;
+}
+
+void apply_frame_limit() {
+    using clock = std::chrono::steady_clock;
+    static clock::time_point next_frame{};
+    constexpr int kNesFrameRate = 60;
+
+    const int limit = g_pc_nes_active ? kNesFrameRate : g_pc_frame_limit_override;
+    if (limit <= 0) {
+        next_frame = {};
+        return;
+    }
+
+    ZoneScopedN("Frame limiter");
+    const auto interval = std::chrono::nanoseconds(1'000'000'000LL / limit);
+    const auto now = clock::now();
+    if (next_frame == clock::time_point{} || now > next_frame + interval * 4) {
+        next_frame = now;
+    }
+    next_frame += interval;
+    std::this_thread::sleep_until(next_frame);
+}
+
+#if ACGC_HAS_WINDOW_CONTROLS
+bool automatic_window_dimensions(WindowDimensions* dimensions) {
+    constexpr double kWindowFill = 0.9;
+
+    if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
+        VideoLog.warn("Unable to query the display for a default window size: {}", SDL_GetError());
+        return false;
+    }
+
+    bool found = false;
+    const SDL_DisplayID display = SDL_GetPrimaryDisplay();
+    const SDL_DisplayMode* mode = display != 0 ? SDL_GetDesktopDisplayMode(display) : nullptr;
+    SDL_Rect usable{};
+    if (mode != nullptr && mode->w > 0 && mode->h > 0 && SDL_GetDisplayUsableBounds(display, &usable)) {
+        const double aspect = static_cast<double>(mode->w) / mode->h;
+        const double maxWidth = usable.w * kWindowFill;
+        const double maxHeight = usable.h * kWindowFill;
+        double width = maxWidth;
+        double height = maxWidth / aspect;
+        if (height > maxHeight) {
+            height = maxHeight;
+            width = maxHeight * aspect;
+        }
+        dimensions->width = std::max(640, static_cast<int>(width) & ~7);
+        dimensions->height = std::max(480, static_cast<int>(height) & ~7);
+        int bestArea = 0;
+        for (const acgc::WindowResolution& preset : acgc::kWindowResolutions) {
+            const double presetAspect = static_cast<double>(preset.width) / preset.height;
+            if (std::abs(presetAspect - aspect) < 0.01 && preset.width <= maxWidth && preset.height <= maxHeight &&
+                preset.width * preset.height > bestArea) {
+                dimensions->width = preset.width;
+                dimensions->height = preset.height;
+                bestArea = preset.width * preset.height;
+            }
+        }
+        found = true;
+    }
+
+    SDL_QuitSubSystem(SDL_INIT_VIDEO);
+    return found;
+}
+#endif
+
+#if defined(_WIN32)
+void show_console() {
+    if (GetConsoleWindow() != nullptr) {
+        return;
+    }
+    if (!AttachConsole(ATTACH_PARENT_PROCESS) && !AllocConsole()) {
+        MainLog.warn("Failed to open console (Windows error {})", GetLastError());
+        return;
+    }
+    SetConsoleOutputCP(CP_UTF8);
+    FILE* stream;
+    if (_fileno(stdout) < 0 || _get_osfhandle(_fileno(stdout)) < 0) {
+        freopen_s(&stream, "CONOUT$", "w", stdout);
+    }
+    if (_fileno(stderr) < 0 || _get_osfhandle(_fileno(stderr)) < 0) {
+        freopen_s(&stream, "CONOUT$", "w", stderr);
+    }
+}
+#endif
+
+struct CommandLine {
+    std::string discPath;
+    bool discPathExplicit = false;
+};
+
+enum class ParseOutcome { Run, Exit, Failed };
+
+ParseOutcome parse_command_line(int argc, char* argv[], CommandLine* out) {
+    cxxopts::Options options{"AnimalCrossing", "Animal Crossing Plus (ac-plus), built on the Nookery PC port"};
+    borealis::cli::add_standard_options(options);
+    options.add_options()
+        ("h,help", "Show this help")
+        ("v,verbose", "Enable additional game diagnostics",
+            cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+        ("disc", "Open an RVZ, ISO, or GCM image without the prelaunch menu",
+            cxxopts::value<std::string>())
+        ("profile", "Show performance diagnostics (optional =N interval, ignored)",
+            cxxopts::value<std::string>()->implicit_value(""))
+        ("speedhack", "Enable the F2 key that toggles 5x game speed",
+            cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+        ("framelimit", "Set a software frame limit (0 = uncapped)", cxxopts::value<std::string>())
+        ("time", "Override the in-game clock, H[:M[:S]]", cxxopts::value<std::string>())
+        ("date", "Override the in-game date, M/D[/Y]", cxxopts::value<std::string>())
+        ("rain", "Force rain, optionally =light, =normal or =heavy",
+            cxxopts::value<std::string>()->implicit_value("heavy"));
+    options.parse_positional({"disc"});
+    options.positional_help("[disc image]");
+    options.allow_unrecognised_options();
+
+    cxxopts::ParseResult parsed;
+    borealis::cli::StandardOptions standard;
+    try {
+        parsed = options.parse(argc, argv);
+        standard = borealis::cli::parse(parsed);
+    } catch (const cxxopts::exceptions::exception& e) {
+        std::fprintf(stderr, "%s\n", e.what());
+        return ParseOutcome::Failed;
+    }
+
+#if defined(_WIN32)
+    if (standard.console) {
+        show_console();
+    }
+#endif
+    if (parsed.count("help")) {
+        std::printf("%s", options.help().c_str());
+        return ParseOutcome::Exit;
+    }
+
+    if (standard.level) {
+        s_log_level = *standard.level;
+    }
+    s_log_directory = standard.logDir;
+    s_user_directory = standard.userDir;
+
+    g_pc_verbose = parsed["verbose"].as<bool>() ? 1 : 0;
+    if (g_pc_verbose && !standard.level) {
+        s_log_level = borealis::LogLevel::Debug;
+    }
+
+    if (parsed.count("disc")) {
+        out->discPath = parsed["disc"].as<std::string>();
+        out->discPathExplicit = true;
+    }
+
+    if (parsed.count("framelimit")) {
+        int limit = -1;
+        if (!parse_nonnegative_integer(parsed["framelimit"].as<std::string>().c_str(), &limit)) {
+            std::fprintf(stderr, "--framelimit expects a nonnegative integer\n");
+            return ParseOutcome::Failed;
+        }
+        g_pc_frame_limit_override = limit;
+        s_frame_limit_explicit = true;
+    }
+
+    s_speedhack_hotkey = parsed["speedhack"].as<bool>();
+
+    if (parsed.count("profile")) {
+        g_pc_debug_ui_visible = 1;
+    }
+
+    if (parsed.count("time")) {
+        int hour = -1;
+        int minute = -1;
+        int second = -1;
+        std::sscanf(parsed["time"].as<std::string>().c_str(), "%d:%d:%d", &hour, &minute, &second);
+        if (hour < 0 || hour > 23 || minute > 59 || second > 59) {
+            std::fprintf(stderr, "--time expects H[:M[:S]] in the 24-hour clock\n");
+            return ParseOutcome::Failed;
+        }
+        g_pc_time_override = hour;
+        if (minute >= 0)
+            g_pc_min_override = minute;
+        if (second >= 0)
+            g_pc_sec_override = second;
+    }
+
+    if (parsed.count("date")) {
+        int month = -1;
+        int day = -1;
+        int year = -1;
+        std::sscanf(parsed["date"].as<std::string>().c_str(), "%d/%d/%d", &month, &day, &year);
+        if (month < 1 || month > 12 || day < 1 || day > 31 || (year >= 0 && year < 2000)) {
+            std::fprintf(stderr, "--date expects M/D[/Y] with year 2000 or later\n");
+            return ParseOutcome::Failed;
+        }
+        g_pc_date_month = month;
+        g_pc_date_day = day;
+        if (year >= 0)
+            g_pc_date_year = year;
+    }
+
+    if (parsed.count("rain")) {
+        const int intensity = parse_rain_intensity(parsed["rain"].as<std::string>().c_str());
+        if (intensity < 0) {
+            std::fprintf(stderr, "--rain expects light, normal or heavy\n");
+            return ParseOutcome::Failed;
+        }
+        g_pc_weather_override = mEnv_WEATHER_RAIN;
+        g_pc_weather_intensity_override = intensity;
+    }
+
+    return ParseOutcome::Run;
+}
+
+void update_render_size() {
+    u32 width = 0;
+    u32 height = 0;
+    AuroraGetRenderSize(&width, &height);
+    if (width == 0 || height == 0) {
+        return;
+    }
+
+    if (g_pc_window_w != static_cast<int>(width) || g_pc_window_h != static_cast<int>(height)) {
+        g_pc_window_w = static_cast<int>(width);
+        g_pc_window_h = static_cast<int>(height);
+        VideoLog.info("Render size {}x{} (aspect factor {:.4f})", width, height,
+                      pc_widescreen_get_aspect_factor());
+    }
+}
+
+bool run_prelaunch()
+{
+    borealis::ui::push_document(std::make_unique<acgc::ui::Prelaunch>());
+    bool paused = false;
+    auto& state = acgc::ui::prelaunch_state();
+    while (!state.launchRequested && !state.quitRequested) {
+        const AuroraEvent* event = aurora_update();
+        while (event != nullptr && event->type != AURORA_NONE) {
+            if (event->type == AURORA_EXIT) {
+                state.quitRequested = true;
+            } else if (event->type == AURORA_PAUSED) {
+                paused = true;
+            } else if (event->type == AURORA_UNPAUSED) {
+                paused = false;
+            } else if (event->type == AURORA_SDL_EVENT) {
+            if (pc_acplus_sdl_event(&event->sdl)) {
+                ++event;
+                continue; /* ac-plus used it (pc_acplus_host.cpp) */
+            }
+                acgc::ui::handle_event(event->sdl);
+            } else if (event->type == AURORA_CONTROLLER_ADDED) {
+                acgc::controller_ports::enforce_single_port();
+                acgc::apply_runtime_settings(false);
+            } else if (event->type == AURORA_CONTROLLER_REMOVED) {
+                acgc::controller_ports::enforce_single_port();
+            }
+            ++event;
+        }
+        acgc::controller_ports::update();
+        acgc::update_settings();
+        if (state.quitRequested || paused || !aurora_begin_frame()) {
+            continue;
+        }
+        update_render_size();
+        const auto background = acgc::ui::theme::background();
+        GXSetCopyClear({background.red, background.green, background.blue, background.alpha}, 0xFFFFFF);
+        acgc::ui::update();
+        ac_debug_imgui_draw();
+        aurora_end_frame();
+        apply_frame_limit();
+    }
+    return state.launchRequested;
+}
+
+} // namespace
+
+int main(int argc, char* argv[]) {
+    CommandLine commandLine;
+    switch (parse_command_line(argc, argv, &commandLine)) {
+    case ParseOutcome::Exit:
+        return 0;
+    case ParseOutcome::Failed:
+        return 2;
+    case ParseOutcome::Run:
+        break;
+    }
+
+    if (s_user_directory.empty()) {
+        /* ac-plus: everything stays in the game's folder (saves, cf_sky, music, settings), on every system, as
+         * ac-plus always kept it; --user-dir still picks another */
+        if (const char* base = SDL_GetBasePath()) {
+            s_user_directory = std::filesystem::path(base);
+        }
+    }
+    const acgc::data::Paths data_paths = acgc::data::initialize(s_user_directory);
+    {
+        /* ac-plus code opens its files relative to the data folder (save/, cf_sky/, music/, ac-plus.ini...) */
+        std::error_code ec;
+        std::filesystem::current_path(data_paths.userPath, ec);
+    }
+    const auto& log_root = data_paths.cachePath;
+    borealis::log::Options log_options{
+        .level = s_log_level,
+        .fileDirectory = log_root / "logs",
+        .filePrefix = "acgc",
+    };
+    if (!s_log_directory.empty()) {
+        log_options.fileDirectory = s_log_directory;
+    }
+    borealis::log::init(log_options);
+    PortLogGuard log_guard;
+    borealis::crash::install();
+    if (const char* log_path = borealis::log::file_path()) {
+        MainLog.info("Logging to {}", log_path);
+    } else {
+        MainLog.warn("File logging is unavailable; continuing with console logging");
+    }
+
+    const std::string user_path = borealis::io::fs_path_to_string(data_paths.userPath);
+    const std::string cache_path = borealis::io::fs_path_to_string(data_paths.cachePath);
+
+    std::vector legacy_settings{
+        std::filesystem::path(user_path) / "settings.ini",
+        std::filesystem::current_path() / "settings.ini",
+    };
+    if (const char* base_path = SDL_GetBasePath()) {
+        legacy_settings.emplace_back(std::filesystem::path(base_path) / "settings.ini");
+    }
+    const auto settings_result = acgc::load_settings(user_path, legacy_settings);
+    SettingsGuard settings_guard;
+    pc_acplus_settings_load(); /* ac-plus's own (ac-plus.ini) */
+#ifdef PC_DEV
+    pc_dev_env_file();
+#endif
+    if (settings_result.importedLegacy) {
+        ConfigLog.info("Legacy settings migration completed");
+    }
+
+    std::vector<std::filesystem::path> legacy_input{
+        std::filesystem::path(user_path) / "keybindings.ini",
+        std::filesystem::current_path() / "keybindings.ini",
+    };
+    if (const char* base_path = SDL_GetBasePath()) {
+        legacy_input.emplace_back(std::filesystem::path(base_path) / "keybindings.ini");
+    }
+    acgc::input::register_defaults();
+    acgc::prepare_legacy_input(user_path, legacy_input);
+
+    const auto& settings = acgc::settings();
+#if ACGC_HAS_WINDOW_CONTROLS
+    if (!settings.video.windowWidth.user_value() && !settings.video.windowHeight.user_value()) {
+        WindowDimensions automatic;
+        if (automatic_window_dimensions(&automatic)) {
+            acgc::settings().video.windowWidth.set(automatic.width);
+            acgc::settings().video.windowHeight.set(automatic.height);
+            VideoLog.info("Default window size {}x{} chosen for this display", automatic.width, automatic.height);
+        }
+    }
+#endif
+    WindowDimensions windowDimensions;
+    windowDimensions.width = settings.video.windowWidth.get();
+    windowDimensions.height = settings.video.windowHeight.get();
+    if (!s_frame_limit_explicit) {
+        g_pc_frame_limit_override = settings.video.maxFrameRate.get();
+    }
+
+    if (g_pc_frame_limit_override >= 0) {
+        VideoLog.info("Software frame limit: {}{}", g_pc_frame_limit_override,
+                      g_pc_frame_limit_override == 0 ? " (uncapped)" : " FPS");
+    }
+    if (g_pc_time_override >= 0) {
+        ClockLog.info("Override: hour={} minute={} second={}", g_pc_time_override,
+                      g_pc_min_override, g_pc_sec_override);
+    }
+    if (g_pc_date_month > 0) {
+        ClockLog.info("Override: month={} day={} year={}", g_pc_date_month, g_pc_date_day,
+                      g_pc_date_year);
+    }
+    if (g_pc_weather_override >= 0) {
+        WeatherLog.info("Override: weather={} intensity={}", g_pc_weather_override,
+                        g_pc_weather_intensity_override);
+    }
+
+    AuroraConfig config{};
+    config.appName = acgc::AppInfo.appName.data();
+    config.userPath = user_path.empty() ? nullptr : user_path.c_str();
+    config.cachePath = cache_path.empty() ? nullptr : cache_path.c_str();
+    config.desiredBackend = settings.video.renderer.get();
+    config.windowPosX = -1;
+    config.windowPosY = -1;
+    config.windowWidth = windowDimensions.width;
+    config.windowHeight = windowDimensions.height;
+    config.startFullscreen = settings.video.windowMode.get() != 0;
+    config.mem1Size = 256 * 1024 * 1024;
+    config.mem2Size = ARAM_DEFAULT_SIZE;
+#if ACGC_HAS_WINDOW_CONTROLS
+    config.vsync = s_frame_limit_explicit ? false : settings.video.vsync.get();
+#else
+    config.vsync = true;
+#endif
+    config.pauseOnFocusLost = false;
+    config.allowJoystickBackgroundEvents = settings.input.allowBackgroundInput.get();
+    config.logCallback = borealis::log::aurora_callback();
+    config.logLevel = borealis::log::to_aurora_level(s_log_level);
+    config.imGuiInitCallback = &ac_debug_imgui_init;
+
+    if (std::getenv("PC_NO_PAD") != nullptr) {
+        /* ac-plus dev (hidden test copies): no controller at all, so a test can't read the player's own */
+        SDL_SetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT, "0x0000/0x0000");
+        SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI, "0");
+    }
+    aurora_initialize(argc, argv, &config);
+    pc_acplus_startup(); /* g_pc_window, screensaver inhibit, ... (pc_acplus_host.cpp) */
+    AuroraSetViewportPolicy(AURORA_VIEWPORT_STRETCH);
+    g_pc_window_w = windowDimensions.width;
+    g_pc_window_h = windowDimensions.height;
+    update_render_size();
+    PADSetSpec(PAD_SPEC_5);
+    PADInit();
+    acgc::controller_ports::initialize();
+    acgc::apply_legacy_keyboard_input();
+    acgc::observe_runtime_settings();
+    if (!acgc::ui::initialize()) {
+        UiLog.error("Could not initialize the Aurora host menu");
+        aurora_shutdown();
+        return 1;
+    }
+    std::string discPath;
+    bool launch = false;
+    if (commandLine.discPathExplicit) {
+        acgc::disc::DiscInfo info{};
+        if (acgc::disc::inspect(commandLine.discPath, info) == acgc::disc::ValidationError::Success) {
+            discPath = commandLine.discPath;
+            launch = true;
+        } else {
+            DvdLog.warn("Command-line disc is not a supported Animal Crossing image: {}; opening prelaunch menu",
+                        commandLine.discPath);
+        }
+    }
+
+    if (!launch) {
+        acgc::ui::ensure_prelaunch_initialized();
+        auto& state = acgc::ui::prelaunch_state();
+        if (settings.backend.skipPrelaunch.get() && state.configuredDiscCanLaunch) {
+            discPath = state.configuredDiscPath;
+            launch = true;
+        } else if (run_prelaunch()) {
+            discPath = state.activeDiscPath;
+            launch = !discPath.empty();
+        }
+    }
+
+    if (!launch) {
+        acgc::ui::shutdown();
+        aurora_shutdown();
+        return 0;
+    }
+
+    // Resolve opaque locations (e.g. iOS bookmark://) to a filesystem path, keeping any access grant alive.
+    const borealis::io::PathAccess discAccess = borealis::io::access_path(discPath);
+    const std::string discFile = discAccess ? borealis::io::fs_path_to_string(discAccess.path()) : discPath;
+    if (!aurora_dvd_open(discFile.c_str())) {
+        DvdLog.error("Could not open disc image: {}", borealis::io::display_name(discPath));
+        acgc::ui::shutdown();
+        aurora_shutdown();
+        return 1;
+    }
+
+    if (!pc_assets_init()) {
+        AssetsLog.error("Could not load game assets from: {}", borealis::io::display_name(discPath));
+        aurora_dvd_close();
+        acgc::ui::shutdown();
+        aurora_shutdown();
+        return 1;
+    }
+
+    acgc::input::game_editor().initialize([] { acgc::input::game_pointer().keyboard_activity(); });
+    acgc::input::game_pointer().initialize();
+    acgc::input::update_pointer_viewport();
+    acgc::texture_replacements::reload();
+    {
+        /* ac-plus: the updater, City Folk's first-start conversion, --export-gci... (pc_acplus_host.cpp) */
+        const int early = pc_acplus_before_game(argc, argv);
+        if (early >= 0) {
+            aurora_dvd_close();
+            acgc::ui::shutdown();
+            aurora_shutdown();
+            return early;
+        }
+    }
+    ac_entry();
+    const int result = boot_main(argc, const_cast<const char**>(argv));
+    pc_acplus_after_game();
+
+    pc_audio_shutdown();
+    pc_audio_mq_shutdown();
+    acgc::input::game_editor().shutdown();
+    acgc::controller_ports::shutdown();
+    acgc::input::game_pointer().shutdown();
+    aurora_dvd_close();
+    acgc::texture_replacements::shutdown();
+    acgc::ui::shutdown();
+    aurora_shutdown();
+    return result;
+}

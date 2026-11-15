@@ -9,6 +9,9 @@
 #include "m_play.h"
 #include "m_scene_table.h"
 #include "m_soncho.h"
+#ifdef TARGET_PC
+#include "pc_settings.h"
+#endif
 
 enum {
     mEv_INIT_NO_RENEWAL,
@@ -208,10 +211,6 @@ extern void mEv_UnSetFirstJob() {
     }
 }
 
-#ifdef TARGET_PC
-static int l_wade_disabled_bak = FALSE;
-#endif
-
 extern void mEv_SetFirstIntro() {
     u32 player_no = Common_Get(player_no);
 
@@ -221,7 +220,6 @@ extern void mEv_SetFirstIntro() {
 
 #ifdef TARGET_PC
         /* The scripted introduction expects normal acre transitions. */
-        l_wade_disabled_bak = g_mPlib_wade_disabled;
         g_mPlib_wade_disabled = FALSE;
 #endif
         mEv_EventON(ev);
@@ -252,7 +250,7 @@ extern void mEv_UnSetFirstIntro() {
         ev += player_no;
 #ifdef TARGET_PC
         if (mEv_CheckFirstIntro()) {
-            g_mPlib_wade_disabled = l_wade_disabled_bak;
+            g_mPlib_wade_disabled = g_pc_settings.borderless_acres;
         }
 #endif
         mEv_EventOFF(ev);
@@ -1450,7 +1448,15 @@ static void update_event_rumor(mEv_schedule_c* sched) {
             lbRTC_day_t end_day;
             lbRTC_month_t end_month;
 
+#ifdef TARGET_PC
+            if (!lbRk_TryHarvestMoonDay(&harvest_moon_ymd, rtc_time->year)) {
+                sched->date[0].raw = 0;
+                sched->date[1].raw = 0;
+                return;
+            }
+#else
             lbRk_HarvestMoonDay(&harvest_moon_ymd, rtc_time->year);
+#endif
             harvest_moon_day.year = harvest_moon_ymd.year;
             harvest_moon_day.month = harvest_moon_ymd.month;
             harvest_moon_day.day = harvest_moon_ymd.day;
@@ -1655,7 +1661,13 @@ static u32 decode_date(u32 d) {
     } else if ((month & mEv_SCHEDULE_HARVEST_MOON_DATE)) {
         lbRTC_ymd_c harvest_moon_ymd;
 
+#ifdef TARGET_PC
+        if (!lbRk_TryHarvestMoonDay(&harvest_moon_ymd, rtc_time->year)) {
+            return 0;
+        }
+#else
         lbRk_HarvestMoonDay(&harvest_moon_ymd, rtc_time->year);
+#endif
         date.d.month = harvest_moon_ymd.month;
         date.d.day = harvest_moon_ymd.day;
     }

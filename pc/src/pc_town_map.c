@@ -30,6 +30,7 @@ static int l_state = MAP_NONE;
 static int l_line_msg; /* the line that leads to the map: PC_TOWN_MAP_RIDE or PC_TOWN_MAP_AGAIN */
 
 extern int g_pc_paused;
+extern int g_pc_acplus_menu_open; /* ac-plus pause menu (pc_pause_menu.c) */
 extern void pc_sdi_reroll_town(GAME* game);
 
 void pc_town_map_new_town(int on) {
@@ -132,7 +133,7 @@ int pc_town_map_busy(void) {
         case MAP_SHOWN:
             /* while the map is up the actors (Rover too) stand still, so this sees it asked for, then closed */
             if (play != NULL && play->submenu.menu_type == mSM_OVL_NONE &&
-                play->submenu.process_status == mSM_PROCESS_WAIT && !g_pc_paused) {
+                play->submenu.process_status == mSM_PROCESS_WAIT && !(g_pc_paused || g_pc_acplus_menu_open)) {
                 l_state = MAP_ASK;
                 mMsg_ChangeMsgData(msg_p, PC_TOWN_MAP_ASK);
                 mMsg_Set_ForceNext(msg_p);

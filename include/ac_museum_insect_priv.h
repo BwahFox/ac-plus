@@ -25,10 +25,10 @@ typedef void (*PRIV_INSECT_PROCESS)(struct _MUSEUM_INSECT_PRIVATE_DATA*, GAME*);
 
 typedef struct _MUSEUM_INSECT_SKELETON {
     cKF_SkeletonInfo_R_c _00;
-    Mtx _70;
-    artificial_padding(0x70, 0x170, Mtx);
-    Mtx _170;
-    artificial_padding(0x170, 0x270, Mtx);
+    N64Mtx _70;
+    artificial_padding(0x70, 0x170, N64Mtx);
+    N64Mtx _170;
+    artificial_padding(0x170, 0x270, N64Mtx);
     s_xyz _270;
     artificial_padding(0x270, 0x288, s_xyz);
     s_xyz _288;
@@ -96,7 +96,11 @@ typedef struct _MUSEUM_INSECT_ACTOR {
     MUSEUM_INSECT_SKELETON _24B8[4];                              // offset: 0x24B8
     int _2F78;                                                    // offset: 0x2F78
     int _2F7C;                                                    // offset: 0x2F7C
-    INSECT_DISPLAY_MSG_INFO _2F80[7];                             // offset: 0x2F82
+#ifdef TARGET_PC
+    INSECT_DISPLAY_MSG_INFO _2F80[7 + 30]; /* and City Folk's bugs (pc_cf_creature.c) */
+#else
+    INSECT_DISPLAY_MSG_INFO _2F80[7];
+#endif                             // offset: 0x2F82
     s16 _2F9C[5];                                                 // offset: 0x2F9C
     f32 logic_accum;
 } MUSEUM_INSECT_ACTOR;

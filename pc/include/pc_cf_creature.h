@@ -8,6 +8,7 @@
  * caught as that one) that knows which of these it is (insect->pc_cf); make_insect takes either. */
 
 #include "types.h"
+#include "m_lib.h"
 #include "m_name_table.h"
 #include "pc_cf_creature_table.h"
 
@@ -25,6 +26,10 @@ extern "C" {
 /* Put in the house: City Folk furniture (pc_cf_ftr.c) from here, fish first, then bugs */
 #define PC_CF_PLACED_ITEM 0x3C00
 #define PC_CF_CREATURE_NUM (PC_CF_FISH_NUM + PC_CF_BUG_NUM)
+/* a City Folk fish or bug on a museum plaque's list, among the GameCube's numbers */
+#define PC_CF_PLAQUE 0x4000
+int pc_cf_museum_plaque_fish(int tank, s16* names, s16* donors, int max);
+int pc_cf_museum_plaque_bugs(int plaque, const xyz_t* plaques, int plaque_num, s16* names, s16* donors, int max);
 #define PC_CF_ITEM_IS_PLACED(n) ((n) >= PC_CF_PLACED_ITEM && (n) < PC_CF_PLACED_ITEM + 4 * PC_CF_CREATURE_NUM)
 
 void pc_cf_creature_load(void);

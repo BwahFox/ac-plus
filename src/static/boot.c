@@ -2,7 +2,7 @@
 
 #include "dolphin/dvd.h"
 #include "dolphin/os.h"
-#include "dolphin/os/OSArena.h"
+#include <dolphin/os.h>
 #include "dolphin/os/OSContext.h"
 #include "dolphin/os/OSModule.h"
 #include "dolphin/os/OSReset.h"
@@ -34,65 +34,27 @@
 #include "m_map_ovl.h"
 #include "pc_bswap.h"
 
-/* Raw binary display lists (u8[] with BE data from ROM .inc files).
-   On LE these need u32 byte-swap so emu64 reads correct commands. */
-extern u8 cal_win_nen_before[];
-extern u8 des_win_before[];
-extern u8 des_win_suuji_before[];
+extern Gfx cal_win_nen_before[5];
+extern Gfx des_win_before[4];
+extern Gfx des_win_suuji_before[5];
 
-/* u8[] arrays used as TLUT palettes via gsDPLoadTLUT_Dolphin.
-   These contain raw BE byte pairs from ROM .inc files. On LE, pairs must
-   be swapped so the texture decoder reads correct u16 RGB5A3 values.
-   (u16[] palette arrays don't need this — C literals are native-endian.) */
-extern u8 tim_win_newtokei_tex[];
-extern u8 utPal_mike[];
-extern u8 utPal_mouth[];
-extern u8 int_iid_funediary[];
-extern u8 int_iid_mdiary[];
-extern u8 int_iid_newdiary[];
-extern u8 int_iid_olddiary[];
-extern u8 int_ike_jny_syon01_tex[];
-extern u8 int_ike_jny_tower01[];
-extern u8 int_noga_sprinkler[];
-extern u8 int_yos_kflag_pat[];
-extern u8 obj_item_omikuji[];
-extern u8 rom_museum4_step_pal2[];
-extern u8 int_iid_diary[];  /* static in original, non-static on PC */
-
-static void pc_bswap_raw_display_lists(void) {
-    struct { u8* data; int size; } lists[] = {
-        { cal_win_nen_before, 40 },     /* 5 Gfx commands */
-        { des_win_before, 32 },          /* 4 Gfx commands */
-        { des_win_suuji_before, 40 },    /* 5 Gfx commands */
+static void pc_convert_raw_display_lists(void) {
+    struct { Gfx* data; int count; } lists[] = {
+        { cal_win_nen_before, ARRAY_COUNT(cal_win_nen_before) },
+        { des_win_before, ARRAY_COUNT(des_win_before) },
+        { des_win_suuji_before, ARRAY_COUNT(des_win_suuji_before) },
     };
     int i;
-    for (i = 0; i < 3; i++) {
-        pc_bswap32_array(lists[i].data, lists[i].size / 4);
-    }
-}
-
-/* Swap byte pairs in u8[] arrays that are used as TLUT palettes.
-   All are 16 entries (32 bytes). int_iid_diary is static, handled in its file. */
-static void pc_bswap_u8_tlut_palettes(void) {
-    u8* palettes[] = {
-        tim_win_newtokei_tex,
-        utPal_mike,
-        utPal_mouth,
-        int_iid_funediary,
-        int_iid_mdiary,
-        int_iid_newdiary,
-        int_iid_olddiary,
-        int_ike_jny_syon01_tex,
-        int_ike_jny_tower01,
-        int_noga_sprinkler,
-        int_yos_kflag_pat,
-        obj_item_omikuji,
-        rom_museum4_step_pal2,
-        int_iid_diary,
-    };
-    int i;
-    for (i = 0; i < 14; i++) {
-        pc_bswap16_array((u16*)palettes[i], 16);
+    for (i = 0; i < ARRAY_COUNT(lists); i++) {
+        int j;
+        /* These state-only lists have 8-byte ROM commands. Expand backwards to preserve unread bytes. */
+        for (j = lists[i].count - 1; j >= 0; j--) {
+            Gfx command = { 0 };
+            memcpy(&command, (u8*)lists[i].data + j * 8, 8);
+            command.words.w0 = pc_bswap32(command.words.w0);
+            command.words.w1 = pc_bswap32(command.words.w1);
+            lists[i].data[j] = command;
+        }
     }
 }
 
@@ -140,6 +102,14 @@ void* soundArenaAlloc(size_t size) { return nullptr; }
  * @return s32 success
  */
 s32 search_partial_address(u32 addr, u32* module_id, u32* section_idx, u32* section_addr, u32* module_name_ofs) {
+#ifdef TARGET_PC
+  (void)addr;
+  (void)module_id;
+  (void)section_idx;
+  (void)section_addr;
+  (void)module_name_ofs;
+  return -1; /* REL modules are not loaded by the statically linked PC build. */
+#else
   u32 section_size;
   OSModuleHeader* module_p;
   u32 section;
@@ -181,6 +151,7 @@ s32 search_partial_address(u32 addr, u32* module_id, u32* section_idx, u32* sect
   }
 
   return -1; /* failed */
+#endif
 }
 
 /**
@@ -230,7 +201,7 @@ extern void UnLink(OSModuleHeader* module) {
   if (module != nullptr) {
     if (module->epilog != 0) {
       OSReport("エピローグ開始\n"); /* epilog start */
-      ((void (*)())module->epilog)();
+      ((void (*)())(uintptr_t)module->epilog)();
       OSReport("エピローグ完了\n"); /* epilog complete */
     }
 
@@ -298,7 +269,7 @@ OSModuleHeader* LoadLink(const char* module_name) {
     }
         
     OSLink(&module->info, bss);
-    ((void (*)())module->prolog)();
+    ((void (*)())(uintptr_t)module->prolog)();
     return module;
   }
 
@@ -548,8 +519,15 @@ void adjustOSArena() {
   OSReport("ARENA %08x-%08x" VT_RST "\n", arenalo, arenahi);
 
 #ifdef TARGET_PC
-  /* Use pointer arithmetic instead of u32 casts (which truncate on 64-bit) */
-  bzero(arenalo, (size_t)((u8*)arenahi - (u8*)arenalo));
+  {
+    static BOOL arena_is_fresh_host_allocation = TRUE;
+
+    /* Use pointer arithmetic instead of u32 casts (which truncate on 64-bit) */
+    if (!arena_is_fresh_host_allocation) {
+      bzero(arenalo, (size_t)((u8*)arenahi - (u8*)arenalo));
+    }
+    arena_is_fresh_host_allocation = FALSE;
+  }
 #else
   bzero(arenalo, ((u32)arenahi - (u32)arenalo));
 #endif
@@ -577,13 +555,17 @@ int main(int argc, const char** argv) {
     PAD_BUTTON_START
   };
 
+#ifndef TARGET_PC
   u32 var1;
   OSThread* var2;
+#endif
   void* start;
   void* end;
   DVDDiskID* diskId;
+#ifndef TARGET_PC
   u32* base;
   u32* basenext;
+#endif
 
   ReconfigBATs();
   if (fakemain_check) {
@@ -612,7 +594,8 @@ int main(int argc, const char** argv) {
   OSInit();
   OSInitAlarm();
 
-  /* Initialize stack */
+#ifndef TARGET_PC
+  /* Fill the unused console stack. Host threads do not expose this layout. */
   var1 = ((u32)OSGetStackPointer() - 0x100);
   var2 = OSGetCurrentThread();
   base = (u32*)var1;
@@ -623,6 +606,7 @@ int main(int argc, const char** argv) {
       memset(basenext, 0xfd, (u32)base - (u32)basenext);
     }
   }
+#endif
 
   /* Reset N64 NMI buffer*/
   bzero(osAppNMIBuffer, 16 * sizeof(s32));
@@ -773,11 +757,10 @@ int main(int argc, const char** argv) {
   JC_JKRExpHeap_changeGroupID(JC_JFWSystem_getSystemHeap(), 5);
 
 #ifdef TARGET_PC
-  pc_bswap_raw_display_lists();
+  pc_convert_raw_display_lists();
   mFM_InitActableEndian();
-  pc_bswap_u8_tlut_palettes();
   pc_bswap_house_pos_list();
-  OSReport("[PC] boot: entering HotStartEntry loop (entry=%08x)...\n", (u32)HotStartEntry);
+  OSReport("[PC] boot: entering HotStartEntry loop (entry=%p)...\n", (void*)HotStartEntry);
 #endif
   while (HotStartEntry != nullptr) {
     OSReport("ホットスタート(%08x)\n", HotStartEntry);

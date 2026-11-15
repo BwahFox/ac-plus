@@ -23,6 +23,7 @@ build/
 build32/
 build_mt/
 build_fp/
+/build*/
 .ninja_*
 build.ninja
 
@@ -35,7 +36,6 @@ objdiff.json
 compile_commands.json
 
 # Miscellaneous
-/*.txt
 !requirements.txt
 *.exe
 
@@ -53,3 +53,5 @@ include/compiler/gcc/stdlib.h
 # ac-plus container build output
 /dist/
 pc/build-container/
+# Release files
+dist/

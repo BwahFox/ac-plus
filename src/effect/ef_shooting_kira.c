@@ -103,7 +103,7 @@ static void eShootingKira_dw(eEC_Effect_c* effect, GAME* game) {
         alpha = eEL_CalcAdjust_F(t, max * 0.87f, max, 150.0f, 100.0f);
     }
 
-    angle_z = (s16)eEL_CalcAdjust_F(t, 0.0f, max, 0.0f, 0x20000);
+    angle_z = F32_TO_S16(eEL_CalcAdjust_F(t, 0.0f, max, 0.0f, 0x20000));
 #ifdef TARGET_PC
     if (sky) {
         pc_sky_place(game, &effect->position, PC_SHOOTING_KIRA_SKY_SCALE);

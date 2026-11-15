@@ -34,7 +34,7 @@ static void aSumSlot_mv(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game, 
             }
 
             if (aFTR_CAN_PLAY_SE(ftr_actor)) {
-                sAdo_OngenPos((u32)ftr_actor, 2, &ftr_actor->position);
+                sAdo_OngenPos((JaudioObjectId)(uintptr_t)ftr_actor, 2, &ftr_actor->position);
             }
         } else {
             ftr_actor->dynamic_work_s[0] = FALSE;
@@ -62,7 +62,7 @@ static u8 aSumSlot_aime_idx[] = {
 static void aSumSlot_dw(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game, u8* data) {
     int mtx_idx = game->frame_counter & 1;
     cKF_SkeletonInfo_R_c* keyframe = &ftr_actor->keyframe;
-    Mtx* mtx = ftr_actor->skeleton_mtx[mtx_idx];
+    N64Mtx* mtx = ftr_actor->skeleton_mtx[mtx_idx];
     int idx = ftr_actor->tex_animation.frame >> 1;
 
     OPEN_DISP(game->graph);

@@ -278,10 +278,12 @@ static void mMsg_Clear_CursolIndex(mMsg_Window_c* msg_p) {
 
 static void mMsg_SetTimer(mMsg_Window_c* msg_p, f32 timer) {
     msg_p->cursor_timer = timer;
+    msg_p->status_flags &= ~mMsg_STATUS_FLAG_NOT_PAUSE_FRAME;
+    mMsg_cursor_waiting = timer > 0.0f;
 }
 
 extern void mMsg_Get_BodyParam(u32 table_addr, u32 data_addr, int index, u32* addr, u32* size) {
-    static u32 tmp_buff[16] ATTRIBUTE_ALIGN(32);
+    ATTRIBUTE_ALIGN(32) static u32 tmp_buff[16];
     int first_entry = index == 0;
     u32 aligned_ofs = first_entry ? 0 : ALIGN_PREV((index - 1) * sizeof(u32), 32);
     int ofs = first_entry ? 0 : (index - 1) & 7;
@@ -456,9 +458,17 @@ void pc_msg_dev_dump(int index) {
     mMsg_LoadMsgData(&tmp, index, FALSE);
 }
 #endif
+static void mMsg_Set_LeadingCursolJust(mMsg_Window_c* msg_p) {
+    u8* data = msg_p->msg_data->text_buf.data;
+
+    if (data[0] == CHAR_CONTROL_CODE && data[1] == mFont_CONT_CODE_SET_CURSOR_JUST) {
+        mMsg_set_cursol_just(msg_p);
+    }
+}
 
 extern int mMsg_ChangeMsgData(mMsg_Window_c* msg_p, int index) {
     if (index >= 0 && index < MSG_MAX && mMsg_LoadMsgData(msg_p->msg_data, index, FALSE)) {
+        mMsg_Set_LeadingCursolJust(msg_p);
         msg_p->end_text_cursor_idx = 0;
         mMsg_Clear_CursolIndex(msg_p);
         mMsg_SetTimer(msg_p, 20.0f);

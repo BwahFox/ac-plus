@@ -168,7 +168,7 @@ static void aCD1_clap(COUNTDOWN_NPC1_ACTOR* actor) {
     int idx = actor->npc_class.actor_class.npc_id - SP_NPC_EV_COUNTDOWN_1;
 
     aCD1_before_wait(actor);
-    sAdo_OngenPos((u32)actor, se_no[idx], &actor->npc_class.actor_class.world.position);
+    sAdo_OngenPos((JaudioObjectId)(uintptr_t)actor, se_no[idx], &actor->npc_class.actor_class.world.position);
 }
 
 static void aCD1_set_spd_info(COUNTDOWN_NPC1_ACTOR* actor, int action) {
@@ -409,7 +409,7 @@ static void aCD1_schedule_init_proc(NPC_ACTOR* nactorx, GAME_PLAY* play) {
         s16 angle;
 
         if ((event_idx & 1) == 0) {
-            angle = RANDOM_F(65536.0f);
+            angle = F32_TO_S16(RANDOM_F(65536.0f));
         } else {
             int pool_idx = mFI_GetPuleIdx();
 

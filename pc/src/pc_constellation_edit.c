@@ -1,4 +1,5 @@
 /* pc_constellation_edit.c - Celeste's telescope. See pc_constellation_edit.h. */
+#include <SDL3/SDL.h>
 #include "pc_constellation_edit.h"
 #include "pc_menu_util.h"
 #include "pc_platform.h"

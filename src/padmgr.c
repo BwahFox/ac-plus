@@ -1,3 +1,4 @@
+#include <stdlib.h> /* getenv: ac-plus dev switches */
 #include "padmgr.h"
 
 #include "libultra/libultra.h"
@@ -6,6 +7,7 @@
 
 #ifdef TARGET_PC
 #include "dolphin/pad.h"
+#include "dolphin/vi.h"
 #endif
 
 static int frame = 0;
@@ -125,7 +127,7 @@ static void padmgr_HandleDoneReadPadMsg(void) {
     for (i = 0; i < this->num_controllers; i++) {
         pad->last = pad->now;
         if (this->device_type[i] == PADMGR_TYPE_CONTROLLER) {
-            switch (cur_pad->errno) {
+            switch (cur_pad->error) {
                 case CONT_NO_ERROR:
                     pad->now = *cur_pad;
                     if (this->device_type[i] == PADMGR_TYPE_NONE) {
@@ -139,7 +141,7 @@ static void padmgr_HandleDoneReadPadMsg(void) {
                     pad->now.button = 0;
                     pad->now.stick_x = 0;
                     pad->now.stick_y = 0;
-                    pad->now.errno = cur_pad->errno;
+                    pad->now.error = cur_pad->error;
                     if (this->device_type[i] != PADMGR_TYPE_NONE) {
                         this->device_type[i] = PADMGR_TYPE_NONE;
                         this->pak_type[i] = PADMGR_PAK_NONE;
@@ -150,7 +152,7 @@ static void padmgr_HandleDoneReadPadMsg(void) {
             pad->now.button = 0;
             pad->now.stick_x = 0;
             pad->now.stick_y = 0;
-            pad->now.errno = cur_pad->errno;
+            pad->now.error = cur_pad->error;
         }
 
         /* Update buttons */
@@ -174,7 +176,7 @@ static void padmgr_ConnectCheck(void) {
     int i;
 
     for (i = 0; i < this->num_controllers; i++) {
-        if (this->pad_status[i].errno == CONT_NO_ERROR) {
+        if (this->pad_status[i].error == CONT_NO_ERROR) {
             int masked_type = this->pad_status[i].type & CONT_TYPE_MASK;
 
             switch (masked_type) {
@@ -306,23 +308,36 @@ extern void padmgr_RequestPadData_NonLock(pad_t* pad, int flag) {
 }
 
 #ifdef TARGET_PC
-/* On PC, the padmgr thread doesn't run (osStartThread is a no-op).
+/* On PC, the padmgr thread is not created.
    Poll input once per frame, then let all callers read the accumulated triggers.
    On GC, the padmgr thread polls asynchronously and accumulates triggers between reads.
    On PC, inline polling means a second call within the same frame sees no state change
    (XOR of same button state = 0), producing zero triggers. The once-per-frame guard
    is in padmgr_RequestPadData to skip redundant calls entirely. */
 extern u32 pc_frame_counter; /* incremented in VIWaitForRetrace */
-
 static void padmgr_UpdatePC(void) {
     PADStatus pad_status[MAXCONTROLLERS];
     int i;
 
     JW_JUTGamePad_read();
-    PADRead(pad_status);
+    JW_getPadStatus(pad_status);
+    {
+        /* ac-plus dev harness (pc_devtest.c: PC_AUTO_A, PC_CTL press/stick...): buttons and sticks as if held */
+        extern u32 pc_devtest_buttons(void);
+        extern void pc_devtest_stick(s8* x, s8* y);
+        extern void pc_devtest_cstick(s8* x, s8* y);
+        pad_status[0].button |= (u16)pc_devtest_buttons();
+        pc_devtest_stick(&pad_status[0].stickX, &pad_status[0].stickY);
+        pc_devtest_cstick(&pad_status[0].substickX, &pad_status[0].substickY);
+        if (pad_status[0].err != 0 && (pad_status[0].button != 0 || pad_status[0].stickX != 0 ||
+                                       pad_status[0].stickY != 0 || pad_status[0].substickX != 0 ||
+                                       pad_status[0].substickY != 0)) {
+            pad_status[0].err = 0; /* no controller (a hidden test): the harness is one */
+        }
+    }
 
-    /* Convert PADStatus (GC format) to OSContPad (N64 format).
-       PADRead returns GC button masks; the game uses N64-style button constants.
+    /* Convert the clamped PADStatus (GC format) to OSContPad (N64 format).
+       PADStatus uses GC button masks; the game uses N64-style button constants.
        GC PAD bits:  A=0x0100 B=0x0200 X=0x0400 Y=0x0800 START=0x1000
                      Z=0x0010 R=0x0020 L=0x0040
                      DUp=0x0008 DDown=0x0004 DLeft=0x0001 DRight=0x0002
@@ -333,26 +348,42 @@ static void padmgr_UpdatePC(void) {
     for (i = 0; i < MAXCONTROLLERS; i++) {
         u16 gc = pad_status[i].button;
         u16 n64 = 0;
-        if (gc & 0x0100) n64 |= 0x8000; /* A */
-        if (gc & 0x0200) n64 |= 0x4000; /* B */
-        if (gc & 0x0400) n64 |= 0x0040; /* X */
-        if (gc & 0x0800) n64 |= 0x0080; /* Y */
-        if (gc & 0x1000) n64 |= 0x1000; /* START */
-        if (gc & 0x0010) n64 |= 0x2000; /* Z */
-        if (gc & 0x0020) n64 |= 0x0010; /* R */
-        if (gc & 0x0040) n64 |= 0x0020; /* L */
-        if (gc & 0x0008) n64 |= 0x0800; /* D-Up */
-        if (gc & 0x0004) n64 |= 0x0400; /* D-Down */
-        if (gc & 0x0001) n64 |= 0x0200; /* D-Left */
-        if (gc & 0x0002) n64 |= 0x0100; /* D-Right */
-        if (pad_status[i].substickX >= 29)  n64 |= 0x0001; /* C-Right */
-        if (pad_status[i].substickX <= -29) n64 |= 0x0002; /* C-Left */
-        if (pad_status[i].substickY >= 29)  n64 |= 0x0008; /* C-Up */
-        if (pad_status[i].substickY <= -29) n64 |= 0x0004; /* C-Down */
+        if (gc & 0x0100)
+            n64 |= 0x8000; /* A */
+        if (gc & 0x0200)
+            n64 |= 0x4000; /* B */
+        if (gc & 0x0400)
+            n64 |= 0x0040; /* X */
+        if (gc & 0x0800)
+            n64 |= 0x0080; /* Y */
+        if (gc & 0x1000)
+            n64 |= 0x1000; /* START */
+        if (gc & 0x0010)
+            n64 |= 0x2000; /* Z */
+        if (gc & 0x0020)
+            n64 |= 0x0010; /* R */
+        if (gc & 0x0040)
+            n64 |= 0x0020; /* L */
+        if (gc & 0x0008)
+            n64 |= 0x0800; /* D-Up */
+        if (gc & 0x0004)
+            n64 |= 0x0400; /* D-Down */
+        if (gc & 0x0001)
+            n64 |= 0x0200; /* D-Left */
+        if (gc & 0x0002)
+            n64 |= 0x0100; /* D-Right */
+        if (pad_status[i].substickX >= 29)
+            n64 |= 0x0001; /* C-Right */
+        if (pad_status[i].substickX <= -29)
+            n64 |= 0x0002; /* C-Left */
+        if (pad_status[i].substickY >= 29)
+            n64 |= 0x0008; /* C-Up */
+        if (pad_status[i].substickY <= -29)
+            n64 |= 0x0004; /* C-Down */
         this->cur_pads[i].button = n64;
         this->cur_pads[i].stick_x = pad_status[i].stickX;
         this->cur_pads[i].stick_y = pad_status[i].stickY;
-        this->cur_pads[i].errno = 0; /* CONT_NO_ERROR */
+        this->cur_pads[i].error = 0; /* CONT_NO_ERROR */
     }
 
     {
@@ -365,10 +396,20 @@ static void padmgr_UpdatePC(void) {
              * out. Buttons reliably go to 0 on release. */
             int any_button = 0;
             for (i = 0; i < MAXCONTROLLERS; i++) {
-                if (this->cur_pads[i].button != 0) { any_button = 1; break; }
+                if (this->cur_pads[i].button != 0) {
+                    any_button = 1;
+                    break;
+                }
             }
-            if (any_button) suppress = 1;
-            else            g_pc_pause_input_drain = 0;
+            if (any_button)
+                suppress = 1;
+            else
+                g_pc_pause_input_drain = 0;
+        }
+        if (getenv("PC_PAD_LOG") != NULL && (pad_status[0].button != 0 || suppress)) {
+            /* dev: what the game gets from the controller this frame */
+            printf("[padlog] gc=%04X err=%d n64=%04X suppress=%d paused=%d drain=%d\n", pad_status[0].button,
+                   pad_status[0].err, this->cur_pads[0].button, suppress, g_pc_paused, g_pc_pause_input_drain);
         }
         if (suppress) {
             for (i = 0; i < MAXCONTROLLERS; i++) {
@@ -463,8 +504,15 @@ extern void padmgr_Init(OSMessageQueue* mq) {
 extern void padmgr_Create(OSMessageQueue* serial_mq, OSId id, OSPri priority, void* stackend, size_t stack_size) {
     padmgr_Init(serial_mq);
     osCreateMesgQueue(&this->_msgQueue8C, this->_msgBuf2C, PADMSGBUFCNT);
+#ifdef TARGET_PC
+    (void)id;
+    (void)priority;
+    (void)stackend;
+    (void)stack_size;
+#else
     osCreateThread2(&this->thread, id, &padmgr_MainProc, this, stackend, stack_size, priority);
     osStartThread(&this->thread);
+#endif
 }
 
 extern int padmgr_isConnectedController(int idx) {

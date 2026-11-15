@@ -7,24 +7,11 @@
 #include "main.h" /* SCREEN_WIDTH_F */
 
 void pc_menu_dim_rect(GRAPH* graph, int alpha) {
-    Gfx* gfx;
-    OPEN_DISP(graph);
-    gfx = NOW_FONT_DISP;
-    gDPNoOpTag(gfx++, PC_NOOP_WIDESCREEN_STRETCH);
-    gDPPipeSync(gfx++);
-    gDPSetOtherMode(gfx++,
-        G_AD_DISABLE | G_CD_MAGICSQ | G_CK_NONE | G_TC_FILT |
-        G_TF_POINT | G_TT_NONE | G_TL_TILE | G_TD_CLAMP |
-        G_TP_NONE | G_CYC_1CYCLE | G_PM_NPRIMITIVE,
-        G_AC_NONE | G_ZS_PRIM | G_RM_XLU_SURF | G_RM_XLU_SURF2);
-    gDPSetCombineMode(gfx++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
-    gDPSetPrimColor(gfx++, 0, 0, 0, 0, 0, alpha);
-    gfx = gfx_gSPTextureRectangle1(gfx,
-        0, 0, 320 << 2, 240 << 2, 0, 0, 0, 0, 0);
-    gDPPipeSync(gfx++);
-    gDPNoOpTag(gfx++, PC_NOOP_WIDESCREEN_STRETCH_OFF);
-    SET_FONT_DISP(gfx);
-    CLOSE_DISP(graph);
+    extern GAME* gamePT;
+
+    if (gamePT == NULL || gamePT->graph != graph) return;
+    /* past the 4:3 screen on both sides: the widescreen margins too */
+    pc_text_fill(gamePT, -320.0f, -8.0f, 640.0f, 248.0f, 0, 0, 0, alpha);
 }
 
 void pc_menu_row_colors(int selected, int* r, int* g, int* b, int* a) {

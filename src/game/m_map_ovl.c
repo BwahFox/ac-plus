@@ -11,6 +11,12 @@
 #include "sys_matrix.h"
 #include "m_malloc.h"
 #include "m_common_data.h"
+#ifdef MOUSE_INPUT
+#include "game_pointer.h"
+#endif
+
+#define mMP_MAP_OFFSET_X 11.7f
+#define mMP_MAP_OFFSET_Y 45.7f
 
 extern u8 kan_tizu_f_TA_tex_txt[];
 extern u8 kan_tizu_tst1_TA_tex_txt[];
@@ -444,12 +450,12 @@ extern mMP_HousePos_c mMP_house_pos_list[];
 
 extern Gfx kan_win_mode[];
 
-static u16 kan_tizu1_pal[16] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u16 kan_tizu1_pal[16] = {
     0x0000, 0xc3b0, 0x9e87, 0xd294, 0xca52, 0xbdef, 0xb5ad, 0xb9ce,
     0xa2e8, 0xb18c, 0xa705, 0xdaff, 0xab4a, 0xffff, 0xb635, 0xbe9f,
 };
 
-static u16 kan_tizu2_pal[16] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u16 kan_tizu2_pal[16] = {
     0x0000, 0xc3b0, 0x9e87, 0xc94a, 0xe70d, 0xe1ce, 0xb5ad, 0xb195,
     0xf390, 0xb18c, 0xa705, 0xffff, 0xd54a, 0xdaff, 0xb635, 0xbe9f,
 };
@@ -907,6 +913,56 @@ static void mMP_move_Move(Submenu* submenu, mSM_MenuInfo_c* menu) {
     (*submenu->overlay->move_Move_proc)(submenu, menu);
 }
 
+static void mMP_close(Submenu* submenu, mSM_MenuInfo_c* menu) {
+    (*submenu->overlay->move_chg_base_proc)(menu, mSM_MOVE_OUT_TOP);
+    sAdo_SysTrgStart(0x17D);
+}
+
+#ifdef MOUSE_INPUT
+static void mMP_mouse_move(Submenu* submenu, mSM_MenuInfo_c* menu) {
+#ifdef MOUSE_INPUT
+    const GamePointerFrame* pointer = acgc_pointer_frame();
+#endif
+    mMP_Ovl_c* map_ovl = submenu->overlay->map_ovl;
+    f32 mouse_x, mouse_y;
+    int bx, bz;
+
+    mouse_x = pointer->x;
+    mouse_y = pointer->y;
+    if (submenu->current_menu_type != mSM_OVL_MAP ||
+        !pointer->visible ||
+        !pointer->inside) {
+        return;
+    }
+
+    if (pointer->pressed & GAME_POINTER_RIGHT) {
+        mMP_close(submenu, menu);
+        return;
+    }
+
+    mouse_x -= 160.0f + menu->position[0] + mMP_MAP_OFFSET_X - 0.5f * mMP_BLOCK_SIZE_F;
+    mouse_y -= 120.0f - menu->position[1] - mMP_MAP_OFFSET_Y - 0.5f * mMP_BLOCK_SIZE_F;
+    if (mouse_x < 0.0f || mouse_x >= FG_BLOCK_X_NUM * mMP_BLOCK_SIZE_F ||
+        mouse_y < 0.0f || mouse_y >= FG_BLOCK_Z_NUM * mMP_BLOCK_SIZE_F) {
+        return;
+    }
+
+    bx = (int)(mouse_x / mMP_BLOCK_SIZE_F);
+    bz = (int)(mouse_y / mMP_BLOCK_SIZE_F);
+    if (map_ovl->sel_bx != bx || map_ovl->sel_bz != bz) {
+        map_ovl->sel_bx = bx;
+        map_ovl->sel_bz = bz;
+        sAdo_SysTrgStart(NA_SE_CURSOL);
+    }
+
+    map_ovl->map_cursor_target_xpos = bx * mMP_BLOCK_SIZE_F;
+    map_ovl->map_cursor_target_zpos = -bz * mMP_BLOCK_SIZE_F;
+    map_ovl->map_cursor_current_xpos = map_ovl->map_cursor_target_xpos;
+    map_ovl->map_cursor_current_zpos = map_ovl->map_cursor_target_zpos;
+    menu->proc_status = mSM_OVL_PROC_PLAY;
+}
+#endif
+
 static void mMP_move_Play(Submenu* submenu, mSM_MenuInfo_c* menu) {
     Submenu_Overlay_c* ovl = submenu->overlay;
     int trigger = ovl->menu_control.trigger;
@@ -914,8 +970,7 @@ static void mMP_move_Play(Submenu* submenu, mSM_MenuInfo_c* menu) {
     int cursor_moved = FALSE;
 
     if ((trigger & (BUTTON_A | BUTTON_B | BUTTON_START)) || (menu->data0 == 1 && (trigger & BUTTON_X))) {
-        (*ovl->move_chg_base_proc)(menu, mSM_MOVE_OUT_TOP);
-        sAdo_SysTrgStart(0x17D);
+        mMP_close(submenu, menu);
     } else if (trigger & BUTTON_CLEFT) {
         if (map_ovl->sel_bx != 0) {
             map_ovl->sel_bx--;
@@ -987,6 +1042,11 @@ static void mMP_map_ovl_move(Submenu* submenu) {
     mSM_MenuInfo_c* menu = &ovl->menu_info[mSM_OVL_MAP];
 
     (*menu->pre_move_func)(submenu);
+#ifdef MOUSE_INPUT
+    if (menu->proc_status == mSM_OVL_PROC_PLAY || menu->proc_status == mSM_OVL_PROC_WAIT) {
+        mMP_mouse_move(submenu, menu);
+    }
+#endif
     (*ovl_move_proc[menu->proc_status])(submenu, menu);
 }
 
@@ -1026,8 +1086,8 @@ static void mMP_set_house_dl(GRAPH* graph, mMP_Ovl_c* map_ovl, f32 pos_x, f32 po
 
     label_info = (mMP_LabelInfo_c*)map_ovl->label_info;
 
-    base_y = (pos_y + 45.7f) + (0.5f * mMP_BLOCK_SIZE_F);
-    base_x = (pos_x + 11.7f) - (0.5f * mMP_BLOCK_SIZE_F);
+    base_y = (pos_y + mMP_MAP_OFFSET_Y) + (0.5f * mMP_BLOCK_SIZE_F);
+    base_x = (pos_x + mMP_MAP_OFFSET_X) - (0.5f * mMP_BLOCK_SIZE_F);
 
     OPEN_DISP(graph);
 
@@ -1037,7 +1097,7 @@ static void mMP_set_house_dl(GRAPH* graph, mMP_Ovl_c* map_ovl, f32 pos_x, f32 po
     /* draw all villager houses */
 
     for (bz = 0; bz < FG_BLOCK_Z_NUM; bz++) {
-        temp_x = (pos_x + 11.7f) - (0.5f * mMP_BLOCK_SIZE_F);
+        temp_x = (pos_x + mMP_MAP_OFFSET_X) - (0.5f * mMP_BLOCK_SIZE_F);
         for (bx = 0; bx < FG_BLOCK_X_NUM; bx++) {
             if (label_info->label_no == mMP_LABEL_NPC) {
                 resident_p = label_info->residents;
@@ -1066,8 +1126,8 @@ static void mMP_set_house_dl(GRAPH* graph, mMP_Ovl_c* map_ovl, f32 pos_x, f32 po
 
     Matrix_scale(16.0f, 16.0f, 1.0f, MTX_LOAD);
     Matrix_translate(
-        ((pos_x + 11.7f) - (0.5f * mMP_BLOCK_SIZE_F) + (f32)map_ovl->player_bx * mMP_BLOCK_SIZE_F) + 3.0f + 5.0f,
-        (pos_y + 45.7f - (0.5f * mMP_BLOCK_SIZE_F) - (f32)map_ovl->player_bz * mMP_BLOCK_SIZE_F) + 4.0f + 5.0f, 140.0f,
+        ((pos_x + mMP_MAP_OFFSET_X) - (0.5f * mMP_BLOCK_SIZE_F) + (f32)map_ovl->player_bx * mMP_BLOCK_SIZE_F) + 3.0f + 5.0f,
+        (pos_y + mMP_MAP_OFFSET_Y - (0.5f * mMP_BLOCK_SIZE_F) - (f32)map_ovl->player_bz * mMP_BLOCK_SIZE_F) + 4.0f + 5.0f, 140.0f,
         1);
 
     gSPMatrix(gfx++, _Matrix_to_Mtx_new(graph), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
@@ -1091,7 +1151,7 @@ static void mMP_set_map_dl(GRAPH* graph, mMP_Ovl_c* map_ovl) {
     gSPDisplayList(gfx++, kan_tizu_mode);
 
     Matrix_push();
-    Matrix_translate(11.7f, 45.7f, 0.0f, MTX_MULT);
+    Matrix_translate(mMP_MAP_OFFSET_X, mMP_MAP_OFFSET_Y, 0.0f, MTX_MULT);
 
     for (bz = 0; bz < FG_BLOCK_Z_NUM; bz++) {
         for (bx = 0; bx < FG_BLOCK_X_NUM; bx++) {
@@ -1138,7 +1198,7 @@ static void mMP_set_cursol_dl(GRAPH* graph, mMP_Ovl_c* map_ovl, f32 base_x, f32 
     }
 
     Matrix_scale(16.0f, 16.0f, 1.0f, MTX_LOAD);
-    Matrix_translate(x + 11.7f, y + 45.7f, 140.0f, MTX_MULT);
+    Matrix_translate(x + mMP_MAP_OFFSET_X, y + mMP_MAP_OFFSET_Y, 140.0f, MTX_MULT);
 
     Matrix_scale(cursol_scale[frame], cursol_scale[frame], 1.0f, MTX_MULT);
 

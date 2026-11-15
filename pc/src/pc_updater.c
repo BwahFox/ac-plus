@@ -7,8 +7,11 @@
  *
  * Only a release signed with the ac-plus release key counts: next to its zip it carries ZIP.sig, an ECDSA P-256
  * signature of the zip's SHA-256 (pc/tools/release-sign.py), checked against UPD_SIGNING_KEY with Windows' own
- * BCrypt before anything is unpacked. So a hijacked GitHub account or a forged release can't reach the players.
- * A fork builds its own exe with its own key.
+ * BCrypt (Linux: the system's OpenSSL, loaded when needed) before anything is unpacked. So a hijacked GitHub
+ * account or a forged release can't reach the players. A fork builds its own exe with its own key.
+ *
+ * Windows takes the release's .zip; the Linux build takes its -linux.tar.gz (and that file's .sig), so each
+ * updates to its own kind. macOS and the other ports have no updater (pc_updater_run says no).
  *
  * Updating downloads the release's zip with a progress bar, unpacks it in memory, checks every file's CRC and
  * stages it in update/new/. Only then are files replaced, the old ones going to update/previous/ (the last
@@ -20,6 +23,7 @@
  *
  * Dev: PC_UPDATE_API=<url> reads the release list from there instead of GitHub, PC_UPDATE_ANSWER=update|later|skip
  * answers the question (tests can't click), PC_UPDATE_VERSION=<tag> pretends to be that release. */
+#include <SDL3/SDL.h>
 #include "pc_platform.h"
 #include "pc_settings.h"
 #include "pc_http.h"
@@ -32,6 +36,12 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <bcrypt.h>
+#elif defined(__linux__) && !defined(__ANDROID__)
+#include <dirent.h>
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 extern SDL_Window* g_pc_window;
@@ -139,12 +149,29 @@ const char* pc_updater_version_label(void) {
     return label;
 }
 
-#ifdef _WIN32
+#if defined(_WIN32) || (defined(__linux__) && !defined(__ANDROID__))
 
 #define UPD_DIR "update"
-#define UPD_NEW UPD_DIR "\\new"
-#define UPD_PREV UPD_DIR "\\previous"
+#ifdef _WIN32
+#define UPD_SEP '\\'
+#define UPD_SEP_S "\\"
 #define UPD_EXE "AnimalCrossing.exe"
+#define UPD_ASSET ".zip" /* the release file this build installs */
+#define upd_strnicmp _strnicmp
+#define upd_stricmp _stricmp
+#else
+#define UPD_SEP '/'
+#define UPD_SEP_S "/"
+#define UPD_EXE "AnimalCrossing"
+#define UPD_ASSET "-linux.tar.gz"
+#define upd_strnicmp strncmp
+#define upd_stricmp strcmp
+#ifndef MAX_PATH
+#define MAX_PATH 512
+#endif
+#endif
+#define UPD_NEW UPD_DIR UPD_SEP_S "new"
+#define UPD_PREV UPD_DIR UPD_SEP_S "previous"
 
 /* stb_image's inflate (compiled in pc_pattern_qr.c) */
 extern int stbi_zlib_decode_noheader_buffer(char* obuffer, int olen, const char* ibuffer, int ilen);
@@ -298,9 +325,11 @@ static const char* upd_asset(const char* p, upd_release_t* r) {
 
             p = upd_str(p + 1, url, sizeof(url));
             l = strlen(url);
-            if (l > 4 && strcmp(url + l - 4, ".zip") == 0 && r->zip_url[0] == '\0') {
+            const size_t al = strlen(UPD_ASSET);
+
+            if (l > al && strcmp(url + l - al, UPD_ASSET) == 0 && r->zip_url[0] == '\0') {
                 snprintf(r->zip_url, sizeof(r->zip_url), "%s", url);
-            } else if (l > 8 && strcmp(url + l - 8, ".zip.sig") == 0 && r->sig_url[0] == '\0') {
+            } else if (l > al + 4 && strcmp(url + l - al - 4, UPD_ASSET ".sig") == 0 && r->sig_url[0] == '\0') {
                 snprintf(r->sig_url, sizeof(r->sig_url), "%s", url);
             }
         } else {
@@ -423,31 +452,9 @@ static void upd_notes_plain(char* out, size_t n, const char* md) {
 
 /* --- progress --- */
 
+int pc_acplus_progress(const char* what, int pct); /* pc_acplus_host.cpp */
 static void upd_draw(int pct, const char* what) {
-    int w = 0, h = 0, bw, bh, x, y;
-    char title[128];
-
-    SDL_GL_GetDrawableSize(g_pc_window, &w, &h);
-    bw = w * 3 / 5, bh = h / 30 > 6 ? h / 30 : 6;
-    x = (w - bw) / 2, y = (h - bh) / 2;
-    glDisable(GL_SCISSOR_TEST);
-    glViewport(0, 0, w, h);
-    glClearColor(0.10f, 0.13f, 0.10f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glEnable(GL_SCISSOR_TEST);
-    glScissor(x - 2, y - 2, bw + 4, bh + 4);
-    glClearColor(0.85f, 0.80f, 0.62f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glScissor(x, y, bw, bh);
-    glClearColor(0.18f, 0.22f, 0.18f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glScissor(x, y, bw * pct / 100, bh);
-    glClearColor(0.45f, 0.75f, 0.35f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glDisable(GL_SCISSOR_TEST);
-    SDL_GL_SwapWindow(g_pc_window);
-    snprintf(title, sizeof(title), "ac-plus - %s: %d%%", what, pct);
-    SDL_SetWindowTitle(g_pc_window, title);
+    pc_acplus_progress(what, pct);
 }
 
 static char s_upd_what[64];
@@ -492,19 +499,28 @@ static unsigned long upd_crc32(const unsigned char* p, size_t n) {
     return c ^ 0xFFFFFFFFUL;
 }
 
-/* Every folder on the way to path (a file path, \ separated) */
-static void upd_make_dirs(const char* path) {
-    char tmp[MAX_PATH];
-    char* s;
+/* --- file operations (the only part of installing that differs between Windows and Linux) --- */
 
-    snprintf(tmp, sizeof(tmp), "%s", path);
-    for (s = tmp; *s != '\0'; s++) {
-        if (*s == '\\') {
-            *s = '\0';
-            CreateDirectoryA(tmp, NULL);
-            *s = '\\';
-        }
-    }
+#ifdef _WIN32
+static void upd_mkdir(const char* dir) {
+    CreateDirectoryA(dir, NULL);
+}
+static int upd_is_file(const char* path) {
+    DWORD attr = GetFileAttributesA(path);
+    return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
+}
+static int upd_move(const char* from, const char* to) {
+    return MoveFileExA(from, to, MOVEFILE_REPLACE_EXISTING) != 0;
+}
+static int upd_copy(const char* from, const char* to) {
+    return CopyFileA(from, to, FALSE) != 0;
+}
+static void upd_delete(const char* path) {
+    SetFileAttributesA(path, FILE_ATTRIBUTE_NORMAL);
+    DeleteFileA(path);
+}
+static void upd_set_mode(const char* path, unsigned mode) {
+    (void)path, (void)mode;
 }
 
 static void upd_remove_tree(const char* dir) {
@@ -523,8 +539,7 @@ static void upd_remove_tree(const char* dir) {
             if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
                 upd_remove_tree(sub);
             } else {
-                SetFileAttributesA(sub, FILE_ATTRIBUTE_NORMAL);
-                DeleteFileA(sub);
+                upd_delete(sub);
             }
         } while (FindNextFileA(h, &fd));
         FindClose(h);
@@ -532,8 +547,10 @@ static void upd_remove_tree(const char* dir) {
     RemoveDirectoryA(dir);
 }
 
-static int upd_write_file(const char* path, const char* data, size_t len, DWORD disposition) {
-    HANDLE h = CreateFileA(path, GENERIC_WRITE, 0, NULL, disposition, FILE_ATTRIBUTE_NORMAL, NULL);
+/* existing: rewrite a file that's there (keeping what the file system knows about it), else create it */
+static int upd_write_file(const char* path, const char* data, size_t len, int existing) {
+    HANDLE h = CreateFileA(path, GENERIC_WRITE, 0, NULL, existing ? TRUNCATE_EXISTING : CREATE_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL, NULL);
     DWORD put = 0;
     int ok;
 
@@ -543,6 +560,103 @@ static int upd_write_file(const char* path, const char* data, size_t len, DWORD 
     ok = WriteFile(h, data, (DWORD)len, &put, NULL) && put == len;
     ok = CloseHandle(h) && ok;
     return ok;
+}
+#else
+static void upd_mkdir(const char* dir) {
+    mkdir(dir, 0755);
+}
+static int upd_is_file(const char* path) {
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISREG(st.st_mode);
+}
+static int upd_move(const char* from, const char* to) {
+    return rename(from, to) == 0; /* the running game keeps its old file open: renaming over it is fine */
+}
+static void upd_delete(const char* path) {
+    unlink(path);
+}
+static void upd_set_mode(const char* path, unsigned mode) {
+    if (mode != 0) {
+        chmod(path, (mode_t)(mode & 0777));
+    }
+}
+
+static void upd_remove_tree(const char* dir) {
+    DIR* d = opendir(dir);
+    struct dirent* e;
+    char sub[MAX_PATH];
+    struct stat st;
+
+    if (d != NULL) {
+        while ((e = readdir(d)) != NULL) {
+            if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) {
+                continue;
+            }
+            snprintf(sub, sizeof(sub), "%s/%s", dir, e->d_name);
+            if (lstat(sub, &st) == 0 && S_ISDIR(st.st_mode)) {
+                upd_remove_tree(sub);
+            } else {
+                unlink(sub);
+            }
+        }
+        closedir(d);
+    }
+    rmdir(dir);
+}
+
+static int upd_write_file(const char* path, const char* data, size_t len, int existing) {
+    FILE* f = fopen(path, "wb"); /* an existing file is truncated and keeps its permissions */
+    int ok;
+
+    (void)existing;
+    if (f == NULL) {
+        return FALSE;
+    }
+    ok = fwrite(data, 1, len, f) == len;
+    ok = fclose(f) == 0 && ok;
+    return ok;
+}
+
+static int upd_copy(const char* from, const char* to) {
+    struct stat st;
+    FILE *in = fopen(from, "rb"), *out;
+    char buf[65536];
+    size_t n;
+    int ok = TRUE;
+
+    if (in == NULL) {
+        return FALSE;
+    }
+    out = fopen(to, "wb");
+    if (out == NULL) {
+        fclose(in);
+        return FALSE;
+    }
+    while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
+        ok = ok && fwrite(buf, 1, n, out) == n;
+    }
+    fclose(in);
+    ok = fclose(out) == 0 && ok;
+    if (stat(from, &st) == 0) {
+        chmod(to, st.st_mode & 0777);
+    }
+    return ok;
+}
+#endif
+
+/* Every folder on the way to path (a file path, UPD_SEP separated) */
+static void upd_make_dirs(const char* path) {
+    char tmp[MAX_PATH];
+    char* s;
+
+    snprintf(tmp, sizeof(tmp), "%s", path);
+    for (s = tmp; *s != '\0'; s++) {
+        if (*s == UPD_SEP) {
+            *s = '\0';
+            upd_mkdir(tmp);
+            *s = UPD_SEP;
+        }
+    }
 }
 
 static int upd_read_file(const char* path, upd_buf_t* out) {
@@ -570,22 +684,27 @@ static int upd_read_file(const char* path, upd_buf_t* out) {
 
 /* Files the update must never touch: the player's own */
 static int upd_protected(const char* rel) {
-    static const char* dirs[] = { "save\\", "cf_sky\\", "texture_pack\\", "music\\", "qr\\", UPD_DIR "\\" };
+    static const char* dirs[] = { "save" UPD_SEP_S,  "cf_sky" UPD_SEP_S, "texture_pack" UPD_SEP_S,
+                                  "music" UPD_SEP_S, "qr" UPD_SEP_S,     "nes_roms" UPD_SEP_S,
+                                  "rom" UPD_SEP_S,   UPD_DIR UPD_SEP_S };
     size_t i;
 
     for (i = 0; i < sizeof(dirs) / sizeof(dirs[0]); i++) {
-        if (_strnicmp(rel, dirs[i], strlen(dirs[i])) == 0) {
+        if (upd_strnicmp(rel, dirs[i], strlen(dirs[i])) == 0) {
             return TRUE;
         }
     }
-    return _stricmp(rel, "settings.ini") == 0 || _stricmp(rel, "keybindings.ini") == 0 ||
-           _stricmp(rel, "ac-sync.conf") == 0;
+    return upd_stricmp(rel, "settings.ini") == 0 || upd_stricmp(rel, "keybindings.ini") == 0 ||
+           upd_stricmp(rel, "ac-sync.conf") == 0 || upd_stricmp(rel, "ac-plus.ini") == 0 ||
+           upd_stricmp(rel, "config.json") == 0 || upd_stricmp(rel, "input.json") == 0 ||
+           upd_stricmp(rel, "imgui.ini") == 0;
 }
 
 #define UPD_MAX_FILES 4096
 
 typedef struct {
     char rel[MAX_PATH];
+    unsigned mode; /* Linux: its permissions in the release (the game and its scripts are executable) */
     int existed;
     int applied;
 } upd_file_t;
@@ -597,13 +716,70 @@ static u32 upd_le32(const unsigned char* p) {
     return (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24);
 }
 
-/* Unpacks the zip's ac-plus/ files into update\new\, checking each; fills files, returns their count, -1 on error.
- * want_tag: the zip's VERSION must say it. */
-static int upd_unpack(const upd_buf_t* zip, upd_file_t* files, const char* want_tag, char* err, size_t err_n) {
+/* What unpacking has found so far */
+typedef struct {
+    upd_file_t* files;
+    int count;
+    int have_exe;
+    int have_version;
+    const char* want_tag;
+} upd_stage_t;
+
+/* One file of the release (name: its path in the archive, "ac-plus/..."), already checked: staged in update/new/
+ * unless it's outside the game folder or the player's own. FALSE (with err) stops the update. */
+static int upd_stage(upd_stage_t* st, const char* name, const char* data, size_t len, unsigned mode, char* err,
+                     size_t err_n) {
+    char rel[MAX_PATH], dst[MAX_PATH];
+    size_t j, n = strlen(name);
+
+    if (strncmp(name, "ac-plus/", 8) != 0 || n == 8 || name[n - 1] == '/') {
+        return TRUE; /* folders, and anything outside the game folder */
+    }
+    snprintf(rel, sizeof(rel), "%s", name + 8);
+    for (j = 0; rel[j] != '\0'; j++) {
+        if (rel[j] == '/' || rel[j] == '\\') {
+            rel[j] = UPD_SEP;
+        }
+    }
+    if (strstr(rel, "..") != NULL || rel[0] == UPD_SEP || strchr(rel, ':') != NULL) {
+        snprintf(err, err_n, "the download has a file outside the game folder (%s)", name);
+        return FALSE;
+    }
+    if (upd_protected(rel)) {
+        return TRUE;
+    }
+    if (st->count == UPD_MAX_FILES) {
+        snprintf(err, err_n, "the download has too many files");
+        return FALSE;
+    }
+    if (upd_stricmp(rel, "VERSION") == 0) {
+        char tag[32];
+
+        snprintf(tag, sizeof(tag), "%.*s", (int)(len < 31 ? len : 31), data);
+        tag[strcspn(tag, "\r\n \t")] = '\0';
+        st->have_version = strcmp(tag, st->want_tag) == 0;
+    }
+    st->have_exe |= upd_stricmp(rel, UPD_EXE) == 0;
+    snprintf(dst, sizeof(dst), UPD_NEW UPD_SEP_S "%s", rel);
+    upd_make_dirs(dst);
+    if (!upd_write_file(dst, data, len, FALSE)) {
+        snprintf(err, err_n, "couldn't write %s", dst);
+        return FALSE;
+    }
+    upd_set_mode(dst, mode);
+    snprintf(st->files[st->count].rel, sizeof(st->files[st->count].rel), "%s", rel);
+    st->files[st->count].mode = mode;
+    st->files[st->count].existed = st->files[st->count].applied = FALSE;
+    st->count++;
+    return TRUE;
+}
+
+#ifdef _WIN32
+/* The zip's ac-plus/ files, each checked against its CRC */
+static int upd_unpack_archive(const upd_buf_t* zip, upd_stage_t* st, char* err, size_t err_n) {
     const unsigned char* z = (const unsigned char*)zip->data;
     long eocd = -1, i;
     u32 cd_off, cd_n, k, pos;
-    int count = 0, have_exe = FALSE, have_version = FALSE;
 
     for (i = (long)zip->len - 22; i >= 0 && i >= (long)zip->len - 22 - 65535; i--) {
         if (upd_le32(z + i) == 0x06054b50) {
@@ -613,21 +789,20 @@ static int upd_unpack(const upd_buf_t* zip, upd_file_t* files, const char* want_
     }
     if (eocd < 0) {
         snprintf(err, err_n, "the download isn't a zip");
-        return -1;
+        return FALSE;
     }
     cd_n = upd_le16(z + eocd + 10);
     cd_off = upd_le32(z + eocd + 16);
-    upd_remove_tree(UPD_NEW);
     for (k = 0, pos = cd_off; k < cd_n; k++) {
         u16 method, name_len, extra_len, comment_len;
         u32 crc, csize, usize, loff, data;
-        char name[MAX_PATH], rel[MAX_PATH], dst[MAX_PATH];
+        char name[MAX_PATH];
         char* out;
-        size_t j;
+        int ok;
 
         if (pos + 46 > zip->len || upd_le32(z + pos) != 0x02014b50) {
             snprintf(err, err_n, "the zip is damaged");
-            return -1;
+            return FALSE;
         }
         method = upd_le16(z + pos + 10);
         crc = upd_le32(z + pos + 16);
@@ -639,44 +814,27 @@ static int upd_unpack(const upd_buf_t* zip, upd_file_t* files, const char* want_
         loff = upd_le32(z + pos + 42);
         if (name_len >= sizeof(name) || pos + 46 + name_len > zip->len) {
             snprintf(err, err_n, "the zip is damaged");
-            return -1;
+            return FALSE;
         }
         memcpy(name, z + pos + 46, name_len);
         name[name_len] = '\0';
         pos += 46 + name_len + extra_len + comment_len;
         if (strncmp(name, "ac-plus/", 8) != 0 || name[name_len - 1] == '/') {
-            continue; /* folders, and anything outside the game folder */
-        }
-        snprintf(rel, sizeof(rel), "%s", name + 8);
-        for (j = 0; rel[j] != '\0'; j++) {
-            if (rel[j] == '/') {
-                rel[j] = '\\';
-            }
-        }
-        if (strstr(rel, "..") != NULL || rel[0] == '\\' || strchr(rel, ':') != NULL) {
-            snprintf(err, err_n, "the zip has a file outside the game folder (%s)", name);
-            return -1;
-        }
-        if (upd_protected(rel)) {
             continue;
-        }
-        if (count == UPD_MAX_FILES) {
-            snprintf(err, err_n, "the zip has too many files");
-            return -1;
         }
         if (loff + 30 > zip->len || upd_le32(z + loff) != 0x04034b50) {
             snprintf(err, err_n, "the zip is damaged (%s)", name);
-            return -1;
+            return FALSE;
         }
         data = loff + 30 + upd_le16(z + loff + 26) + upd_le16(z + loff + 28);
         if (data + csize > zip->len) {
             snprintf(err, err_n, "the zip is cut short (%s)", name);
-            return -1;
+            return FALSE;
         }
         out = malloc(usize ? usize : 1);
         if (out == NULL) {
             snprintf(err, err_n, "out of memory unpacking %s", name);
-            return -1;
+            return FALSE;
         }
         if (method == 0 && csize == usize) {
             memcpy(out, z + data, usize);
@@ -684,38 +842,169 @@ static int upd_unpack(const upd_buf_t* zip, upd_file_t* files, const char* want_
                    stbi_zlib_decode_noheader_buffer(out, (int)usize, (const char*)z + data, (int)csize) != (int)usize) {
             free(out);
             snprintf(err, err_n, "couldn't unpack %s", name);
-            return -1;
+            return FALSE;
         }
         if (upd_crc32((const unsigned char*)out, usize) != crc) {
             free(out);
             snprintf(err, err_n, "%s is damaged in the download", name);
-            return -1;
+            return FALSE;
         }
-        if (_stricmp(rel, "VERSION") == 0) {
-            char tag[32];
-
-            snprintf(tag, sizeof(tag), "%.*s", (int)(usize < 31 ? usize : 31), out);
-            tag[strcspn(tag, "\r\n \t")] = '\0';
-            have_version = strcmp(tag, want_tag) == 0;
-        }
-        have_exe |= _stricmp(rel, UPD_EXE) == 0;
-        snprintf(dst, sizeof(dst), UPD_NEW "\\%s", rel);
-        upd_make_dirs(dst);
-        if (!upd_write_file(dst, out, usize, CREATE_ALWAYS)) {
-            free(out);
-            snprintf(err, err_n, "couldn't write %s", dst);
-            return -1;
-        }
+        ok = upd_stage(st, name, out, usize, 0, err, err_n);
         free(out);
-        snprintf(files[count].rel, sizeof(files[count].rel), "%s", rel);
-        files[count].existed = files[count].applied = FALSE;
-        count++;
+        if (!ok) {
+            return FALSE;
+        }
     }
-    if (!have_exe || !have_version) {
-        snprintf(err, err_n, "the download isn't the release it should be (%s)", !have_exe ? "no game" : "wrong VERSION");
+    return TRUE;
+}
+#else
+static unsigned long upd_octal(const unsigned char* p, size_t n) {
+    unsigned long v = 0;
+    size_t i;
+
+    for (i = 0; i < n && (p[i] == ' ' || p[i] == '\0'); i++) {
+    }
+    for (; i < n && p[i] >= '0' && p[i] <= '7'; i++) {
+        v = v * 8 + (unsigned long)(p[i] - '0');
+    }
+    return v;
+}
+
+/* The .tar.gz's ac-plus/ files: the gzip's CRC checks the whole tar, then each file is taken from it (plain files
+ * and folders; GNU and pax long names) */
+static int upd_unpack_archive(const upd_buf_t* gz, upd_stage_t* st, char* err, size_t err_n) {
+    const unsigned char* g = (const unsigned char*)gz->data;
+    size_t pos = 10, tar_len, at;
+    unsigned char flags;
+    char* tar;
+    char long_name[MAX_PATH];
+    int decoded;
+
+    long_name[0] = '\0';
+    if (gz->len < 18 || g[0] != 0x1f || g[1] != 0x8b || g[2] != 8) {
+        snprintf(err, err_n, "the download isn't a .tar.gz");
+        return FALSE;
+    }
+    flags = g[3];
+    if (flags & 4) { /* FEXTRA */
+        pos += 2 + (size_t)(g[pos] | (g[pos + 1] << 8));
+    }
+    if (flags & 8) { /* FNAME */
+        while (pos < gz->len && g[pos] != 0) pos++;
+        pos++;
+    }
+    if (flags & 16) { /* FCOMMENT */
+        while (pos < gz->len && g[pos] != 0) pos++;
+        pos++;
+    }
+    if (flags & 2) { /* FHCRC */
+        pos += 2;
+    }
+    if (pos + 8 > gz->len) {
+        snprintf(err, err_n, "the download is cut short");
+        return FALSE;
+    }
+    tar_len = upd_le32(g + gz->len - 4);
+    if (tar_len == 0 || tar_len > 512u * 1024 * 1024) {
+        snprintf(err, err_n, "the download is damaged");
+        return FALSE;
+    }
+    tar = malloc(tar_len);
+    if (tar == NULL) {
+        snprintf(err, err_n, "out of memory unpacking the download");
+        return FALSE;
+    }
+    decoded = stbi_zlib_decode_noheader_buffer(tar, (int)tar_len, (const char*)g + pos, (int)(gz->len - 8 - pos));
+    if (decoded != (int)tar_len || upd_crc32((const unsigned char*)tar, tar_len) != upd_le32(g + gz->len - 8)) {
+        free(tar);
+        snprintf(err, err_n, "the download is damaged");
+        return FALSE;
+    }
+    for (at = 0; at + 512 <= tar_len;) {
+        const unsigned char* h = (const unsigned char*)tar + at;
+        unsigned long size = upd_octal(h + 124, 12);
+        unsigned mode = (unsigned)upd_octal(h + 100, 8);
+        char type = (char)h[156];
+        char name[MAX_PATH];
+        size_t data = at + 512;
+
+        if (h[0] == '\0') {
+            break; /* the end */
+        }
+        if (data + size > tar_len) {
+            free(tar);
+            snprintf(err, err_n, "the download is cut short");
+            return FALSE;
+        }
+        at = data + ((size + 511) & ~(size_t)511);
+        if (type == 'L') { /* GNU: the next entry's long name */
+            snprintf(long_name, sizeof(long_name), "%.*s", (int)(size < sizeof(long_name) ? size : sizeof(long_name) - 1),
+                     tar + data);
+            continue;
+        }
+        if (type == 'x') { /* pax: "<len> path=<name>\n" records */
+            const char* r = tar + data;
+            const char* end = r + size;
+
+            while (r < end) {
+                long rec = strtol(r, NULL, 10);
+                const char* kv = memchr(r, ' ', (size_t)(end - r));
+
+                if (rec <= 0 || kv == NULL || r + rec > end) {
+                    break;
+                }
+                if (strncmp(kv + 1, "path=", 5) == 0) {
+                    snprintf(long_name, sizeof(long_name), "%.*s", (int)(r + rec - (kv + 6) - 1), kv + 6);
+                }
+                r += rec;
+            }
+            continue;
+        }
+        if (type == 'g') {
+            continue;
+        }
+        if (long_name[0] != '\0') {
+            snprintf(name, sizeof(name), "%s", long_name);
+            long_name[0] = '\0';
+        } else if (memcmp(h + 257, "ustar", 5) == 0 && h[345] != '\0') {
+            snprintf(name, sizeof(name), "%.155s/%.100s", (const char*)h + 345, (const char*)h);
+        } else {
+            snprintf(name, sizeof(name), "%.100s", (const char*)h);
+        }
+        if (type == '5') {
+            continue; /* folders are made as files need them */
+        }
+        if (type != '0' && type != '\0') {
+            continue; /* links and the like: a release has none */
+        }
+        if (!upd_stage(st, name, tar + data, size, mode, err, err_n)) {
+            free(tar);
+            return FALSE;
+        }
+    }
+    free(tar);
+    return TRUE;
+}
+#endif
+
+/* Unpacks the release's ac-plus/ files into update/new/, checking each; fills files, returns their count, -1 on
+ * error. want_tag: its VERSION must say it. */
+static int upd_unpack(const upd_buf_t* archive, upd_file_t* files, const char* want_tag, char* err, size_t err_n) {
+    upd_stage_t st;
+
+    memset(&st, 0, sizeof(st));
+    st.files = files;
+    st.want_tag = want_tag;
+    upd_remove_tree(UPD_NEW);
+    if (!upd_unpack_archive(archive, &st, err, err_n)) {
         return -1;
     }
-    return count;
+    if (!st.have_exe || !st.have_version) {
+        snprintf(err, err_n, "the download isn't the release it should be (%s)",
+                 !st.have_exe ? "no game" : "wrong VERSION");
+        return -1;
+    }
+    return st.count;
 }
 
 /* Puts back what was replaced (newest first) */
@@ -728,24 +1017,24 @@ static void upd_roll_back(upd_file_t* files, int count) {
         if (!files[i].applied) {
             continue;
         }
-        snprintf(prev, sizeof(prev), UPD_PREV "\\%s", files[i].rel);
+        snprintf(prev, sizeof(prev), UPD_PREV UPD_SEP_S "%s", files[i].rel);
         if (!files[i].existed) {
-            DeleteFileA(files[i].rel);
-        } else if (_stricmp(files[i].rel, UPD_EXE) == 0) {
-            DeleteFileA(UPD_EXE);
-            MoveFileExA(prev, UPD_EXE, MOVEFILE_REPLACE_EXISTING);
+            upd_delete(files[i].rel);
+        } else if (upd_stricmp(files[i].rel, UPD_EXE) == 0) {
+            upd_delete(UPD_EXE);
+            upd_move(prev, UPD_EXE);
         } else {
             upd_buf_t b;
 
             if (upd_read_file(prev, &b)) {
-                upd_write_file(files[i].rel, b.data, b.len, TRUNCATE_EXISTING);
+                upd_write_file(files[i].rel, b.data, b.len, TRUE);
                 free(b.data);
             }
         }
     }
 }
 
-/* Replaces the game's files with the staged ones, keeping the old ones in update\previous\ */
+/* Replaces the game's files with the staged ones, keeping the old ones in update/previous/ */
 static int upd_apply(upd_file_t* files, int count, char* err, size_t err_n) {
     int i;
 
@@ -753,26 +1042,25 @@ static int upd_apply(upd_file_t* files, int count, char* err, size_t err_n) {
     for (i = 0; i < count; i++) {
         char staged[MAX_PATH], prev[MAX_PATH];
         const char* rel = files[i].rel;
-        DWORD attr = GetFileAttributesA(rel);
 
-        snprintf(staged, sizeof(staged), UPD_NEW "\\%s", rel);
-        snprintf(prev, sizeof(prev), UPD_PREV "\\%s", rel);
-        files[i].existed = attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
+        snprintf(staged, sizeof(staged), UPD_NEW UPD_SEP_S "%s", rel);
+        snprintf(prev, sizeof(prev), UPD_PREV UPD_SEP_S "%s", rel);
+        files[i].existed = upd_is_file(rel);
         upd_make_dirs(rel);
         if (!files[i].existed) {
-            if (!MoveFileExA(staged, rel, MOVEFILE_REPLACE_EXISTING)) {
+            if (!upd_move(staged, rel)) {
                 snprintf(err, err_n, "couldn't add %s", rel);
                 return FALSE;
             }
-        } else if (_stricmp(rel, UPD_EXE) == 0) {
+        } else if (upd_stricmp(rel, UPD_EXE) == 0) {
             /* running: it can be renamed, not written */
             upd_make_dirs(prev);
-            if (!MoveFileExA(UPD_EXE, prev, MOVEFILE_REPLACE_EXISTING)) {
+            if (!upd_move(UPD_EXE, prev)) {
                 snprintf(err, err_n, "couldn't move the running game aside");
                 return FALSE;
             }
-            if (!MoveFileExA(staged, UPD_EXE, MOVEFILE_REPLACE_EXISTING)) {
-                MoveFileExA(prev, UPD_EXE, MOVEFILE_REPLACE_EXISTING);
+            if (!upd_move(staged, UPD_EXE)) {
+                upd_move(prev, UPD_EXE);
                 snprintf(err, err_n, "couldn't put the new game in place");
                 return FALSE;
             }
@@ -782,17 +1070,18 @@ static int upd_apply(upd_file_t* files, int count, char* err, size_t err_n) {
             int ok;
 
             upd_make_dirs(prev);
-            if (!CopyFileA(rel, prev, FALSE) || !upd_read_file(staged, &b)) {
+            if (!upd_copy(rel, prev) || !upd_read_file(staged, &b)) {
                 snprintf(err, err_n, "couldn't back up %s", rel);
                 return FALSE;
             }
-            ok = upd_write_file(rel, b.data, b.len, TRUNCATE_EXISTING);
+            ok = upd_write_file(rel, b.data, b.len, TRUE);
             free(b.data);
             if (!ok) {
                 files[i].applied = TRUE; /* it may be half written: put back */
                 snprintf(err, err_n, "couldn't write %s", rel);
                 return FALSE;
             }
+            upd_set_mode(rel, files[i].mode);
         }
         files[i].applied = TRUE;
     }
@@ -801,19 +1090,119 @@ static int upd_apply(upd_file_t* files, int count, char* err, size_t err_n) {
 
 /* --- the release signature --- */
 
-/* TRUE if sig_url holds a good signature of the zip by UPD_SIGNING_KEY */
-static int upd_signed(const upd_buf_t* zip, const char* sig_url) {
+#ifdef _WIN32
+/* TRUE if sig (r then s, 32 bytes each) signs hash with UPD_SIGNING_KEY: Windows' BCrypt */
+static int upd_verify_p256(const unsigned char hash[32], const unsigned char sig[64]) {
     struct {
         BCRYPT_ECCKEY_BLOB head;
         unsigned char xy[64];
     } blob;
     BCRYPT_ALG_HANDLE alg = NULL;
     BCRYPT_KEY_HANDLE key = NULL;
+    NTSTATUS st = -1;
+
+    blob.head.dwMagic = BCRYPT_ECDSA_PUBLIC_P256_MAGIC;
+    blob.head.cbKey = 32;
+    memcpy(blob.xy, UPD_SIGNING_KEY, sizeof(blob.xy));
+    if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_ECDSA_P256_ALGORITHM, NULL, 0) == 0 &&
+        BCryptImportKeyPair(alg, NULL, BCRYPT_ECCPUBLIC_BLOB, &key, (PUCHAR)&blob, sizeof(blob), 0) == 0) {
+        st = BCryptVerifySignature(key, NULL, (PUCHAR)hash, 32, (PUCHAR)sig, 64, 0);
+    }
+    if (key != NULL) {
+        BCryptDestroyKey(key);
+    }
+    if (alg != NULL) {
+        BCryptCloseAlgorithmProvider(alg, 0);
+    }
+    fprintf(stderr, "[Update] signature %s (0x%lx)\n", st == 0 ? "good" : "NOT good", (unsigned long)st);
+    return st == 0;
+}
+#else
+/* One DER INTEGER of a 32-byte big-endian number; returns its length */
+static size_t upd_der_int(unsigned char* out, const unsigned char* v) {
+    size_t skip = 0, n;
+
+    while (skip < 31 && v[skip] == 0) {
+        skip++;
+    }
+    n = 32 - skip;
+    out[0] = 0x02;
+    if (v[skip] & 0x80) {
+        out[1] = (unsigned char)(n + 1);
+        out[2] = 0;
+        memcpy(out + 3, v + skip, n);
+        return n + 3;
+    }
+    out[1] = (unsigned char)n;
+    memcpy(out + 2, v + skip, n);
+    return n + 2;
+}
+
+/* The same check with the system's OpenSSL (libcrypto 3 or 1.1, opened when an update needs it; the game
+ * doesn't link it). Nothing installs if it can't be checked. */
+static int upd_verify_p256(const unsigned char hash[32], const unsigned char sig[64]) {
+    typedef void* (*d2i_PUBKEY_fn)(void**, const unsigned char**, long);
+    typedef void* (*ctx_new_fn)(void*, void*);
+    typedef int (*verify_init_fn)(void*);
+    typedef int (*verify_fn)(void*, const unsigned char*, size_t, const unsigned char*, size_t);
+    typedef void (*free_fn)(void*);
+    /* SubjectPublicKeyInfo for a P-256 key, then 04 X Y */
+    static const unsigned char spki_head[] = { 0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce,
+                                               0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d,
+                                               0x03, 0x01, 0x07, 0x03, 0x42, 0x00, 0x04 };
+    static const char* const names[] = { "libcrypto.so.3", "libcrypto.so.1.1", "libcrypto.so", NULL };
+    unsigned char spki[sizeof(spki_head) + 64], der[72];
+    const unsigned char* p = spki;
+    void *lib = NULL, *key = NULL, *ctx = NULL;
+    size_t n;
+    int i, ok = 0;
+
+    for (i = 0; names[i] != NULL && lib == NULL; i++) {
+        lib = dlopen(names[i], RTLD_NOW | RTLD_LOCAL);
+    }
+    if (lib == NULL) {
+        fprintf(stderr, "[Update] no OpenSSL (libcrypto): can't check the signature\n");
+        return FALSE;
+    }
+    {
+        d2i_PUBKEY_fn d2i_PUBKEY = (d2i_PUBKEY_fn)dlsym(lib, "d2i_PUBKEY");
+        ctx_new_fn ctx_new = (ctx_new_fn)dlsym(lib, "EVP_PKEY_CTX_new");
+        verify_init_fn verify_init = (verify_init_fn)dlsym(lib, "EVP_PKEY_verify_init");
+        verify_fn verify = (verify_fn)dlsym(lib, "EVP_PKEY_verify");
+        free_fn ctx_free = (free_fn)dlsym(lib, "EVP_PKEY_CTX_free");
+        free_fn key_free = (free_fn)dlsym(lib, "EVP_PKEY_free");
+
+        if (d2i_PUBKEY != NULL && ctx_new != NULL && verify_init != NULL && verify != NULL && ctx_free != NULL &&
+            key_free != NULL) {
+            memcpy(spki, spki_head, sizeof(spki_head));
+            memcpy(spki + sizeof(spki_head), UPD_SIGNING_KEY, 64);
+            n = upd_der_int(der + 2, sig);
+            n += upd_der_int(der + 2 + n, sig + 32);
+            der[0] = 0x30;
+            der[1] = (unsigned char)n;
+            key = d2i_PUBKEY(NULL, &p, (long)sizeof(spki));
+            ctx = key != NULL ? ctx_new(key, NULL) : NULL;
+            ok = ctx != NULL && verify_init(ctx) == 1 && verify(ctx, der, n + 2, hash, 32) == 1;
+            if (ctx != NULL) {
+                ctx_free(ctx);
+            }
+            if (key != NULL) {
+                key_free(key);
+            }
+        }
+    }
+    dlclose(lib);
+    fprintf(stderr, "[Update] signature %s (OpenSSL)\n", ok ? "good" : "NOT good");
+    return ok;
+}
+#endif
+
+/* TRUE if sig_url holds a good signature of the download by UPD_SIGNING_KEY */
+static int upd_signed(const upd_buf_t* zip, const char* sig_url) {
     unsigned char hash[32];
     char hex[65];
     upd_buf_t sig;
-    NTSTATUS st = -1;
-    int i;
+    int i, ok;
 
     if (!upd_http_get(sig_url, &sig, 15000, NULL)) {
         fprintf(stderr, "[Update] couldn't download the signature\n");
@@ -831,22 +1220,9 @@ static int upd_signed(const upd_buf_t* zip, const char* sig_url) {
         sscanf(hex + 2 * i, "%2x", &v);
         hash[i] = (unsigned char)v;
     }
-    blob.head.dwMagic = BCRYPT_ECDSA_PUBLIC_P256_MAGIC;
-    blob.head.cbKey = 32;
-    memcpy(blob.xy, UPD_SIGNING_KEY, sizeof(blob.xy));
-    if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_ECDSA_P256_ALGORITHM, NULL, 0) == 0 &&
-        BCryptImportKeyPair(alg, NULL, BCRYPT_ECCPUBLIC_BLOB, &key, (PUCHAR)&blob, sizeof(blob), 0) == 0) {
-        st = BCryptVerifySignature(key, NULL, hash, sizeof(hash), (PUCHAR)sig.data, 64, 0);
-    }
-    if (key != NULL) {
-        BCryptDestroyKey(key);
-    }
-    if (alg != NULL) {
-        BCryptCloseAlgorithmProvider(alg, 0);
-    }
+    ok = upd_verify_p256(hash, (const unsigned char*)sig.data);
     free(sig.data);
-    fprintf(stderr, "[Update] signature %s (0x%lx)\n", st == 0 ? "good" : "NOT good", (unsigned long)st);
-    return st == 0;
+    return ok;
 }
 
 /* --- the whole thing --- */

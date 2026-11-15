@@ -14,6 +14,7 @@
  * set: the request waits for the next play frame, saves if Z+Start could, then
  * exits. Outside a play scene nothing picks it up, so it exits a few frames later.
  */
+#include <SDL3/SDL.h>
 #include "m_common_data.h"
 #include "m_play.h"
 #include "m_demo.h"
@@ -32,9 +33,10 @@
 #define QSAVE_MSG_FRAMES 120
 
 extern int g_pc_paused;
+extern int g_pc_acplus_menu_open; /* ac-plus pause menu (pc_pause_menu.c) */
 extern int g_pc_running;
 extern int pc_quick_save(void);
-extern unsigned int SDL_GetTicks(void);
+#include <SDL3/SDL.h>
 
 void pc_autosave_reset_timer(void);
 
@@ -114,7 +116,7 @@ static void autosave_tick(GAME_PLAY* play) {
     u32 delta = (l_autosave_last_tick != 0) ? now - l_autosave_last_tick : 0;
 
     l_autosave_last_tick = now;
-    if (g_pc_settings.autosave_minutes <= 0 || g_pc_paused) {
+    if (g_pc_settings.autosave_minutes <= 0 || g_pc_paused || g_pc_acplus_menu_open) {
         return;
     }
     /* Long gaps (loading, a debugger, the window asleep) don't count as play. */
@@ -183,7 +185,7 @@ void pc_quick_save_tick(GAME* game) {
 
     autosave_tick(play);
 
-    if (g_pc_paused || !(pad->now.button & BUTTON_Z) || !(pad->on.button & BUTTON_START)) {
+    if ((g_pc_paused || g_pc_acplus_menu_open) || !(pad->now.button & BUTTON_Z) || !(pad->on.button & BUTTON_START)) {
         return;
     }
 

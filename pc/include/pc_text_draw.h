@@ -20,6 +20,8 @@ struct game_s;
 
 /* Pixel width of a null-terminated string at scale=1. */
 int  pc_text_width(const char* s);
+/* a solid colour over x0,y0..x1,y1 of the 320x240 screen (menu backdrops) */
+void pc_text_fill(struct game_s* game, f32 x0, f32 y0, f32 x1, f32 y1, int r, int g, int b, int a);
 
 /* Same convention as mFont_SetLineStrings. 
  * The string renders into font_thaga so the caller

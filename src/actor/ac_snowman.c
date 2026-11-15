@@ -811,9 +811,10 @@ static void aSMAN_calc_axis(ACTOR* actorx, GAME* game) {
     SNOWMAN_ACTOR* actor = (SNOWMAN_ACTOR*)actorx;
 
     if (!F32_IS_ZERO(actor->roll_speed) && actor->process != aSMAN_process_player_push_scroll) {
-        s16 dAngle = (s16)(actor->roll_speed *
-                           (DEG2SHORT_ANGLE3(180.0f) / (((actor->normalized_scale * 20.0f + 10.0f) * 2.0f) * 3.14f)) *
-                           (f32)game->graph->dt_num_60fps_frames);
+        s16 dAngle = F32_TO_S16(
+            actor->roll_speed *
+            (DEG2SHORT_ANGLE3(180.0f) / (((actor->normalized_scale * 20.0f + 10.0f) * 2.0f) * 3.14f)) *
+            (f32)game->graph->dt_num_60fps_frames);
 
         if (actor->process == aSMAN_process_swim) {
             f32 rate = (-1.0f - actorx->position_speed.y) / -2.0f;
@@ -1040,7 +1041,7 @@ static int aSMAN_process_player_push(ACTOR* actorx, GAME* game) {
 
                 aSMAN_Make_Effect_Ground(actorx, game);
                 if (actorx->speed > 1.0f) {
-                    sAdo_OngenPos((u32)actorx, 52, &actorx->world.position);
+                    sAdo_OngenPos((JaudioObjectId)(uintptr_t)actorx, 52, &actorx->world.position);
                 }
                 aSMAN_player_push_scroll_request(actorx, game);
             }

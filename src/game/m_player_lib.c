@@ -15,9 +15,18 @@
 #ifdef TARGET_PC
 #include "pc_bswap.h"
 #include "pc_cf_anim.h"
+#include "pc_settings.h"
 #endif
 
 int g_mPlib_wade_disabled = FALSE;
+#ifdef TARGET_PC
+int g_mPlib_wade_suspended = FALSE;
+
+extern void mPlib_SuspendWade(BOOL suspend) {
+    g_mPlib_wade_suspended = suspend;
+    g_mPlib_wade_disabled = !suspend && g_pc_settings.borderless_acres && !mEv_CheckFirstIntro();
+}
+#endif
 
 extern BOOL mPlib_IsWadeDisabled(void) {
     return g_mPlib_wade_disabled && mEv_CheckTitleDemo() <= 0;
@@ -1042,7 +1051,7 @@ extern void mPlib_Object_Exchange_keep_new_PlayerMdl(GAME_PLAY* play) {
     actor_dlftbls[player_data->profile].profile->obj_bank_id = mPlib_get_player_Object_Bank();
 }
 
-static int mPlib_Object_Exchange_keep_new(GAME_PLAY* play, s16 bank, u32 src, u32 size, int aram_flag) {
+static int mPlib_Object_Exchange_keep_new(GAME_PLAY* play, s16 bank, uintptr_t src, u32 size, int aram_flag) {
     Object_Exchange_c* obj_ex = &play->object_exchange;
     Object_Bank_c* bank_p = &obj_ex->banks[obj_ex->bank_idx];
 
@@ -1053,7 +1062,7 @@ static int mPlib_Object_Exchange_keep_new(GAME_PLAY* play, s16 bank, u32 src, u3
 
     if (src != 0) {
         if (aram_flag) {
-            _JW_GetResourceAram(src, (u8*)bank_p->dma_start, size);
+            _JW_GetResourceAram((u32)src, (u8*)bank_p->dma_start, size);
         } else {
             bcopy((void*)src, bank_p->dma_start, size);
         }
@@ -1062,7 +1071,8 @@ static int mPlib_Object_Exchange_keep_new(GAME_PLAY* play, s16 bank, u32 src, u3
     }
 
     if (obj_ex->bank_idx < (mSc_OBJECT_BANK_NUM - 1)) {
-        obj_ex->next_bank_ram_address = (char*)ALIGN_NEXT((u32)obj_ex->next_bank_ram_address + size, 32);
+        obj_ex->next_bank_ram_address =
+            (char*)ALIGN_NEXT((uintptr_t)obj_ex->next_bank_ram_address + size, 32);
         obj_ex->bank_idx++;
     }
 
@@ -1083,7 +1093,7 @@ static int Change_Player_face_bank_ID_Index(void) {
     return Player_face_bank_ID_Index;
 }
 
-extern u32 mPlib_Get_PlayerTexRom_p(int idx) {
+extern uintptr_t mPlib_Get_PlayerTexRom_p(int idx) {
     if (mPlib_Check_PlayerClothInAram(idx)) {
         u32 addr = JW_GetAramAddress(RESOURCE_TEX_BOY);
         addr += idx * mNW_DESIGN_TEX_SIZE;
@@ -1099,30 +1109,30 @@ extern u32 mPlib_Get_PlayerTexRom_p(int idx) {
             /* The pattern put on, even if its slot has changed since. */
             const mNW_original_design_c* worn = pc_pattern_worn(Common_Get(player_no), idx);
             if (worn != NULL && idx == Now_Private->cloth.idx) {
-                return (u32)worn->design.data;
+                return (uintptr_t)worn->design.data;
             }
         }
 #endif
 
-        return (u32)Now_Private->my_org[org_idx & 7].design.data;
+        return (uintptr_t)Now_Private->my_org[org_idx & 7].design.data;
     }
 }
 
-static u32 mPlib_Get_UseTexRom_p(void) {
+static uintptr_t mPlib_Get_UseTexRom_p(void) {
     return mPlib_Get_PlayerTexRom_p(Now_Private->cloth.idx);
 }
 
 static int Player_Tex_bank_ID[] = { -1, -1 };
 
 extern void mPlib_Object_Exchange_keep_new_PlayerTex(GAME_PLAY* play, int bank_idx, int bank) {
-    u32 tex = mPlib_Get_UseTexRom_p();
+    uintptr_t tex = mPlib_Get_UseTexRom_p();
     int idx = mPlib_Object_Exchange_keep_new(play, ACTOR_OBJ_BANK_14, tex, mNW_DESIGN_TEX_SIZE,
                                              mPlib_Check_PlayerClothInAram(Now_Private->cloth.idx));
 
     Player_Tex_bank_ID[bank_idx] = bank + idx;
 }
 
-extern u32 mPlib_Get_PlayerPalletRom_p(int idx) {
+extern uintptr_t mPlib_Get_PlayerPalletRom_p(int idx) {
     if (mPlib_Check_PlayerClothInAram(idx)) {
         u32 addr = JW_GetAramAddress(RESOURCE_PALLET_BOY);
         addr += idx * mNW_PALETTE_SIZE;
@@ -1138,15 +1148,15 @@ extern u32 mPlib_Get_PlayerPalletRom_p(int idx) {
         {
             const mNW_original_design_c* worn = pc_pattern_worn(Common_Get(player_no), idx);
             if (worn != NULL && idx == Now_Private->cloth.idx) {
-                return (u32)mNW_PaletteIdx2Palette(worn->palette);
+                return (uintptr_t)mNW_PaletteIdx2Palette(worn->palette);
             }
         }
 #endif
-        return (u32)mNW_PaletteIdx2Palette(Now_Private->my_org[org_idx & 7].palette);
+        return (uintptr_t)mNW_PaletteIdx2Palette(Now_Private->my_org[org_idx & 7].palette);
     }
 }
 
-static u32 mPlib_Get_UsePalletRom_p(void) {
+static uintptr_t mPlib_Get_UsePalletRom_p(void) {
     return mPlib_Get_PlayerPalletRom_p(Now_Private->cloth.idx);
 }
 
@@ -1157,7 +1167,7 @@ static void mPlib_ByteSwapPlayerPalette(u16* pal);
 static int Player_Pallet_bank_ID[] = { -1, -1 };
 
 extern void mPlib_Object_Exchange_keep_new_PlayerPallet(GAME_PLAY* play, int bank_idx, int bank) {
-    u32 pal = mPlib_Get_UsePalletRom_p();
+    uintptr_t pal = mPlib_Get_UsePalletRom_p();
     int in_aram = mPlib_Check_PlayerClothInAram(Now_Private->cloth.idx);
     int bank_no;
     Object_Exchange_c* obj_ex = &play->object_exchange;
@@ -1272,10 +1282,10 @@ extern void mPlib_change_player_cloth(GAME* game, u16 cloth_idx) {
 
     {
         u8* player_tex_p = mPlib_get_player_tex_p(game);
-        u32 player_tex_rom_p = mPlib_Get_PlayerTexRom_p(idx);
+        uintptr_t player_tex_rom_p = mPlib_Get_PlayerTexRom_p(idx);
 
         if (in_aram) {
-            _JW_GetResourceAram(player_tex_rom_p, player_tex_p, mNW_DESIGN_TEX_SIZE);
+            _JW_GetResourceAram((u32)player_tex_rom_p, player_tex_p, mNW_DESIGN_TEX_SIZE);
         } else {
             bcopy((u8*)player_tex_rom_p, player_tex_p, mNW_DESIGN_TEX_SIZE);
         }
@@ -1285,10 +1295,10 @@ extern void mPlib_change_player_cloth(GAME* game, u16 cloth_idx) {
 
     {
         u16* player_pallet_p = mPlib_get_player_pallet_p(game);
-        u32 player_pallet_rom_p = mPlib_Get_PlayerPalletRom_p(idx);
+        uintptr_t player_pallet_rom_p = mPlib_Get_PlayerPalletRom_p(idx);
 
         if (in_aram) {
-            _JW_GetResourceAram(player_pallet_rom_p, (u8*)player_pallet_p, mNW_PALETTE_SIZE);
+            _JW_GetResourceAram((u32)player_pallet_rom_p, (u8*)player_pallet_p, mNW_PALETTE_SIZE);
         } else {
             bcopy((u16*)player_pallet_rom_p, player_pallet_p, mNW_PALETTE_SIZE);
         }
@@ -1418,13 +1428,13 @@ extern void mPlib_change_player_cloth_info_lv2(Private_c* priv, mActor_name_t it
 
 extern void mPlib_Load_PlayerTexAndPallet(void* tex_p, void* pal_p, int idx) {
     if (idx >= 0 && idx < (CLOTH_NUM + 1 + mPr_ORIGINAL_DESIGN_COUNT) && tex_p != NULL && pal_p != NULL) {
-        u32 tex_rom_p = mPlib_Get_PlayerTexRom_p(idx);
-        u32 pal_rom_p = mPlib_Get_PlayerPalletRom_p(idx);
+        uintptr_t tex_rom_p = mPlib_Get_PlayerTexRom_p(idx);
+        uintptr_t pal_rom_p = mPlib_Get_PlayerPalletRom_p(idx);
         int in_aram = mPlib_Check_PlayerClothInAram(idx);
 
         if (in_aram) {
-            _JW_GetResourceAram(tex_rom_p, (u8*)tex_p, mNW_DESIGN_TEX_SIZE);
-            _JW_GetResourceAram(pal_rom_p, (u8*)pal_p, mNW_PALETTE_SIZE);
+            _JW_GetResourceAram((u32)tex_rom_p, (u8*)tex_p, mNW_DESIGN_TEX_SIZE);
+            _JW_GetResourceAram((u32)pal_rom_p, (u8*)pal_p, mNW_PALETTE_SIZE);
         } else {
             bcopy((u8*)tex_rom_p, tex_p, mNW_DESIGN_TEX_SIZE);
             bcopy((u16*)pal_rom_p, pal_p, mNW_PALETTE_SIZE);
@@ -1454,15 +1464,16 @@ extern void mPlib_Clear_change_data_from_submenu(void) {
 extern void mPlib_request_main_give_from_submenu(mActor_name_t item, int after_mode, int present_flag,
                                                  int surface_flag) {
     mPlayer_change_data_from_submenu_c* change_data_from_submenu_p = mPlib_Get_change_data_from_submenu_p();
-    mPlayer_request_give_c* req_give_p = &change_data_from_submenu_p->request_main_data.give;
+    mPlayer_request_give_from_submenu_c* req_give_p =
+        &change_data_from_submenu_p->request_main_data.give_from_submenu;
 
     change_data_from_submenu_p->requested_main_index = mPlayer_INDEX_GIVE;
     change_data_from_submenu_p->requested_index_pending = TRUE;
 
     req_give_p->item = item;
-    req_give_p->mode = after_mode;
+    req_give_p->mode_after = after_mode;
     req_give_p->present_flag = present_flag;
-    req_give_p->on_surface_flag = surface_flag;
+    req_give_p->counter_flag = surface_flag;
 }
 
 extern void mPlib_request_main_putin_scoop_from_submenu(const xyz_t* pos_p, mActor_name_t item, int gold_scoop_flag) {
@@ -1734,7 +1745,7 @@ extern void mPlib_request_main_demo_wait_from_submenu(ACTOR* speak_actor_p) {
     change_data_from_submenu_p->requested_index_pending = TRUE;
 
     req_demo_wait_p->umbrella_flag = FALSE;
-    req_demo_wait_p->label = (u32)speak_actor_p;
+    req_demo_wait_p->label = (mPlayer_label_t)speak_actor_p;
 
     if (speak_actor_p != NULL) {
         mPlib_Set_able_force_speak_label(speak_actor_p);
@@ -1759,7 +1770,7 @@ extern int mPlib_Check_able_force_speak_label(GAME* game, ACTOR* label) {
 
 extern void mPlib_Set_able_force_speak_label(ACTOR* label) {
     if (Common_Get(player_actor_exists)) {
-        GET_PLAYER_ACTOR_NOW()->able_force_speak_label = (u32)label;
+        GET_PLAYER_ACTOR_NOW()->able_force_speak_label = (mPlayer_label_t)label;
     }
 }
 
@@ -2693,7 +2704,7 @@ extern int mPlib_check_label_player_demo_wait(GAME* game, void* label) {
     if (mPlib_get_player_actor_main_index(game) == mPlayer_INDEX_DEMO_WAIT) {
         mPlayer_main_demo_wait_c* demo_wait_p = &GET_PLAYER_ACTOR_GAME(game)->main_data.demo_wait;
 
-        if (demo_wait_p->label == (u32)label) {
+        if (demo_wait_p->label == (mPlayer_label_t)label) {
             return TRUE;
         }
     }
@@ -2868,11 +2879,11 @@ extern int mPlib_Check_StopNet(xyz_t* pos_p) {
     return GET_PLAYER_ACTOR_NOW()->Check_StopNet_proc(GET_PLAYER_ACTOR_NOW_ACTOR(), pos_p);
 }
 
-extern u32 mPlib_Get_item_net_catch_label(void) {
+extern mPlayer_label_t mPlib_Get_item_net_catch_label(void) {
     return GET_PLAYER_ACTOR_NOW()->Get_item_net_catch_label_proc(GET_PLAYER_ACTOR_NOW_ACTOR());
 }
 
-extern int mPlib_Change_item_net_catch_label(u32 label, s8 type) {
+extern int mPlib_Change_item_net_catch_label(mPlayer_label_t label, s8 type) {
     return GET_PLAYER_ACTOR_NOW()->Change_item_net_catch_label_proc(GET_PLAYER_ACTOR_NOW_ACTOR(), label, type);
 }
 
@@ -3838,7 +3849,11 @@ extern void mPlib_Set_boat_angleZ(s16 angle_z) {
 }
 
 extern int mPlib_CheckButtonOnly_forDush(void) {
+#ifdef MOUSE_INPUT
+    return chkButton(BUTTON_B) || chkButton(BUTTON_L) || chkButton(BUTTON_R) || mCon_mouse_dash_held();
+#else
     return chkButton(BUTTON_B) || chkButton(BUTTON_L) || chkButton(BUTTON_R);
+#endif
 }
 
 extern int mPlib_Check_golden_item_get_demo_end(int gold_item_type) {

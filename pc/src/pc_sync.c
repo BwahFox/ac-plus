@@ -13,11 +13,15 @@
  * ac-sync.sh does), sent together as one bundle ("ACSB", u32 1, u32 count, then per file u16 name length, name, u32 size, data), so
  * the server never holds a .gci from one save and an .acplus from another. A download first copies what it
  * replaces to save/sync-backups/<time>-before-download/; the server keeps its own history. */
+#include <SDL3/SDL.h>
 #include "pc_platform.h"
 #include "pc_settings.h"
 #include "pc_http.h"
 
-#include <dirent.h>
+#include "pc_dirent.h"
+#ifndef _WIN32
+#include <unistd.h> /* gethostname */
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,8 +58,8 @@ typedef struct {
 } sync_info_t;
 
 static SDL_Thread* s_thread;
-static SDL_mutex* s_lock;
-static SDL_cond* s_wake;
+static SDL_Mutex* s_lock;
+static SDL_Condition* s_wake;
 static sync_buf_t s_pending;   /* the next bundle to upload (NULL: none) */
 static int s_pending_force;    /* upload it regardless of what the server has (the player chose this machine's) */
 static int s_busy;             /* an upload is on its way */
@@ -274,6 +278,11 @@ static void sync_device(char* out, size_t n) {
     if (GetComputerNameA(out, &len)) {
         return;
     }
+#else
+    if (gethostname(out, n) == 0 && out[0] != '\0') {
+        out[n - 1] = '\0';
+        return;
+    }
 #endif
     snprintf(out, n, "unknown");
 }
@@ -348,7 +357,7 @@ static int sync_thread(void* unused) {
         SDL_LockMutex(s_lock);
         while (s_pending.data == NULL) {
             s_busy = FALSE;
-            SDL_CondWait(s_wake, s_lock);
+            SDL_WaitCondition(s_wake, s_lock);
         }
         b = s_pending;
         force = s_pending_force;
@@ -385,7 +394,7 @@ static int sync_thread(void* unused) {
 static void sync_start_thread(void) {
     if (s_thread == NULL) {
         s_lock = SDL_CreateMutex();
-        s_wake = SDL_CreateCond();
+        s_wake = SDL_CreateCondition();
         s_thread = SDL_CreateThread(sync_thread, "SaveSync", NULL);
     }
 }
@@ -403,7 +412,7 @@ static void sync_queue_upload(int force) {
     s_pending = b;
     s_pending_force |= force; /* a save right after "keep this machine's" still has to win */
     s_busy = TRUE;
-    SDL_CondSignal(s_wake);
+    SDL_SignalCondition(s_wake);
     SDL_UnlockMutex(s_lock);
 }
 
@@ -699,8 +708,8 @@ static int sync_ask_conflict(const sync_info_t* info) {
     if (env != NULL) {
         return strcmp(env, "local") == 0 ? SYNC_KEEP_LOCAL : strcmp(env, "server") == 0 ? SYNC_KEEP_SERVER : SYNC_UNDECIDED;
     }
-    buttons[0].flags = 0, buttons[0].buttonid = SYNC_KEEP_LOCAL, buttons[0].text = "Keep this machine's";
-    buttons[1].flags = SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, buttons[1].buttonid = SYNC_KEEP_SERVER,
+    buttons[0].flags = 0, buttons[0].buttonID = SYNC_KEEP_LOCAL, buttons[0].text = "Keep this machine's";
+    buttons[1].flags = SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, buttons[1].buttonID = SYNC_KEEP_SERVER,
     buttons[1].text = keep_server;
     memset(&box, 0, sizeof(box));
     box.flags = SDL_MESSAGEBOX_WARNING;

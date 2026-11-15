@@ -1,9 +1,9 @@
-void aFLEW_actor_move(ACTOR* actor, GAME*) {
+void aFLEW_actor_move(ACTOR* actor, GAME* game) {
     xyz_t pos;
 
     xyz_t_move(&pos, &actor->world.position);
 
     pos.y += 40.0f;
 
-    sAdo_OngenPos((u32)actor, 12, &pos);
+    sAdo_OngenPos((JaudioObjectId)(uintptr_t)actor, 12, &pos);
 }

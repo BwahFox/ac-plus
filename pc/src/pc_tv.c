@@ -1,4 +1,5 @@
 /* pc_tv.c - City Folk's TV programs on the houses' TVs. See pc_tv.h. */
+#include <SDL3/SDL.h>
 #include "pc_platform.h"
 #include "pc_tv.h"
 #include "pc_settings.h"
@@ -69,7 +70,7 @@ static struct {
 
 /* The sound: the program's cycle, played by the audio thread; the game thread says what, where and how loud */
 static struct {
-    SDL_mutex* lock;
+    SDL_Mutex* lock;
     int sound;        /* the one loaded, -1 none */
     s16* pcm;         /* interleaved stereo */
     u32 frames;
@@ -395,13 +396,18 @@ void pc_tv_mix(short* buf, unsigned int n_samples) {
 }
 
 Gfx* pc_tv_screen(GAME* game, const Vtx* src, const xyz_t* pos) {
+    return g_pc_settings.cf_tv ? pc_tv_screen_always(game, src, pos) : NULL;
+}
+
+/* A City Folk TV (pc_cf_ftr.c): City Folk's programs are its own, so it shows them whatever cf_tv says */
+Gfx* pc_tv_screen_always(GAME* game, const Vtx* src, const xyz_t* pos) {
     const pc_tv_program_c* p;
     const Vtx* vtx;
     Gfx* dl;
     Gfx* gfx;
     int program, frame, picture, i;
 
-    if (!g_pc_settings.cf_tv || !pc_tv_load() || (vtx = pc_tv_screen_vtx(src)) == NULL) {
+    if (!pc_tv_load() || (vtx = pc_tv_screen_vtx(src)) == NULL) {
         return NULL;
     }
     pc_tv_tick(game);

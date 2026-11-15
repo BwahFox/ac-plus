@@ -136,12 +136,12 @@ static void eBushHappa_mv(eEC_Effect_c* effect, GAME* game) {
         effect->velocity.x *= decay;
         effect->velocity.z *= decay;
 
-        effect->effect_specific[0] += (s16)(0x662 * dt);
-        effect->effect_specific[1] += (s16)(0x662 * dt);
-        effect->effect_specific[3] += (s16)(0xA00 * dt);
+        effect->effect_specific[0] += F32_TO_S16(0x662 * dt);
+        effect->effect_specific[1] += F32_TO_S16(0x662 * dt);
+        effect->effect_specific[3] += F32_TO_S16(0xA00 * dt);
     } else {
-        effect->effect_specific[0] += (s16)(0x280 * dt);
-        effect->effect_specific[1] += (s16)(0x280 * dt);
+        effect->effect_specific[0] += F32_TO_S16(0x280 * dt);
+        effect->effect_specific[1] += F32_TO_S16(0x280 * dt);
 
         if (effect->velocity.y <= 0.0f) {
             effect->effect_specific[2] = 1;
@@ -172,7 +172,7 @@ static void eBushHappa_dw(eEC_Effect_c* effect, GAME* game) {
             palm_pal = field_pal->palm_tree_pal;
         }
         if (((cedar_pal != NULL) && (golden_pal != NULL)) || (effect->arg1 <= 3)) {
-            Mtx* mtx = GRAPH_ALLOC_TYPE(game->graph, Mtx, 1);            
+            N64Mtx* mtx = GRAPH_ALLOC_TYPE(game->graph, N64Mtx, 1);
             graph = game->graph;
             _texture_z_light_fog_prim_xlu(graph);
             suMtxMakeSRT_ZXY(mtx, effect->scale.x, effect->scale.y, effect->scale.z, effect->effect_specific[0], 0,

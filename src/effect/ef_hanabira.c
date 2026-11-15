@@ -62,9 +62,9 @@ static void eHanabira_mv(eEC_Effect_c* effect, GAME* game) {
     effect->position.y += effect->velocity.y * dt;
     effect->position.z += effect->velocity.z * dt;
     if (effect->effect_specific[5] == FALSE) {
-        effect->effect_specific[4] += (s16)(0xa00 * dt);
-        effect->effect_specific[2] += (s16)(0x280 * dt);
-        effect->effect_specific[3] += (s16)(0x280 * dt);
+        effect->effect_specific[4] += F32_TO_S16(0xa00 * dt);
+        effect->effect_specific[2] += F32_TO_S16(0x280 * dt);
+        effect->effect_specific[3] += F32_TO_S16(0x280 * dt);
         if (effect->velocity.y <= 0.f) {
             effect->effect_specific[5] = TRUE;
             effect->acceleration.y = -0.05f;
@@ -75,14 +75,14 @@ static void eHanabira_mv(eEC_Effect_c* effect, GAME* game) {
         effect->offset.x = s;
         effect->offset.y = 0.f;
         effect->offset.z = -s;
-        effect->effect_specific[4] += (s16)(0xa00 * dt);
-        effect->effect_specific[2] += (s16)(0x662 * dt);
-        effect->effect_specific[3] += (s16)(0x662 * dt);
+        effect->effect_specific[4] += F32_TO_S16(0xa00 * dt);
+        effect->effect_specific[2] += F32_TO_S16(0x662 * dt);
+        effect->effect_specific[3] += F32_TO_S16(0x662 * dt);
     }
 }
 
 static void eHanabira_dw(eEC_Effect_c* effect, GAME* game) {
-    Mtx* m = GRAPH_ALLOC(game->graph, 0x40);
+    N64Mtx* m = GRAPH_ALLOC(game->graph, 0x40);
     int v = (u8)eEL_CalcAdjust_F(effect->lifetime, 0.0f, 20.0f, 0.f, 255.f);
     OPEN_DISP(game->graph);
     _texture_z_light_fog_prim_xlu(game->graph);

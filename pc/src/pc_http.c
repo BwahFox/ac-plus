@@ -1,5 +1,5 @@
-/* pc_http.c - HTTP(S) requests for the updater and save sync (WinHTTP, which Wine and Proton have too;
- * redirects, like GitHub's to its download host, are followed), and SHA-256. */
+/* pc_http.c - HTTP(S) requests for the updater and save sync (WinHTTP on Windows, which Wine and Proton have too;
+ * libcurl elsewhere; redirects, like GitHub's to its download host, are followed), and SHA-256. */
 #include "pc_http.h"
 
 #include <stdint.h>
@@ -125,10 +125,209 @@ int pc_http_request(const char* method, const char* url, const char* headers, co
     return resp->status;
 }
 #else
+/* Linux, macOS...: libcurl, opened at runtime (every Linux has it, the Steam Deck too; without it, no answer as if
+ * offline). The few options used are curl's stable numbers. */
+#include <dlfcn.h>
+#include <strings.h>
+#include <ctype.h>
+
+typedef void CURL;
+struct curl_slist;
+typedef int (*curl_global_init_fn)(long);
+typedef CURL* (*curl_easy_init_fn)(void);
+typedef int (*curl_easy_setopt_fn)(CURL*, int, ...);
+typedef int (*curl_easy_perform_fn)(CURL*);
+typedef int (*curl_easy_getinfo_fn)(CURL*, int, ...);
+typedef void (*curl_easy_cleanup_fn)(CURL*);
+typedef struct curl_slist* (*curl_slist_append_fn)(struct curl_slist*, const char*);
+typedef void (*curl_slist_free_all_fn)(struct curl_slist*);
+
+enum {
+    PC_CURLOPT_WRITEDATA = 10001, PC_CURLOPT_URL = 10002, PC_CURLOPT_POSTFIELDS = 10015, PC_CURLOPT_USERAGENT = 10018,
+    PC_CURLOPT_HTTPHEADER = 10023, PC_CURLOPT_HEADERDATA = 10029, PC_CURLOPT_CUSTOMREQUEST = 10036,
+    PC_CURLOPT_XFERINFODATA = 10057, PC_CURLOPT_WRITEFUNCTION = 20011, PC_CURLOPT_HEADERFUNCTION = 20079,
+    PC_CURLOPT_XFERINFOFUNCTION = 20219, PC_CURLOPT_POSTFIELDSIZE_LARGE = 30120, PC_CURLOPT_LOW_SPEED_LIMIT = 19,
+    PC_CURLOPT_LOW_SPEED_TIME = 20, PC_CURLOPT_NOPROGRESS = 43, PC_CURLOPT_FOLLOWLOCATION = 52,
+    PC_CURLOPT_NOSIGNAL = 99, PC_CURLOPT_CONNECTTIMEOUT_MS = 156, PC_CURLINFO_RESPONSE_CODE = 0x200002,
+};
+
+static struct {
+    int tried;
+    curl_easy_init_fn init;
+    curl_easy_setopt_fn setopt;
+    curl_easy_perform_fn perform;
+    curl_easy_getinfo_fn getinfo;
+    curl_easy_cleanup_fn cleanup;
+    curl_slist_append_fn slist_append;
+    curl_slist_free_all_fn slist_free_all;
+} s_curl;
+
+static int pc_http_curl(void) {
+    static const char* const names[] = { "libcurl.so.4", "libcurl.so", "libcurl-gnutls.so.4", "libcurl.4.dylib",
+                                         "libcurl.dylib", NULL };
+    void* lib = NULL;
+    int i;
+
+    if (s_curl.tried) {
+        return s_curl.init != NULL;
+    }
+    s_curl.tried = 1;
+    for (i = 0; names[i] != NULL && lib == NULL; i++) {
+        lib = dlopen(names[i], RTLD_NOW | RTLD_LOCAL);
+    }
+    if (lib == NULL) {
+        fprintf(stderr, "[http] no libcurl: no downloads or save sync\n");
+        return 0;
+    }
+    {
+        curl_global_init_fn global_init = (curl_global_init_fn)dlsym(lib, "curl_global_init");
+        s_curl.setopt = (curl_easy_setopt_fn)dlsym(lib, "curl_easy_setopt");
+        s_curl.perform = (curl_easy_perform_fn)dlsym(lib, "curl_easy_perform");
+        s_curl.getinfo = (curl_easy_getinfo_fn)dlsym(lib, "curl_easy_getinfo");
+        s_curl.cleanup = (curl_easy_cleanup_fn)dlsym(lib, "curl_easy_cleanup");
+        s_curl.slist_append = (curl_slist_append_fn)dlsym(lib, "curl_slist_append");
+        s_curl.slist_free_all = (curl_slist_free_all_fn)dlsym(lib, "curl_slist_free_all");
+        s_curl.init = (curl_easy_init_fn)dlsym(lib, "curl_easy_init");
+        if (global_init == NULL || s_curl.setopt == NULL || s_curl.perform == NULL || s_curl.getinfo == NULL ||
+            s_curl.cleanup == NULL || s_curl.slist_append == NULL || s_curl.slist_free_all == NULL ||
+            s_curl.init == NULL) {
+            s_curl.init = NULL;
+            return 0;
+        }
+        global_init(3 /* CURL_GLOBAL_ALL */);
+    }
+    return 1;
+}
+
+typedef struct {
+    pc_http_resp* resp;
+    size_t cap;
+    pc_http_progress progress;
+} pc_http_sink;
+
+static size_t pc_http_write(char* data, size_t size, size_t n, void* user) {
+    pc_http_sink* sink = (pc_http_sink*)user;
+    pc_http_resp* resp = sink->resp;
+    size_t add = size * n;
+
+    if (resp->len + add + 1 > sink->cap) {
+        size_t cap = sink->cap != 0 ? sink->cap : 65536;
+        char* grown;
+
+        while (cap < resp->len + add + 1) {
+            cap *= 2;
+        }
+        if ((grown = (char*)realloc(resp->body, cap)) == NULL) {
+            return 0;
+        }
+        resp->body = grown;
+        sink->cap = cap;
+    }
+    memcpy(resp->body + resp->len, data, add);
+    resp->len += add;
+    return add;
+}
+
+static size_t pc_http_header(char* data, size_t size, size_t n, void* user) {
+    pc_http_resp* resp = ((pc_http_sink*)user)->resp;
+    size_t len = size * n;
+
+    if (len > 6 && strncasecmp(data, "X-Rev:", 6) == 0) {
+        size_t i = 6, j = 0;
+
+        while (i < len && isspace((unsigned char)data[i])) i++;
+        while (i < len && !isspace((unsigned char)data[i]) && j + 1 < sizeof(resp->rev)) resp->rev[j++] = data[i++];
+        resp->rev[j] = '\0';
+    }
+    return len;
+}
+
+static int pc_http_xfer(void* user, long long dltotal, long long dlnow, long long ultotal, long long ulnow) {
+    pc_http_sink* sink = (pc_http_sink*)user;
+
+    (void)ultotal, (void)ulnow;
+    if (sink->progress != NULL) {
+        sink->progress((size_t)dlnow, (size_t)dltotal);
+    }
+    return 0;
+}
+
 int pc_http_request(const char* method, const char* url, const char* headers, const void* body, size_t body_len,
                     pc_http_resp* resp, int timeout_ms, pc_http_progress progress) {
+    pc_http_sink sink;
+    struct curl_slist* list = NULL;
+    long status = 0;
+    CURL* c;
+    int rc;
+
     memset(resp, 0, sizeof(*resp));
-    return 0;
+    if (!pc_http_curl() || (c = s_curl.init()) == NULL) {
+        return 0;
+    }
+    memset(&sink, 0, sizeof(sink));
+    sink.resp = resp;
+    sink.progress = progress;
+    if (headers != NULL) {
+        /* "Name: value\r\n..." to curl's list */
+        const char* p = headers;
+
+        while (*p != '\0') {
+            const char* e = strstr(p, "\r\n");
+            size_t n = e != NULL ? (size_t)(e - p) : strlen(p);
+            char line[512];
+
+            if (n > 0 && n < sizeof(line)) {
+                memcpy(line, p, n);
+                line[n] = '\0';
+                list = s_curl.slist_append(list, line);
+            }
+            p += n + (e != NULL ? 2 : 0);
+        }
+    }
+    s_curl.setopt(c, PC_CURLOPT_URL, url);
+    s_curl.setopt(c, PC_CURLOPT_USERAGENT, "ac-plus");
+    s_curl.setopt(c, PC_CURLOPT_FOLLOWLOCATION, 1L);
+    s_curl.setopt(c, PC_CURLOPT_NOSIGNAL, 1L);
+    s_curl.setopt(c, PC_CURLOPT_CONNECTTIMEOUT_MS, (long)timeout_ms);
+    /* (like WinHTTP's timeouts: a stalled transfer gives up, a long download doesn't) */
+    s_curl.setopt(c, PC_CURLOPT_LOW_SPEED_LIMIT, 1L);
+    s_curl.setopt(c, PC_CURLOPT_LOW_SPEED_TIME, (long)((timeout_ms + 999) / 1000));
+    if (strcmp(method, "GET") != 0) {
+        s_curl.setopt(c, PC_CURLOPT_CUSTOMREQUEST, method);
+        s_curl.setopt(c, PC_CURLOPT_POSTFIELDSIZE_LARGE, (long long)body_len);
+        s_curl.setopt(c, PC_CURLOPT_POSTFIELDS, body != NULL ? body : "");
+    }
+    if (list != NULL) {
+        s_curl.setopt(c, PC_CURLOPT_HTTPHEADER, list);
+    }
+    s_curl.setopt(c, PC_CURLOPT_WRITEFUNCTION, pc_http_write);
+    s_curl.setopt(c, PC_CURLOPT_WRITEDATA, &sink);
+    s_curl.setopt(c, PC_CURLOPT_HEADERFUNCTION, pc_http_header);
+    s_curl.setopt(c, PC_CURLOPT_HEADERDATA, &sink);
+    if (progress != NULL) {
+        s_curl.setopt(c, PC_CURLOPT_XFERINFOFUNCTION, pc_http_xfer);
+        s_curl.setopt(c, PC_CURLOPT_XFERINFODATA, &sink);
+        s_curl.setopt(c, PC_CURLOPT_NOPROGRESS, 0L);
+    }
+    rc = s_curl.perform(c);
+    if (rc == 0) {
+        s_curl.getinfo(c, PC_CURLINFO_RESPONSE_CODE, &status);
+    }
+    s_curl.cleanup(c);
+    if (list != NULL) {
+        s_curl.slist_free_all(list);
+    }
+    if (rc != 0) {
+        pc_http_free(resp);
+        return 0;
+    }
+    if (resp->body == NULL) {
+        resp->body = (char*)calloc(1, 1);
+    } else {
+        resp->body[resp->len] = '\0';
+    }
+    resp->status = (int)status;
+    return resp->status;
 }
 #endif
 

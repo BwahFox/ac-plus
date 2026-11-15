@@ -18,6 +18,9 @@
 #include "audio.h"
 #include "m_scene_table.h"
 #include "m_private.h"
+#ifdef TARGET_PC
+#include "pc_platform.h"
+#endif
 
 extern int Camera2_InDoorCheck(void);
 
@@ -193,11 +196,11 @@ extern void watch_my_step_move(GAME_PLAY* play) {
 extern void watch_my_step_draw(GAME_PLAY* play) {
     GAME* game = (GAME*)play;
     GRAPH* g = play->game.graph;
-    Mtx* font_mtx;
+    N64Mtx* font_mtx;
 
     OPEN_DISP(g);
 
-    font_mtx = GRAPH_ALLOC_TYPE(g, Mtx, 1);
+    font_mtx = GRAPH_ALLOC_TYPE(g, N64Mtx, 1);
 
     navigate_camera_draw(play);
     mWt_mybell_confirmation_draw(play);
@@ -347,11 +350,11 @@ static void navigate_camera_move(GAME_PLAY* play) {
 static void navigate_camera_draw(GAME_PLAY* play) {
     GRAPH* g = play->game.graph;
     Gfx* font_gfx;
-    Mtx* font_mtx;
+    N64Mtx* font_mtx;
 
     OPEN_DISP(g);
 
-    font_mtx = GRAPH_ALLOC_TYPE(g, Mtx, 1);
+    font_mtx = GRAPH_ALLOC_TYPE(g, N64Mtx, 1);
 
     if (S_navigate.draw_type != 0) {
         u8 a = S_navigate.opacity * 255.0f;
@@ -362,6 +365,9 @@ static void navigate_camera_draw(GAME_PLAY* play) {
         }
 
         Matrix_scale(16.0f, 16.0f, 16.0f, MTX_LOAD);
+#ifdef TARGET_PC
+        Matrix_translate(pc_widescreen_get_hud_edge_offset(), 0.0f, 0.0f, MTX_MULT);
+#endif
 
         font_gfx = NOW_FONT_DISP;
         gSPMatrix(font_gfx++, _Matrix_to_Mtx_new(g), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
@@ -527,10 +533,13 @@ static void mWt_mybell_confirmation_move(GAME_PLAY* play) {
 static void mWt_mybell_confirmation_draw(GAME_PLAY* play) {
     GAME* game = (GAME*)play;
     GRAPH* g = play->game.graph;
-    Mtx* font_mtx;
+    N64Mtx* font_mtx;
     Gfx* font_gfx;
+#ifdef TARGET_PC
+    f32 edge_x = pc_widescreen_get_hud_edge_offset();
+#endif
 
-    font_mtx = GRAPH_ALLOC_TYPE(g, Mtx, 1);
+    font_mtx = GRAPH_ALLOC_TYPE(g, N64Mtx, 1);
 
     if (S_mybell_conf.draw_type != 0) {
         u8 a = S_mybell_conf.opacity * 255.0f;
@@ -543,6 +552,9 @@ static void mWt_mybell_confirmation_draw(GAME_PLAY* play) {
         }
 
         Matrix_scale(16.0f, 16.0f, 16.0f, MTX_LOAD);
+#ifdef TARGET_PC
+        Matrix_translate(edge_x, 0.0f, 0.0f, MTX_MULT);
+#endif
 
         font_gfx = NOW_FONT_DISP;
         gSPMatrix(font_gfx++, _Matrix_to_Mtx_new(g), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
@@ -575,8 +587,13 @@ static void mWt_mybell_confirmation_draw(GAME_PLAY* play) {
             mFont_UnintToString(bell_str, 7, S_mybell_conf.all_money, 6, TRUE, FALSE, TRUE);
             len = mMl_strlen(bell_str, 7, CHAR_SPACE);
 
+#ifdef TARGET_PC
+            mFont_SetLineStrings(game, bell_str, 7, edge_x + 260.0f - (mFont_GetStringWidth(bell_str, len, TRUE) * 0.75f),
+                                 48.0f, 255, 245, 0, a, FALSE, TRUE, 0.75f, 0.75f, mFont_MODE_FONT);
+#else
             mFont_SetLineStrings(game, bell_str, 7, 260.0f - (mFont_GetStringWidth(bell_str, len, TRUE) * 0.75f), 48.0f,
                                  255, 245, 0, a, FALSE, TRUE, 0.75f, 0.75f, mFont_MODE_FONT);
+#endif
         }
     }
 }

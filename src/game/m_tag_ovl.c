@@ -5,6 +5,10 @@ extern int g_mIV_pc_collect_second;
 #endif
 #include "m_tag_ovl.h"
 
+#ifdef TARGET_PC
+#include "game_pointer.h"
+#endif
+
 #include "m_common_data.h"
 #ifdef TARGET_PC
 #include "pc_pattern.h"
@@ -4487,7 +4491,7 @@ static void mTG_free_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
     mTG_set_trade_cond(submenu, menu_info, mHm_HANIWA_TRADE_0, 0);
 }
 
-static void mTG_catch_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
+static void mTG_catch(Submenu* submenu, mSM_MenuInfo_c* menu_info, int grab_mail_present) {
     mTG_Ovl_c* tag_ovl = submenu->overlay->tag_ovl;
     mTG_tag_c* tag = &tag_ovl->tags[0];
     mTG_tag_c* cur_tag = &tag_ovl->tags[tag_ovl->sel_tag_idx];
@@ -4513,7 +4517,7 @@ static void mTG_catch_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
             return;
         }
 
-        if (submenu->overlay->tag_ovl->sel_tag_idx == 0 && menu_info->menu_type != mSM_OVL_MAILBOX &&
+        if (grab_mail_present && tag_ovl->sel_tag_idx == 0 && menu_info->menu_type != mSM_OVL_MAILBOX &&
             menu_info->menu_type != mSM_OVL_CPMAIL) {
             item_p = &mail_p->present;
             if (*item_p != EMPTY_NO) {
@@ -4579,6 +4583,10 @@ static void mTG_catch_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
     }
 }
 
+static void mTG_catch_proc(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
+    mTG_catch(submenu, menu_info, TRUE);
+}
+
 static int mTG_mail_check(Mail_c* mail) {
     int flags = 0;
 
@@ -4633,7 +4641,7 @@ static int mTG_mark_enable_check(int menu_type, int param, int table, u8 field_t
                         case mTG_TABLE_MAIL:
                             /* mail can be deleted indoors too */
                         #ifndef PC_ENHANCEMENTS
-                            if (field_type == mFI_FIELDTYPE2_FG) 
+                            if (field_type == mFI_FIELDTYPE2_FG)
                         #endif
                             {
                                 res = mTG_MARK_TYPE_INV_FG_MAIL;
@@ -7691,6 +7699,14 @@ static void mTG_drop_item(Submenu* submenu, mSM_MenuInfo_c* menu_info, mTG_tag_c
     u32 money;
     int idx;
 
+#ifdef MOUSE_INPUT
+    if (mMl_check_not_used_mail(&hand_ovl->info.mail) != TRUE && tag->table != mTG_TABLE_MAIL &&
+        tag->table != mTG_TABLE_MBOX && tag->table != mTG_TABLE_CPMAIL) {
+        sAdo_SysTrgStart(MONO(NA_SE_A));
+        return;
+    }
+#endif
+
     switch (tag->table) {
         case mTG_TABLE_MAIL:
         case mTG_TABLE_MBOX:
@@ -8059,7 +8075,7 @@ static void mTG_move_decide(Submenu* submenu, mSM_MenuInfo_c* menu_info, mTG_tag
     }
 }
 
-static void mTG_move_catch(Submenu* submenu, mSM_MenuInfo_c* menu_info, mTG_tag_c* tag) {
+static void mTG_move_catch(Submenu* submenu, mSM_MenuInfo_c* menu_info, mTG_tag_c* tag, int grab_mail_present) {
     if (
         // clang-format off
         (menu_info->menu_type == mSM_OVL_INVENTORY && (menu_info->data0 == mSM_IV_OPEN_NORMAL || menu_info->data0 == mSM_IV_OPEN_EXCHANGE)) ||
@@ -8073,7 +8089,7 @@ static void mTG_move_catch(Submenu* submenu, mSM_MenuInfo_c* menu_info, mTG_tag_
     ) {
         if (mTG_check_move_proc(submenu, tag)) {
             if (mTG_check_hand_condition(submenu) == TRUE) {
-                mTG_catch_proc(submenu, menu_info);
+                mTG_catch(submenu, menu_info, grab_mail_present);
             } else {
                 mTG_drop_item(submenu, menu_info, tag);
             }
@@ -8155,7 +8171,7 @@ static void mTG_move_base(Submenu* submenu, mSM_MenuInfo_c* menu_info, mTG_tag_c
         mTG_pc_storage_turn_page(submenu, (trigger & BUTTON_R) ? 1 : -1);
 #endif
     } else if (trigger & BUTTON_L) {
-        mTG_move_catch(submenu, menu_info, tag);
+        mTG_move_catch(submenu, menu_info, tag, TRUE);
     } else if (trigger & BUTTON_R) {
         mTG_move_change(submenu, menu_info, tag);
     } else if (trigger & BUTTON_X) {
@@ -8582,7 +8598,8 @@ static mTG_table_mouse_data_c mTG_table_mouse_data[] = {
     { NULL, NULL, NULL, NULL }, // mTG_TABLE_CARD_NW (stub)
 };
 
-static void mTG_get_mouse_slot_pos(Submenu* submenu, f32* pos, int table, int idx, mTG_table_mouse_data_c* mouse_data) {
+static void mTG_get_mouse_slot_pos(Submenu* submenu, f32* pos, int table, int idx, mTG_table_mouse_data_c* mouse_data,
+                                   int follow_carry) {
     mTG_tag_data_table_c* data_p = &mTG_table_data[table];
     int col = idx % data_p->col_num;
     int row = idx / data_p->col_num;
@@ -8606,34 +8623,54 @@ static void mTG_get_mouse_slot_pos(Submenu* submenu, f32* pos, int table, int id
     f32 ofs = mTG_set_hand_pos_offset(submenu, table);
     pos[0] = pos_x + ofs;
     pos[1] = pos_y;
+
+    if (follow_carry && !mTG_check_hand_condition(submenu)) {
+        f32 base_pos[2];
+        f32 carry_pos[2];
+
+        mTG_set_hand_pos(submenu, base_pos, table, idx);
+        mHD_mouse_hand_pos_get(submenu, carry_pos, table, idx);
+        pos[0] += carry_pos[0] - base_pos[0];
+        pos[1] += carry_pos[1] - base_pos[1];
+    }
 }
 
 static void mTG_mouse_move_func(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
+#ifdef MOUSE_INPUT
+    const GamePointerFrame* pointer = acgc_pointer_frame();
+#endif
     mTG_Ovl_c* tag_ovl = submenu->overlay->tag_ovl;
+    mHD_Ovl_c* hand_ovl = submenu->overlay->hand_ovl;
     mTG_tag_c* tag = &tag_ovl->tags[tag_ovl->sel_tag_idx];
+    int normal_inventory = menu_info->menu_type == mSM_OVL_INVENTORY && menu_info->data0 == mSM_IV_OPEN_NORMAL;
 
-    /* Setup mouse logic */
-    s32 mouse_x, mouse_y;
-    pc_mouse_get_native_position(&mouse_x, &mouse_y);
-    f32 logical_mouse_x = mouse_x * 0.5;
-    f32 logical_mouse_y = mouse_y * 0.5;
-
-    u32 mouse_pressed = pc_mouse_button_pressed();
-    s32 mouse_wheel = pc_mouse_scroll_wheel();
-    s32 mouse_moved = pc_mouse_moved();
-
-    /* Controller and mouse active checks */
-    if (submenu->overlay->menu_control.trigger) {
+    f32 logical_mouse_x, logical_mouse_y;
+    logical_mouse_x = pointer->x;
+    logical_mouse_y = pointer->y;
+    if (!pointer->inside) {
         tag_ovl->mouse_active = 0;
+        tag_ovl->hovered_table = tag_ovl->hovered_idx = -1;
+        tag_ovl->hovered_col = tag_ovl->hovered_row = tag_ovl->hovered_option = -1;
+        return;
     }
-    if (mouse_moved || mouse_pressed || mouse_wheel != 0) {
-        tag_ovl->mouse_active = 1;
-    }
+
+    tag_ovl->mouse_active = pointer->owner == GAME_POINTER_MOUSE && (tag_ovl->mouse_active || pointer->active);
+    u32 mouse_pressed = pointer->pressed;
+    s32 mouse_wheel = pointer->scroll_steps_y;
+    s32 mouse_moved = pointer->moved;
 
     tag_ovl->mouse_x = logical_mouse_x;
     tag_ovl->mouse_y = logical_mouse_y;
 
     if (!tag_ovl->mouse_active) {
+        return;
+    }
+
+    /* Placement uses the selected slot when the hand animation finishes. */
+    if (hand_ovl->info.wait_timer > 0 || hand_ovl->info.act == mHD_ACTION_CLOSE ||
+        hand_ovl->info.act == mHD_ACTION_CLOSE2 || hand_ovl->info.act == mHD_ACTION_OPEN ||
+        submenu->overlay->segment.player_anime_timer > 0 ||
+        (submenu->overlay->inventory_ovl != NULL && submenu->overlay->inventory_ovl->remove_timer > 0)) {
         return;
     }
 
@@ -8643,7 +8680,7 @@ static void mTG_mouse_move_func(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
             mCL_Ovl_c* catalog_ovl = submenu->overlay->catalog_ovl;
             mCL_Menu_c* catalog_menu = &catalog_ovl->menu_data[catalog_ovl->page_order[0]];
 
-            if (mouse_wheel > 0) {  // Scroll up
+            if (mouse_wheel < 0) {  // Scroll up
                 if (catalog_menu->top_idx != 0) {
                     catalog_menu->top_idx--;
                     catalog_ovl->change_flag = TRUE;
@@ -8660,7 +8697,7 @@ static void mTG_mouse_move_func(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
     }
 
     /* Mouse movement logic */
-    if (mouse_moved) {
+    if (mouse_moved || mouse_pressed || mouse_wheel != 0) {
         if (tag_ovl->sel_tag_idx == 0) {
             f32 hand_x = (logical_mouse_x - 160.0f);
             f32 hand_y = (120.0f - logical_mouse_y);
@@ -8668,6 +8705,10 @@ static void mTG_mouse_move_func(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
             int hit_table = -1;
             int hit_col = -1;
             int hit_row = -1;
+            int carry_table = -1;
+            int carry_col = -1;
+            int carry_row = -1;
+            int carrying = !mTG_check_hand_condition(submenu);
 
             int tables_to_check[7];
             int num_tables = 0;
@@ -8774,7 +8815,7 @@ static void mTG_mouse_move_func(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
                 for (int row = 0; row < data_p->row_num; row++) {
                     for (int col = 0; col < data_p->col_num; col++) {
                         f32 slot_pos[2];
-                        mTG_get_mouse_slot_pos(submenu, slot_pos, table, row * data_p->col_num + col, mouse_data);
+                        mTG_get_mouse_slot_pos(submenu, slot_pos, table, row * data_p->col_num + col, mouse_data, TRUE);
                     
                         // Get hitbox sizes, default to 10, commonly used for item cells
                         f32 x_hitbox = 10.0f;
@@ -8795,9 +8836,23 @@ static void mTG_mouse_move_func(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
                             hit_table = table;
                             hit_col = col;
                             hit_row = row;
+                        } else if (carrying) {
+                            mTG_get_mouse_slot_pos(submenu, slot_pos, table, row * data_p->col_num + col, mouse_data,
+                                                   FALSE);
+                            if (fabsf(hand_x - slot_pos[0]) <= x_hitbox && fabsf(hand_y - slot_pos[1]) <= y_hitbox) {
+                                carry_table = table;
+                                carry_col = col;
+                                carry_row = row;
+                            }
                         }
                     }
                 }
+            }
+
+            if (hit_table < 0) {
+                hit_table = carry_table;
+                hit_col = carry_col;
+                hit_row = carry_row;
             }
 
             if (hit_table >= 0) {
@@ -8849,7 +8904,14 @@ static void mTG_mouse_move_func(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
                 scale * (submenu_tag->body_ofs[1] + submenu_tag->text_ofs[1]));
 
             int hovered_option = -1;
-            f32 option_height = 16.0f * scale_rate; 
+            f32 option_height = 16.0f * scale_rate;
+
+            if (submenu_tag->type == mTG_TYPE_CP_DELETE2 || submenu_tag->type == mTG_TYPE_TAG_PUT_CHK) {
+                tag_screen_y += 2.0f * option_height;
+            } else if (submenu_tag->type == mTG_TYPE_DUMP_MAIL || submenu_tag->type == mTG_TYPE_DUMP_ITEM ||
+                       submenu_tag->type == mTG_TYPE_DUMP_MAIL_MARK_CONF) {
+                tag_screen_y += option_height;
+            }
 
             for (int i = 0; i < tag_data->lines; i++) {
                 // Set top and bottom option hitbox
@@ -8884,16 +8946,43 @@ static void mTG_mouse_move_func(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
         if (tag_ovl->hovered_table >= 0) {
             if (mouse_pressed & (1 << 0)) { // Left click
                 u32 old_trigger = submenu->overlay->menu_control.trigger;
-                submenu->overlay->menu_control.trigger = BUTTON_A;
-                mTG_move_decide(submenu, menu_info, tag);
+                if (normal_inventory && (tag->table == mTG_TABLE_ITEM || tag->table == mTG_TABLE_MAIL)) {
+                    submenu->overlay->menu_control.trigger = BUTTON_L;
+                    mTG_move_catch(submenu, menu_info, tag, FALSE);
+                } else {
+                    submenu->overlay->menu_control.trigger = BUTTON_A;
+                    mTG_move_decide(submenu, menu_info, tag);
+                }
                 submenu->overlay->menu_control.trigger = old_trigger;
+                return;
             }
         }
 
         if (mouse_pressed & (1 << 2)) { // Right click
             u32 old_trigger = submenu->overlay->menu_control.trigger;
-            submenu->overlay->menu_control.trigger = BUTTON_B;
-            mTG_move_cancel(submenu, menu_info, tag);
+            int hovered_item = FALSE;
+
+            if (normal_inventory && mTG_check_hand_condition(submenu)) {
+                switch (tag_ovl->hovered_table) {
+                    case mTG_TABLE_ITEM:
+                        hovered_item = Now_Private->inventory.pockets[tag_ovl->hovered_idx] != EMPTY_NO;
+                        break;
+                    case mTG_TABLE_MAIL:
+                        hovered_item = !mMl_check_not_used_mail(&Now_Private->mail[tag_ovl->hovered_idx]);
+                        break;
+                    case mTG_TABLE_PLAYER:
+                        hovered_item = Now_Private->equipment != EMPTY_NO;
+                        break;
+                }
+            }
+
+            if (hovered_item) {
+                submenu->overlay->menu_control.trigger = BUTTON_A;
+                mTG_move_decide(submenu, menu_info, tag);
+            } else {
+                submenu->overlay->menu_control.trigger = BUTTON_B;
+                mTG_move_cancel(submenu, menu_info, tag);
+            }
             submenu->overlay->menu_control.trigger = old_trigger;
         }
     } else {
@@ -8906,6 +8995,7 @@ static void mTG_mouse_move_func(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
                 mTG_label_table[submenu_tag->type].words[tag_ovl->hovered_option]->move_proc(submenu, menu_info);
 
                 submenu->overlay->menu_control.trigger = old_trigger;
+                return;
             }
         }
 
@@ -8930,17 +9020,22 @@ static void mTG_mouse_move_func(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
 
 static void mTG_move_func(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
     mTG_Ovl_c* tag_ovl = submenu->overlay->tag_ovl;
-    mTG_tag_c* tag = &tag_ovl->tags[tag_ovl->sel_tag_idx];
-    mHD_Ovl_c* hand_ovl = submenu->overlay->hand_ovl;
-    mIV_Ovl_c* inv_ovl = submenu->overlay->inventory_ovl;
-
-#ifdef MOUSE_INPUT
-    mTG_mouse_move_func(submenu, menu_info);
-#endif
 
     if (tag_ovl->sel_tag_idx < 0 || tag_ovl->sel_tag_idx >= mTG_TAG_NUM) {
         return;
     }
+
+#ifdef MOUSE_INPUT
+    mTG_mouse_move_func(submenu, menu_info);
+
+    if (tag_ovl->sel_tag_idx < 0 || tag_ovl->sel_tag_idx >= mTG_TAG_NUM) {
+        return;
+    }
+#endif
+
+    mTG_tag_c* tag = &tag_ovl->tags[tag_ovl->sel_tag_idx];
+    mHD_Ovl_c* hand_ovl = submenu->overlay->hand_ovl;
+    mIV_Ovl_c* inv_ovl = submenu->overlay->inventory_ovl;
 
     if (hand_ovl->info.wait_timer > 0 && inv_ovl != NULL) {
         static f32 wait_accum = 0.0f;
@@ -9765,12 +9860,16 @@ static void mTG_draw_func(Submenu* submenu, GAME* game, int menu_type) {
         mSM_MenuInfo_c* menu_info = &overlay_p->menu_info[menu_type];
         int i;
         int max;
+        int draw_hand_last = (tag_ovl->nw_gba_flags & 0x8) != 0;
+#ifdef MOUSE_INPUT
+        draw_hand_last = draw_hand_last || tag_ovl->mouse_active;
+#endif
 
         if (menu_info->proc_status != mSM_OVL_PROC_MOVE && menu_info->proc_status != mSM_OVL_PROC_END) {
             mTG_single_draw_mail(submenu, graph, tag_ovl);
             mTG_single_draw_original(submenu, graph, tag_ovl);
 
-            if ((tag_ovl->nw_gba_flags & 0x8) == 0) {
+            if (!draw_hand_last) {
                 submenu->overlay->menu_control.hand_draw_func(submenu, game);
             }
 
@@ -9780,7 +9879,7 @@ static void mTG_draw_func(Submenu* submenu, GAME* game, int menu_type) {
                 mTG_set_dl(submenu, menu_info, graph, game, tag, menu_info->position[0], menu_info->position[1], i);
             }
 
-            if ((tag_ovl->nw_gba_flags & 0x8) != 0) {
+            if (draw_hand_last) {
                 submenu->overlay->menu_control.hand_draw_func(submenu, game);
             }
         }
@@ -9788,6 +9887,9 @@ static void mTG_draw_func(Submenu* submenu, GAME* game, int menu_type) {
 }
 
 extern void mTG_tag_ovl_construct(Submenu* submenu) {
+#ifdef MOUSE_INPUT
+    const GamePointerFrame* pointer = acgc_pointer_frame();
+#endif
     Submenu_Overlay_c* overlay_p = submenu->overlay;
     mSM_Control_c* menu_control = &overlay_p->menu_control;
     mTG_Ovl_c* tag_ovl_p;
@@ -9817,9 +9919,12 @@ extern void mTG_tag_ovl_construct(Submenu* submenu) {
         tag_ovl_p->sel_tag_idx = -1;
         tag_ovl_p->ret_tag_idx = -1;
 #ifdef MOUSE_INPUT
-        tag_ovl_p->mouse_active = 0;
         tag_ovl_p->mouse_x = 160;
         tag_ovl_p->mouse_y = 120;
+        tag_ovl_p->mouse_x = pointer->x;
+        tag_ovl_p->mouse_y = pointer->y;
+        tag_ovl_p->mouse_active = pointer->visible &&
+            pointer->inside;
         tag_ovl_p->hovered_table = -1;
         tag_ovl_p->hovered_idx = -1;
         tag_ovl_p->hovered_col = -1;

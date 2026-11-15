@@ -34,14 +34,21 @@ aWeather_Profile_c iam_weather_rain = {
 
 static int aWeatherRain_DecideMakeRainCount(ACTOR* actor) {
     WEATHER_ACTOR* weather = (WEATHER_ACTOR*)actor;
+    int base_count;
+    int count;
 
     if (weather->current_level == mEnv_WEATHER_INTENSITY_LIGHT) {
-        return 1;
+        base_count = 1;
     } else if (weather->current_level == mEnv_WEATHER_INTENSITY_NORMAL) {
-        return 2;
+        base_count = 2;
     } else {
-        return 3;
+        base_count = 3;
     }
+
+    weather->spawn_accum += (f32)base_count * aWeather_GetHorizontalScale();
+    count = (int)weather->spawn_accum;
+    weather->spawn_accum -= (f32)count;
+    return count;
 }
 
 static void aWeatherRain_make(ACTOR* actor, GAME* game) {
@@ -56,6 +63,7 @@ static void aWeatherRain_make(ACTOR* actor, GAME* game) {
     WEATHER_ACTOR* weather = (WEATHER_ACTOR*)actor;
 
     f32 x, y, z;
+    f32 horizontal_half_width = 130.0f * aWeather_GetHorizontalScale();
 
     count = aWeatherRain_DecideMakeRainCount(actor);
     pos = weather->pos;
@@ -64,7 +72,7 @@ static void aWeatherRain_make(ACTOR* actor, GAME* game) {
 
         priv_num = Common_Get(clip.weather_clip)->get_priv_num(&weather->actor_class);
         if (priv_num != -1) {
-            x = -130.0f + (RANDOM_F(260.0f));
+            x = -horizontal_half_width + RANDOM_F(horizontal_half_width * 2.0f);
             z = -200.0f + (RANDOM_F(360.0f));
 
             pos_mod = pos;
@@ -93,7 +101,7 @@ static void aWeatherRain_make(ACTOR* actor, GAME* game) {
     }
 }
 
-static void aWeatherRain_ct(aWeather_Priv*, GAME*) {
+static void aWeatherRain_ct(aWeather_Priv* priv, GAME* game) {
 }
 
 static void aWeatherRain_MoveRain(aWeather_Priv* priv, GAME* game) {
@@ -173,7 +181,7 @@ void aWeatherRain_draw(aWeather_Priv* priv, GAME* game) {
     xyz_t pos;
     s16 angle;
     GRAPH* graph;
-    Mtx* work;
+    N64Mtx* work;
 
     angle = weather->current_yAngle;
     disp = 8 - priv->timer;
@@ -182,7 +190,7 @@ void aWeatherRain_draw(aWeather_Priv* priv, GAME* game) {
     if (priv->work[0] == 1) {
         graph = play->game.graph;
 
-        disp = disp >> 1;
+        disp = CLAMP(disp >> 1, 0, 3);
 
         Matrix_translate(pos.x, pos.y, pos.z, MTX_LOAD);
         Matrix_mult(&play->billboard_matrix, MTX_MULT);
@@ -197,7 +205,7 @@ void aWeatherRain_draw(aWeather_Priv* priv, GAME* game) {
 
         CLOSE_DISP(graph);
     } else if (priv->work[0] == 0) {
-        work = GRAPH_ALLOC_TYPE(game->graph, Mtx, 1);
+        work = GRAPH_ALLOC_TYPE(game->graph, N64Mtx, 1);
 
         OPEN_DISP(play->game.graph);
 

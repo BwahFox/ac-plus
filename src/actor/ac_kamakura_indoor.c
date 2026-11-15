@@ -11,6 +11,9 @@ static void Kamakura_Indoor_Actor_ct(ACTOR* actorx, GAME* game);
 static void Kamakura_Indoor_Actor_dt(ACTOR* actorx, GAME* game);
 static void Kamakura_Indoor_Actor_move(ACTOR* actorx, GAME* game);
 static void Kamakura_Indoor_Actor_draw(ACTOR* actorx, GAME* game);
+#ifdef TARGET_PC
+static void aKI_InitCandleFire(KAMAKURA_INDOOR_ACTOR* k_indoor);
+#endif
 
 // clang-format off
 ACTOR_PROFILE Kamakura_Indoor_Profile = {
@@ -38,6 +41,9 @@ static void Kamakura_Indoor_Actor_ct(ACTOR* actorx, GAME* game) {
     k_indoor->mochi.old_pos = mochi_pos;
     k_indoor->mochi.angle_y = 0;
     k_indoor->mochi.move_bg_idx = mCoBG_RegistMoveBg(&k_indoor->mochi.bg_regist, &k_indoor->mochi.pos, &k_indoor->mochi.old_pos, &k_indoor->mochi.angle_y, 35.0f, &aKI_mochi_collision_info, NULL, NULL, NULL, mCoBG_FTR_TYPE_NUM, mCoBG_ATTRIBUTE_STONE, 100.0f);
+#ifdef TARGET_PC
+    aKI_InitCandleFire(k_indoor);
+#endif
 }
 
 static void Kamakura_Indoor_Actor_dt(ACTOR* actorx, GAME* game) {
@@ -57,7 +63,7 @@ static void aKI_DrawKamakuraIndoorCandleRing(KAMAKURA_INDOOR_ACTOR* k_indoor, GA
     _texture_z_light_fog_prim_xlu(game->graph);
     Global_kankyo_set_room_prim(game);
     for (i = 0; i < aKI_CANDLE_NUM; i++) {
-        Mtx* mtx = GRAPH_ALLOC_TYPE(game->graph, Mtx, 1);
+        N64Mtx* mtx = GRAPH_ALLOC_TYPE(game->graph, N64Mtx, 1);
         
         scale = k_indoor->candle_ring[i].scale * 0.0001f;
 
@@ -310,6 +316,17 @@ static u8* aKI_candle_fire_anime_data[] = {
 };
 // clang-format on
 
+#ifdef TARGET_PC
+static void aKI_InitCandleFire(KAMAKURA_INDOOR_ACTOR* k_indoor) {
+    int i;
+    // Otherwise null on first frame, crashes
+    for (i = 0; i < aKI_CANDLE_NUM; i++) {
+        k_indoor->candle_fire[i].tex_p = aKI_candle_fire_anime_data[0];
+        k_indoor->candle_fire[i].color = aKI_candle_fire_rgba_data[0];
+    }
+}
+#endif
+
 static void Kamakura_Indoor_Actor_move(ACTOR* actorx, GAME* game) {
     KAMAKURA_INDOOR_ACTOR* k_indoor = (KAMAKURA_INDOOR_ACTOR*)actorx;
     GAME_PLAY* play = (GAME_PLAY*)game;
@@ -321,7 +338,7 @@ static void Kamakura_Indoor_Actor_move(ACTOR* actorx, GAME* game) {
     int i;
     s16 timer;
 
-    sAdo_OngenPos((u32)actorx, NA_SE_KOKORO_TOGURU, &k_indoor->mochi.pos);
+    sAdo_OngenPos((JaudioObjectId)(uintptr_t)actorx, NA_SE_KOKORO_TOGURU, &k_indoor->mochi.pos);
     k_indoor->anim_frame += (f32)game->graph->dt_num_60fps_frames;
     while (k_indoor->anim_frame >= 1024.0f) {
         k_indoor->anim_frame -= 1024.0f;

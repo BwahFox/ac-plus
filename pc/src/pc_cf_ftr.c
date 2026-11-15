@@ -99,7 +99,7 @@ typedef struct {
 
 /* One mesh's commands into gfx (NULL: just count them): its texture, its modes, its vertices and triangles */
 static int pc_cf_ftr_mesh_gfx(Gfx* gfx, const pc_cf_ftr_tex_c* tex, int xlu, int cull, int alpha, Vtx* vtx, int n) {
-    static u8 white[4 * 4 * 2] ATTRIBUTE_ALIGN(32);
+    ATTRIBUTE_ALIGN(32) static u8 white[4 * 4 * 2];
     Gfx* g = gfx;
     int i, k, cmds = 0;
     int tw = tex != NULL ? tex->w : 4, th = tex != NULL ? tex->h : 4;
@@ -833,7 +833,7 @@ static void pc_cf_ftr_dw(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game,
     f32 frame = 0.0f;
 
     if (c != NULL && c->does == PC_CF_DOES_TV && ftr_actor->switch_bit) {
-        Gfx* screen = pc_tv_screen(game, c->screen, &ftr_actor->position);
+        Gfx* screen = pc_tv_screen_always(game, c->screen, &ftr_actor->position);
 
         if (screen != NULL) {
             OPEN_DISP(game->graph);

@@ -1,9 +1,13 @@
+/* DEPRECATED (2026-11-05): ac-plus's settings are in Nookery's menu now (Esc -> ac-plus, ui/acplus.cpp). This
+ * in-game settings page isn't reachable from the menus any more; it's kept, unchanged, so nothing that still refers to
+ * it breaks. Don't add settings here. */
 /* Shared settings page used by both the in-game pause
  * menu and the title-screen Options menu. */
 
 #ifndef PC_SETTINGS_MENU_H
 #define PC_SETTINGS_MENU_H
 
+#include <SDL3/SDL.h>
 #include "pc_platform.h"
 
 #ifdef __cplusplus

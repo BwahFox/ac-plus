@@ -108,7 +108,7 @@ static void aFSN_moving(ACTOR* actorx, GAME* game) {
 
   fuusen->wind_power = mEnv_GetWindPowerF();
   actorx->speed = fuusen->wind_power * 0.5f + 1.0f;
-  fuusen->fuwafuwa_cycle += (s16)(250.0f * game->graph->dt_num_60fps_frames);
+  fuusen->fuwafuwa_cycle += F32_TO_S16(250.0f * game->graph->dt_num_60fps_frames);
   add_calc(
     &actorx->world.position.y,
     balloon_y + sin_s(fuusen->fuwafuwa_cycle) * 10.0f,
@@ -550,7 +550,7 @@ static void aFSN_actor_draw(ACTOR* actorx, GAME* game) {
   static xyz_t offset0 = { 0.0f, 0.0f, 0.0f };
 
   FUUSEN_ACTOR* fuusen = (FUUSEN_ACTOR*)actorx;
-  Mtx* mtx = fuusen->mtx[game->frame_counter & 1];
+  N64Mtx* mtx = fuusen->mtx[game->frame_counter & 1];
   GAME_PLAY* play = (GAME_PLAY*)game;
   GRAPH* graph = game->graph;
   Gfx* gfx;

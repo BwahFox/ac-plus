@@ -5,7 +5,7 @@ sounds are used. Everything you see and hear comes from the original games or wa
 
 **ac-plus** is Animal Crossing (GameCube) on PC, with quality-of-life features and touches of
 City Folk.
-It's built on [ACGC-PC-Port](https://github.com/flyngmt/ACGC-PC-Port), which runs the
+It's built on [Nookery](https://github.com/flyngmt/Nookery) 1.0 (formerly ACGC-PC-Port), which runs the
 [ac-decomp](https://github.com/ACreTeam/ac-decomp) decompilation natively on PC.
 
 **This is a beta:** everything planned for 1.0 is in, but it hasn't had the testing a 1.0 should
@@ -14,14 +14,14 @@ have. Keep a copy of your save.
 This repository contains no game files. To play, you need your own copies of **both** games:
 
 - **Animal Crossing** for GameCube, **USA version (GAFE01, revision 0)**, as a disc image (`.iso`,
-  `.gcm` or `.ciso`).
+  `.gcm`, `.ciso` or `.rvz`).
 - **Animal Crossing: City Folk** for Wii, **USA version (RUUE01)**, as a disc image (`.wbfs` or
   `.iso`). ac-plus uses a lot of City Folk: its sky, rooms, characters, animations, lines, music and
   sounds. The game converts them from your disc on your computer, the first time it starts.
 
 To check that your dumps are the right ones, see [Checking your discs](#checking-your-discs).
 
-The game runs on Windows. On Linux and the Steam Deck it runs through Wine or Proton.
+The game runs on Windows and Linux, the Steam Deck included.
 
 ## Contents
 
@@ -40,20 +40,22 @@ The game runs on Windows. On Linux and the Steam Deck it runs through Wine or Pr
 
 ### 1. Get the game folder
 
-If this repository's **Releases** page has a download, extract the zip somewhere and go on to
-step 2.
+If this repository's **Releases** page has a download, extract it somewhere and go on to step 2:
+the `.zip` is the Windows version, the `-linux.tar.gz` the Linux one.
 
 Otherwise, build it. The build runs in a container, so the only thing to install is
 [Podman](https://podman.io) or [Docker](https://www.docker.com):
 
 ```sh
-git clone <this repository>
+git clone --recurse-submodules <this repository>
 cd ac-plus
-./ac-plus.sh build
+./ac-plus.sh build                                  # Linux: dist/ac-plus-linux/
+./ac-plus.sh build-windows --accept-msvc-license    # Windows: dist/ac-plus-windows/
 ```
 
-The first build takes a few minutes, because it makes the container first. Later builds take
-about a minute. The game folder is `dist/ac-plus/`.
+The Windows build is made with Microsoft's Windows SDK, which the build downloads once: the flag
+says you accept [Microsoft's license](https://go.microsoft.com/fwlink/?LinkId=2086102) for it. The
+first build takes a while, because it makes the container first.
 
 On Windows, run these commands in a WSL terminal (with Docker Desktop or Podman Desktop
 installed), or see [Building on Windows without a container](#building-on-windows-without-a-container).
@@ -64,28 +66,32 @@ Put both disc images in the game folder's `rom/` folder. Any file names work:
 
 ```
 ac-plus/
-├── AnimalCrossing.exe
+├── AnimalCrossing.exe   (AnimalCrossing on Linux)
+├── res/
 ├── rom/
 │   ├── Animal Crossing (USA).iso
 │   └── Animal Crossing City Folk (USA).wbfs
-├── save/
-└── shaders/
+└── save/
 ```
 
-- **GameCube:** `.iso`, `.gcm` or `.ciso`.
+- **GameCube:** `.iso`, `.gcm`, `.ciso` or `.rvz`. The start menu finds it in `rom/` by itself; its
+  **Disc** button picks one somewhere else.
 - **City Folk:** `.wbfs` or `.iso`.
 
 ### 3. Start the game
 
 - **Windows:** double-click `AnimalCrossing.exe`.
-- **Linux:** run `wine AnimalCrossing.exe` from the game folder.
-- **Steam Deck:** in Desktop Mode, add `AnimalCrossing.exe` to Steam as a non-Steam game. Then, in
-  its Properties, under Compatibility, force a Proton version. Back in Gaming Mode, it starts like
-  any other game.
+- **Linux:** run `./AnimalCrossing` from the game folder.
+- **Steam Deck:** in Desktop Mode, add `AnimalCrossing` (the Linux version) to Steam as a non-Steam
+  game. Back in Gaming Mode, it starts like any other game. (The Windows version through Proton works
+  too.)
+
+The game opens on Nookery's start menu: press **Play**.
 
 **The first start takes about a minute longer.** ac-plus converts what it uses from your City Folk
 disc into a `cf_sky/` folder, with a progress bar, then the game starts. It only happens once, and
-again if a new version of ac-plus needs it.
+again if a new version of ac-plus needs it. Both the Windows and the Linux version bring the Python
+this needs (in `cf-tools/python/`), so nothing has to be installed.
 
 After that, the City Folk disc can stay in `rom/` or be moved away. The GameCube disc has to stay:
 the game reads it each time it starts.
@@ -145,17 +151,18 @@ disc-preservation database.
 - **Fishing:** City Folk's plop when a fish takes the float.
 - **TV programs:** switched-on TVs show City Folk's programs on its weekly schedule: the news,
   the weather report with a forecast of the coming hours, a hero show, soccer, a movie on weekend
-  nights, and static after the late show, each with City Folk's own sound (`cf_tv` setting).
+  nights, and static after the late show, each with City Folk's own sound. The `cf_tv` setting (TV: Original) puts the GameCube's
+  TVs back to their own screens; City Folk's TVs always show the programs.
 
 ## What's new
 
-Besides everything ACGC-PC-Port adds (widescreen, high resolutions, texture packs, keyboard and
-mouse, controllers), ac-plus adds:
+Besides everything Nookery adds (widescreen, high frame rates, texture packs, mouse and keyboard,
+controllers, Card B's town picker, fast text and more), ac-plus adds:
 
 **Online visits (experimental)**
 - **Visit a friend's town, or host yours**, for up to four players: talk to Porter at the train
   station and choose **Online**. A visit leaves on his train, and you step off it at your friend's
-  station. To go home, tell their Porter "Go home". Once you're online, the pause menu's Online Play
+  station. To go home, tell their Porter "Go home". Once you're online, Esc → ac-plus → Online play
   has the rest (chat, visitors, stop). Hosting gives you an **invite code** for your friends to
   type in. No router setup is needed for most networks: the ac-plus server introduces the two
   games, and relays the visit when they can't reach each other directly.
@@ -213,16 +220,16 @@ mouse, controllers), ac-plus adds:
   side is free.
 
 **Patterns**
-- Design a Pattern from the pause menu (Esc, or Back on a controller), once you've designed five
+- Design a Pattern from the menu (Esc → ac-plus, or Back on a controller), once you've designed five
   patterns at the Able Sisters' counter.
-- **Pattern Storage**, in the pause menu.
+- **Pattern Storage**, in the menu (Esc → ac-plus).
 - Patterns keep their identity across slots and storage, so swapping slots no longer changes
   shirts, doors, signs or umbrellas made from them.
 - **Ground patterns:** "Lay on Ground" in a pattern's menu puts it on the ground in town. Shadows
   fall on them as on the grass.
-- **Pattern QR codes in New Leaf's format.** Pause menu → Pattern QR Codes saves your patterns
+- **Pattern QR codes in New Leaf's format.** Esc → ac-plus → Pattern QR codes saves your patterns
   as images in `qr/export/`, and reads New Leaf design QR codes you put in `qr/import/`.
-- Mouse controls in the pattern designer, plus Ctrl+Z to undo (`mouse_mode`).
+- Ctrl+Z undoes in the pattern designer.
 
 **Museum**
 - Blathers identifies fossils himself, as in Animal Crossing Deluxe: once 15 fossils are in the museum he gets his certification, and his menu offers "Identify fossils" (mark several with X to hand them over together).
@@ -306,8 +313,6 @@ mouse, controllers), ac-plus adds:
   90,000, or goes into your pockets as a bag when the wallet is too full.
 - Returning home from a town on memory card B could crash the game.
 - At the Roost, getting up just as Brewster started talking left you free to walk during the talk.
-- On Linux with an NVIDIA card, the game's memory no longer creeps up while it runs (from the
-  second start: the first one switches Wine to the steadier way of drawing for this game).
 - **Curved world:** things no longer seem to float above the ground or sink into it, decals (paths,
   mats, shadows, patterns) no longer flicker against the ground, and the land and its trees reach
   farther out on wide screens.
@@ -336,19 +341,29 @@ mouse, controllers), ac-plus adds:
 | Z | Z |
 | Q / E | L / R |
 | I J K L | D-pad |
-| Esc | Pause menu (ac-plus) |
+| Esc | The menu (Settings, Controls, **ac-plus**, Quit) |
+| T | Chat, during an online visit |
 | F4 | Tile readout (why a tile won't take a ground pattern) |
 
-- **Rebinding:** keys can be changed in `keybindings.ini`, next to the exe. Mouse buttons can be
-  bound too.
-- **Controllers:** SDL controllers work and can be plugged in at any time. **Back / Select** opens
-  the pause menu.
+- **Rebinding:** in Nookery's menu (Esc → Controls), for the keyboard and controllers.
+- **Controllers:** they work and can be plugged in at any time. Nookery's menu button opens its
+  menu; **LB / L1** opens the chat during an online visit.
+- **Mouse:** Nookery's mouse support covers walking (hold the left button), A (right button), menus
+  and the pattern designer; ac-plus's screens (Celeste's telescope, its menus) take the mouse too.
+  Holding the right button with empty hands can open the pockets: turn it on in Esc → ac-plus → Town.
 
 ## Settings
 
-Most settings are in the pause menu (**Esc** → Settings). They're kept in `settings.ini` next to
-the exe, which also explains each one. To reset a setting, delete its line; the game writes the
-default back.
+There are two settings menus:
+
+- **Nookery's** (Esc → Settings): video, sound, controls and its gameplay options (Resetti, borderless
+  acres, fast text...). Kept in `config.json`.
+- **ac-plus's** (Esc → ac-plus): its tabs hold the town's extras (pattern designer and storage, QR
+  codes, online play, the mouse option), City Folk (curved world, weather, TV, tanning), Music,
+  Saving and Online. Kept in `ac-plus.ini`, which also explains each one. To reset a setting, delete
+  its line; the game writes the default back.
+
+Both files are in the game folder. An older ac-plus's `settings.ini` is read once, the first time.
 
 - **Custom music:** put your own tracks in `music/<pack>/hourly/00` to `23` and set
   `music_pack = <pack>`. The [music guide](docs/MUSIC.md) explains it step by step, with rain and
@@ -356,8 +371,9 @@ default back.
 - **Texture packs:** Dolphin format, in `texture_pack/`. The
   [Animal Crossing HD texture pack](https://forums.dolphin-emu.org/Thread-animal-crossing-hd-texture-pack-version-23-feb-22nd-2026)
   works.
-- **Command line:** `--verbose` logs what the game does, `--time HOUR` sets the in-game hour, and
-  `--no-framelimit` unlocks the frame rate.
+- **Command line:** `--verbose` logs what the game does, `--time H[:M]` and `--date M/D[/Y]` set
+  the in-game clock (it runs on from there), `--framelimit N` sets a frame rate cap (0: none) and
+  `--disc <image>` starts straight away without the start menu.
 
 ## Saves
 
@@ -389,7 +405,7 @@ default back.
   as it happens, so Steam's "Exit Game" leaves nothing behind.
 - **Syncing with your own server (ssh):**
   - Turn on SSH sync in Settings → Saving and enter your server's address (SSH server).
-  - Start the game through `ac-sync.sh`: `./ac-sync.sh wine AnimalCrossing.exe`, or on a Steam Deck,
+  - Start the game through `ac-sync.sh`: `./ac-sync.sh ./AnimalCrossing`, or on a Steam Deck,
     launch options `<game folder>/ac-sync.sh %command%`.
   - It downloads your town before playing and uploads it afterwards, keeping older copies on both
     sides.
@@ -400,10 +416,15 @@ default back.
 **General**
 - **Only the USA versions are supported:** GAFE01 revision 0 for the GameCube game, RUUE01 for
   City Folk. Other versions won't work.
-- **No Linux build yet:** on Linux the Windows build runs through Wine or Proton. To keep the
-  desktop from dimming or sleeping, the game starts `ac-plus-inhibit` (a small Linux program in the
-  game folder) while it runs; if that file is missing, the screen may still go to sleep.
-- **Steam's "Exit Game" closes the game without saving.** Quit from the pause menu instead. Autosave
+- **New base:** this is the first ac-plus on Nookery 1.0, whose graphics, menus and controls are all
+  new. Report anything that looks or behaves differently from before.
+- **Updating from an older ac-plus:** your town, settings and music come along by themselves, but
+  put the new version in a new folder and move `save/`, `music/`, `texture_pack/` and `cf_sky/`
+  over (as Nookery recommends), rather than extracting it over the old one.
+- **The Windows version under Wine or Proton:** to keep the desktop from dimming or sleeping, it
+  starts `ac-plus-inhibit` (a small Linux program in the game folder) while it runs. The Linux
+  version doesn't need it.
+- **Steam's "Exit Game" closes the game without saving.** Quit from the menu (Esc → Quit) instead. Autosave
   covers you if you forget.
 
 **Saving and patterns**
@@ -429,27 +450,27 @@ default back.
 
 ## Building on Windows without a container
 
-The original MSYS2 build still works:
-1. Install [MSYS2](https://www.msys2.org/).
-2. In the **MSYS2 MINGW32** shell:
+Nookery's own Windows build works for ac-plus too: install Visual Studio with "Desktop development
+with C++", then in an **x64 Native Tools Command Prompt**:
 
-   ```sh
-   pacman -S mingw-w64-i686-gcc mingw-w64-i686-cmake mingw-w64-i686-SDL2 mingw-w64-i686-make
-   ./build_pc.sh
-   ```
+```bat
+cmake --preset windows-msvc-relwithdebinfo
+cmake --build --preset windows-msvc-relwithdebinfo
+```
 
-3. The game is in `pc/build32/bin/`. Copy the `shaders/` folder along if you move the exe.
+The game is in `build\windows-msvc-relwithdebinfo\bin\`. Builds made this way don't carry the City
+Folk converter that runs on the first start. Convert the disc yourself with Python 3, `numpy` and
+`Pillow`: `python pc/tools/extract_cf_sky.py <City Folk disc> <game folder>`.
 
-Builds made this way don't carry the City Folk converter that runs on the first start. Convert the
-disc yourself with Python 3 and `numpy`:
-`python pc/tools/extract_cf_sky.py <City Folk disc> <game folder>`.
+Porting ac-plus somewhere else? See [docs/PORTING.md](docs/PORTING.md).
 
 ## Credits
 
 - **[ACreTeam](https://github.com/ACreTeam):** the ac-decomp decompilation everything is built on.
-- **[flyngmt](https://github.com/flyngmt/ACGC-PC-Port):** ACGC-PC-Port, the PC port ac-plus is
-  built on, and its contributors. AloXado320's mouse support in menus and the pattern designer
-  came in through it.
+- **[flyngmt](https://github.com/flyngmt/Nookery):** Nookery (formerly ACGC-PC-Port), the port ac-plus
+  is built on, and its contributors: [encounter](https://github.com/encounter) and
+  [Aurora](https://github.com/encounter/aurora), its graphics and platform layer, Cuyler36, tomlube
+  and everyone in Nookery's credits.
 - **Cuyler36's Animal Crossing Deluxe:** the skin tones follow it, with its eight tones' colours
   and its tanning on top of them. The 90,000 Bells bag comes from it too.
 - **Libraries:** [qrcodegen](https://www.nayuki.io/page/qr-code-generator-library),

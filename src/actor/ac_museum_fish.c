@@ -2,6 +2,9 @@
 #include "pc_cf_creature.h"
 #endif
 #include "ac_museum_fish_priv.h"
+#ifdef TARGET_PC
+#include "pc_platform.h"
+#endif
 
 // extern data
 // clang-format off
@@ -625,6 +628,11 @@ int Museum_Fish_GetMsgNo(MUSEUM_FISH_ACTOR* actor) {
 
     int fishInfo = actor->fishDisplayMsgInfo[actor->fishDisplayMsgIter].fishInfo;
     mActor_name_t fishName = mNT_FishIdx2FishItemNo(actor->fishDisplayMsgInfo[actor->fishDisplayMsgIter].fishName);
+#ifdef TARGET_PC
+    if (actor->fishDisplayMsgInfo[actor->fishDisplayMsgIter].fishName & PC_CF_PLAQUE) { /* City Folk's */
+        fishName = (mActor_name_t)(PC_CF_FISH_ITEM + (actor->fishDisplayMsgInfo[actor->fishDisplayMsgIter].fishName & 0xFF));
+    }
+#endif
     mIN_copy_name_str(item_name, fishName);
     mMsg_Set_item_str_art(mMsg_Get_base_window_p(), 0, item_name, 0x10, mIN_get_item_article(fishName));
 
@@ -713,6 +721,19 @@ void Museum_Fish_Set_MsgFishInfo(MUSEUM_FISH_ACTOR* actor, int param2) {
             actor->numFishDisplayed++; // incrememnt counter of fish on display
         }
     }
+#ifdef TARGET_PC
+    {
+        /* City Folk's fish in this tank (pc_cf_creature.c) */
+        s16 names[28], donors[28];
+        int n = pc_cf_museum_plaque_fish(param2, names, donors, 28), k;
+
+        for (k = 0; k < n && actor->numFishDisplayed < (int)ARRAY_COUNT(actor->fishDisplayMsgInfo); k++) {
+            actor->fishDisplayMsgInfo[actor->numFishDisplayed].fishName = names[k];
+            actor->fishDisplayMsgInfo[actor->numFishDisplayed].fishInfo = donors[k];
+            actor->numFishDisplayed++;
+        }
+    }
+#endif
 
     return;
 }
@@ -988,7 +1009,7 @@ void Museum_Fish_Kusa_Draw(ACTOR* actorx, GAME* game, int r5) {
     MUSEUM_FISH_ACTOR* actor = (MUSEUM_FISH_ACTOR*)actorx;
     GAME_PLAY* play = (GAME_PLAY*)game;
     if (mfish_cull_check(game, &kusa_pos[r5], 0.0f, 0.0f, 120.0f)) {
-        Mtx* mtx;
+        N64Mtx* mtx;
         if (play->game.frame_counter % 2 != 0) {
             mtx = actor->prvKusa[r5].mtx[0];
         } else {
@@ -1077,6 +1098,13 @@ void Museum_Fish_Actor_draw(ACTOR* actorx, GAME* game) {
 
 BOOL mfish_cull_check(GAME* game, xyz_t* worldPos, f32 x, f32 y, f32 _y) {
     xyz_t screenPos;
+#ifdef TARGET_PC
+    f32 aspect_factor = pc_widescreen_get_aspect_factor();
+
+    if (aspect_factor < 1.0f) {
+        x += 160.0f * (1.0f / aspect_factor - 1.0f);
+    }
+#endif
     Game_play_Projection_Trans((GAME_PLAY*)game, worldPos, &screenPos);
     if ((-x < screenPos.x) && (screenPos.x < x + 320) && (-y < screenPos.y) && (screenPos.y < _y + 240)) {
         return TRUE;
@@ -1194,7 +1222,7 @@ void mfish_point_light_mv(MUSEUM_FISH_ACTOR* actor, GAME* game) {
     actor->actor.world.position.x = sin_s(actor->_14dc0) * 200.0f;
     actor->actor.world.position.y = sin_s(actor->_14dc0 * 2) * 10.0f;
     actor->actor.world.position.z = cos_s(actor->_14dc0) * 200.0f;
-    actor->_14dc0 += (s16)((f32)DEG2SHORT_ANGLE(1.5f) * dt);
+    actor->_14dc0 += F32_TO_S16((f32)DEG2SHORT_ANGLE(1.5f) * dt);
 }
 
 void mfish_normal_light_set(ACTOR* actor, GAME* game) {

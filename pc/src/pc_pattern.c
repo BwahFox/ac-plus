@@ -67,7 +67,7 @@ typedef struct {
 static PatIds s_ids;
 static PatUse s_uses[PAT_USE_MAX];
 static int s_use_count;
-static PatLibEntry s_lib[PAT_LIB_MAX] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static PatLibEntry s_lib[PAT_LIB_MAX];
 static int s_lib_count;
 static u8 s_edited[PAT_LOCS];
 static int s_last_open;

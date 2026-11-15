@@ -20,7 +20,7 @@ static void aSumKoorogi_mv(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* gam
 
     if (aFTR_CAN_PLAY_SE(ftr_actor)) {
         keyframe = &ftr_actor->keyframe;
-        valid = sAdo_RoomIncectPos((u32)ftr_actor, 56, &ftr_actor->position);
+        valid = sAdo_RoomIncectPos((JaudioObjectId)(uintptr_t)ftr_actor, 56, &ftr_actor->position);
 
         if (valid != 0) {
             cKF_SkeletonInfo_R_init_standard_stop(keyframe, &cKF_ba_r_int_sum_koorogi, NULL);
@@ -33,7 +33,7 @@ static void aSumKoorogi_mv(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* gam
 
 static void aSumKoorogi_dw(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game, u8* data) {
     cKF_SkeletonInfo_R_c* keyframe = &ftr_actor->keyframe;
-    Mtx* mtx = ftr_actor->skeleton_mtx[game->frame_counter & 1];
+    N64Mtx* mtx = ftr_actor->skeleton_mtx[game->frame_counter & 1];
 
     cKF_Si3_draw_R_SV(game, keyframe, mtx, NULL, NULL, ftr_actor);
 }

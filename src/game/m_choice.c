@@ -1,5 +1,9 @@
 #include "m_choice.h"
 
+#ifdef TARGET_PC
+#include "game_pointer.h"
+#endif
+
 #include "audio.h"
 #include "jsyswrap.h"
 #include "libultra/libultra.h"

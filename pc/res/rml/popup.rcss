@@ -1,0 +1,46 @@
+body {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    overflow: visible;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0 var(--space-lg);
+    font-family: var(--font-family-body);
+    font-weight: normal;
+    font-size: var(--font-size-base);
+}
+
+button {
+    cursor: pointer;
+    focus: auto;
+}
+
+popup {
+    display: flex;
+    position: relative;
+    flex: 0 0 auto;
+    width: auto;
+    max-width: 100%;
+    height: 72dp;
+    margin-top: 18dp;
+    overflow: hidden;
+    color: var(--color-text);
+    background-color: var(--color-surface);
+    border: 4dp var(--color-surface-border);
+    border-radius: var(--radius-window);
+    box-shadow: 0 10dp 28dp 2dp var(--color-shadow);
+    filter: opacity(0);
+    transform: translateY(-104dp);
+    transition: filter transform 0.18s cubic-in-out;
+}
+
+popup[open] {
+    filter: opacity(1);
+    transform: translateY(0);
+}
+
+popup tab-bar {
+    flex: 0 0 auto;
+}

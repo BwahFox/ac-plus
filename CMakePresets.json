@@ -1,0 +1,266 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "debug",
+      "displayName": "Animal Crossing Debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "relwithdebinfo",
+      "displayName": "Animal Crossing RelWithDebInfo",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "windows-msvc-debug",
+      "displayName": "Animal Crossing Windows MSVC Debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl",
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDebugDLL",
+        "CMAKE_DISABLE_FIND_PACKAGE_PkgConfig": true
+      }
+    },
+    {
+      "name": "windows-msvc-relwithdebinfo",
+      "displayName": "Animal Crossing Windows MSVC RelWithDebInfo",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl",
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDLL",
+        "CMAKE_DISABLE_FIND_PACKAGE_PkgConfig": true
+      }
+    },
+    {
+      "name": "android-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "inherits": "relwithdebinfo",
+      "cacheVariables": {
+        "ANDROID_PLATFORM": "android-28",
+        "BUILD_SHARED_LIBS": false,
+        "CMAKE_DISABLE_FIND_PACKAGE_PkgConfig": true,
+        "CMAKE_DISABLE_FIND_PACKAGE_zstd": true,
+        "CMAKE_TOOLCHAIN_FILE": "$env{ANDROID_HOME}/ndk/$env{ANDROID_NDK_VERSION}/build/cmake/android.toolchain.cmake"
+      }
+    },
+    {
+      "name": "android-arm64",
+      "displayName": "Animal Crossing Android (arm64-v8a)",
+      "inherits": "android-base",
+      "cacheVariables": {
+        "ANDROID_ABI": "arm64-v8a"
+      }
+    },
+    {
+      "name": "ios-arm64",
+      "displayName": "Animal Crossing iOS (arm64)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "inherits": "relwithdebinfo",
+      "environment": {
+        "IPHONEOS_DEPLOYMENT_TARGET": "14.0"
+      },
+      "cacheVariables": {
+        "CMAKE_SYSTEM_NAME": "iOS",
+        "CMAKE_OSX_SYSROOT": "iphoneos",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "14.0",
+        "Rust_CARGO_TARGET": "aarch64-apple-ios",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/install/${presetName}",
+        "BUILD_SHARED_LIBS": false,
+        "CMAKE_DISABLE_FIND_PACKAGE_PkgConfig": true,
+        "CMAKE_DISABLE_FIND_PACKAGE_zstd": true,
+        "CMAKE_IGNORE_PREFIX_PATH": "/opt/homebrew"
+      }
+    },
+    {
+      "name": "ci",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_C_COMPILER_LAUNCHER": "sccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "sccache",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/install",
+        "Rust_RUSTUP_INSTALL_MISSING_TARGET": true
+      }
+    },
+    {
+      "name": "x-linux-ci",
+      "displayName": "(Internal) Linux CI",
+      "inherits": [
+        "ci",
+        "relwithdebinfo"
+      ],
+      "cacheVariables": {
+        "AURORA_SDL3_PROVIDER": "vendor",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_LINKER_TYPE": "MOLD"
+      }
+    },
+    {
+      "name": "x-macos-ci",
+      "hidden": true,
+      "inherits": [
+        "ci",
+        "relwithdebinfo"
+      ],
+      "cacheVariables": {
+        "AURORA_NOD_PROVIDER": "vendor",
+        "CMAKE_DISABLE_FIND_PACKAGE_PkgConfig": true,
+        "CMAKE_IGNORE_PREFIX_PATH": "/opt/homebrew",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "12.0"
+      }
+    },
+    {
+      "name": "x-macos-ci-arm64",
+      "displayName": "(Internal) macOS CI arm64",
+      "inherits": "x-macos-ci",
+      "cacheVariables": {
+        "CMAKE_OSX_ARCHITECTURES": "arm64"
+      }
+    },
+    {
+      "name": "x-macos-ci-x86_64",
+      "displayName": "(Internal) macOS CI x86_64",
+      "inherits": "x-macos-ci",
+      "cacheVariables": {
+        "CMAKE_OSX_ARCHITECTURES": "x86_64",
+        "Rust_CARGO_TARGET": "x86_64-apple-darwin"
+      }
+    },
+    {
+      "name": "x-ios-ci",
+      "displayName": "(Internal) iOS CI arm64",
+      "inherits": [
+        "ci",
+        "ios-arm64"
+      ]
+    },
+    {
+      "name": "x-android-ci-arm64",
+      "displayName": "(Internal) Android CI arm64-v8a",
+      "binaryDir": "${sourceDir}/build/android-arm64",
+      "inherits": [
+        "ci",
+        "android-arm64"
+      ]
+    },
+    {
+      "name": "x-windows-ci",
+      "displayName": "(Internal) Windows CI MSVC",
+      "inherits": [
+        "ci",
+        "relwithdebinfo"
+      ],
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl",
+        "CMAKE_DISABLE_FIND_PACKAGE_PkgConfig": true,
+        "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT": "Embedded"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "debug"
+    },
+    {
+      "name": "relwithdebinfo",
+      "configurePreset": "relwithdebinfo"
+    },
+    {
+      "name": "windows-msvc-debug",
+      "configurePreset": "windows-msvc-debug"
+    },
+    {
+      "name": "windows-msvc-relwithdebinfo",
+      "configurePreset": "windows-msvc-relwithdebinfo"
+    },
+    {
+      "name": "android-arm64",
+      "configurePreset": "android-arm64",
+      "targets": [
+        "acgc"
+      ]
+    },
+    {
+      "name": "ios-arm64",
+      "configurePreset": "ios-arm64",
+      "targets": [
+        "acgc"
+      ]
+    },
+    {
+      "name": "x-linux-ci",
+      "configurePreset": "x-linux-ci",
+      "targets": [
+        "install"
+      ]
+    },
+    {
+      "name": "x-macos-ci-arm64",
+      "configurePreset": "x-macos-ci-arm64",
+      "targets": [
+        "install"
+      ]
+    },
+    {
+      "name": "x-macos-ci-x86_64",
+      "configurePreset": "x-macos-ci-x86_64",
+      "targets": [
+        "install"
+      ]
+    },
+    {
+      "name": "x-ios-ci",
+      "configurePreset": "x-ios-ci",
+      "targets": [
+        "install"
+      ]
+    },
+    {
+      "name": "x-android-ci-arm64",
+      "configurePreset": "x-android-ci-arm64",
+      "targets": [
+        "acgc"
+      ]
+    },
+    {
+      "name": "x-windows-ci",
+      "configurePreset": "x-windows-ci",
+      "targets": [
+        "install"
+      ]
+    }
+  ]
+}

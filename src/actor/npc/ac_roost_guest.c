@@ -246,7 +246,7 @@ static void aRGT_wait(ROOST_GUEST_ACTOR* actor) {
 
 static void aRGT_clap(ROOST_GUEST_ACTOR* actor) {
     aRGT_wait(actor);
-    sAdo_OngenPos((u32)actor, actor->clap_se_no, &actor->npc_class.actor_class.world.position);
+    sAdo_OngenPos((JaudioObjectId)(uintptr_t)actor, actor->clap_se_no, &actor->npc_class.actor_class.world.position);
 }
 
 static void aRGT_drink(ROOST_GUEST_ACTOR* actor) {

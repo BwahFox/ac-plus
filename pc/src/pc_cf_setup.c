@@ -4,8 +4,12 @@
  * ./ac-plus.sh package). When cf_sky/ is missing or from an older version, the game runs
  * cf-tools/extract_cf_sky.py --auto on the City Folk disc the player put in rom/, with a progress bar,
  * then starts. Without cf-tools/ (a build from source) it says how to run the conversion instead. */
+#include <SDL3/SDL.h>
 #include "pc_platform.h"
 #include "pc_cf_data.h"
+
+#include <stdlib.h>
+#include <string.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -13,8 +17,14 @@
 
 extern SDL_Window* g_pc_window;
 
+#ifdef _WIN32
 #define PC_CF_SETUP_PYTHON "cf-tools\\python\\python.exe"
 #define PC_CF_SETUP_SCRIPT "cf-tools\\extract_cf_sky.py"
+#else
+/* Linux and macOS: the system's Python 3 (with numpy and Pillow), or one shipped in cf-tools/python */
+#define PC_CF_SETUP_PYTHON_SHIPPED "cf-tools/python/bin/python3"
+#define PC_CF_SETUP_SCRIPT "cf-tools/extract_cf_sky.py"
+#endif
 
 static int pc_cf_setup_version(void) {
     FILE* f = fopen("cf_sky/version.txt", "r");
@@ -44,32 +54,10 @@ static void pc_cf_setup_message(Uint32 flags, const char* title, const char* msg
     SDL_ShowSimpleMessageBox(flags, title, msg, g_pc_window);
 }
 
-/* A bar across the middle of the window, pct of it filled */
+/* A bar across the middle of the window, pct of it filled (pc_acplus_host.cpp) */
+int pc_acplus_progress(const char* what, int pct);
 static void pc_cf_setup_draw(int pct) {
-    int w = 0, h = 0, bw, bh, x, y;
-    char title[96];
-
-    SDL_GL_GetDrawableSize(g_pc_window, &w, &h);
-    bw = w * 3 / 5, bh = h / 30 > 6 ? h / 30 : 6;
-    x = (w - bw) / 2, y = (h - bh) / 2;
-    glDisable(GL_SCISSOR_TEST);
-    glViewport(0, 0, w, h);
-    glClearColor(0.10f, 0.13f, 0.10f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glEnable(GL_SCISSOR_TEST);
-    glScissor(x - 2, y - 2, bw + 4, bh + 4);
-    glClearColor(0.85f, 0.80f, 0.62f, 1.0f); /* the frame */
-    glClear(GL_COLOR_BUFFER_BIT);
-    glScissor(x, y, bw, bh);
-    glClearColor(0.18f, 0.22f, 0.18f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glScissor(x, y, bw * pct / 100, bh);
-    glClearColor(0.45f, 0.75f, 0.35f, 1.0f); /* leaf green */
-    glClear(GL_COLOR_BUFFER_BIT);
-    glDisable(GL_SCISSOR_TEST);
-    SDL_GL_SwapWindow(g_pc_window);
-    snprintf(title, sizeof(title), "ac-plus - converting your City Folk disc: %d%%", pct);
-    SDL_SetWindowTitle(g_pc_window, title);
+    pc_acplus_progress("Converting your City Folk disc (only the first time)", pct);
 }
 
 #ifdef _WIN32
@@ -107,12 +95,8 @@ static int pc_cf_setup_run(char* err, size_t err_size) {
     pc_cf_setup_draw(0);
     for (;;) {
         DWORD avail = 0, got = 0, i;
-        SDL_Event ev;
         char buf[256];
 
-        while (SDL_PollEvent(&ev)) {
-            /* keep the window answering; closing it waits for the converter */
-        }
         if (!PeekNamedPipe(rd, NULL, 0, NULL, &avail, NULL)) {
             break; /* the converter has finished and everything it said is read */
         }
@@ -150,8 +134,39 @@ static int pc_cf_setup_run(char* err, size_t err_size) {
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
     CloseHandle(rd);
-    SDL_SetWindowTitle(g_pc_window, "Animal Crossing Plus");
+    SDL_SetWindowTitle(g_pc_window, PC_WINDOW_TITLE);
     return code == 0;
+}
+#else
+/* Runs the converter; FALSE with its last words in err if it fails */
+static int pc_cf_setup_run(char* err, size_t err_size) {
+    char cmd[512];
+    char line[512];
+    FILE* p;
+    int pct = 0;
+
+    err[0] = '\0';
+    snprintf(cmd, sizeof(cmd), "\"%s\" -u \"%s\" --auto . 2>&1",
+             pc_cf_setup_file_exists(PC_CF_SETUP_PYTHON_SHIPPED) ? PC_CF_SETUP_PYTHON_SHIPPED : "python3",
+             PC_CF_SETUP_SCRIPT);
+    p = popen(cmd, "r");
+    if (p == NULL) {
+        snprintf(err, err_size, "couldn't start the converter (python3)");
+        return FALSE;
+    }
+    pc_cf_setup_draw(0);
+    while (fgets(line, sizeof(line), p) != NULL) {
+        line[strcspn(line, "\r\n")] = '\0';
+        if (strncmp(line, "PROGRESS ", 9) == 0) {
+            pct = atoi(line + 9);
+            pct = pct < 0 ? 0 : pct > 100 ? 100 : pct;
+        } else if (line[0] != '\0' && strncmp(line, "wrote ", 6) != 0) {
+            snprintf(err, err_size, "%s", line); /* the last thing it said that wasn't progress */
+        }
+        pc_cf_setup_draw(pct);
+    }
+    SDL_SetWindowTitle(g_pc_window, PC_WINDOW_TITLE);
+    return pclose(p) == 0;
 }
 #endif
 
@@ -162,8 +177,12 @@ int pc_cf_setup(void) {
     if (version == PC_CF_DATA_VERSION) {
         return TRUE;
     }
+#ifdef ACPLUS_DESKTOP /* (elsewhere: cf_sky/ converted on a computer and copied over; docs/PORTING.md) */
 #ifdef _WIN32
     if (pc_cf_setup_file_exists(PC_CF_SETUP_PYTHON) && pc_cf_setup_file_exists(PC_CF_SETUP_SCRIPT)) {
+#else
+    if (pc_cf_setup_file_exists(PC_CF_SETUP_SCRIPT)) {
+#endif
         if (getenv("PC_CF_SETUP_QUIET") == NULL) { /* dev: tests can't click OK */
             pc_cf_setup_message(SDL_MESSAGEBOX_INFORMATION, "ac-plus - first start",
                                 version == 0
@@ -187,7 +206,7 @@ int pc_cf_setup(void) {
         }
         return FALSE;
     }
-#endif
+#endif /* ACPLUS_DESKTOP */
     pc_cf_setup_message(SDL_MESSAGEBOX_ERROR, "ac-plus - City Folk files needed",
                         version == 0 ? "City Folk files not found.\n\n"
                                        "ac-plus also needs your own copy of Animal Crossing: City Folk (Wii, USA).\n"

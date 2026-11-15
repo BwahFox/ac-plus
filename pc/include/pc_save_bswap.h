@@ -16,6 +16,9 @@ typedef enum {
 } pc_bswap_dir_t;
 
 void pc_save_bswap(Save_t* save, pc_bswap_dir_t dir);
+/* Read-only compatibility for GCIs explicitly marked with the old PC title. */
+void pc_save_bswap_from_legacy_pc(Save_t* save);
+void pc_save_relocate_quest_time_limits(Save_t* save);
 
 void pc_save_bswap_keep_mail(mCD_keep_mail_c* mail, pc_bswap_dir_t dir);
 void pc_save_bswap_keep_original(mCD_keep_original_c* orig, pc_bswap_dir_t dir);
@@ -27,12 +30,6 @@ int pc_save_bswap_verify_roundtrip(const u8* original_be, u32 size);
 int pc_save_bswap_verify_roundtrip_mail(const u8* original_be, u32 size);
 int pc_save_bswap_verify_roundtrip_original(const u8* original_be, u32 size);
 int pc_save_bswap_verify_roundtrip_diary(const u8* original_be, u32 size);
-
-/* Byte-swap foreigner (passport) data for Card B travel */
-void pc_save_bswap_foreigner(mCD_foreigner_c* f, pc_bswap_dir_t dir);
-
-/* Compute BE checksum matching mFRm_GetFlatCheckSum on real GC */
-u16 pc_checksum_be(const u8* data, u32 size, u16 old_checksum);
 
 #ifdef __cplusplus
 }

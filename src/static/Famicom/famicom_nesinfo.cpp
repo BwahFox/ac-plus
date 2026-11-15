@@ -24,8 +24,8 @@ static u8* nesinfo_ptr = nullptr;
 u32 nesinfo_tags_size = 0;
 u8* nesinfo_tags_start = nullptr;
 u8* nesinfo_tags_end = nullptr;
-static char* nesinfo_tags_gameName = nullptr;
-static char* nesinfo_tags_kanjiName = nullptr;
+static const char* nesinfo_tags_gameName = nullptr;
+static const char* nesinfo_tags_kanjiName = nullptr;
 static u8* nesinfo_tags_moriName = nullptr;
 u32 nesinfo_data_size = 0;
 u8* nesinfo_data_start = nullptr;
@@ -418,8 +418,8 @@ static u8 tags_table_balloon_fight_jpn[] = {
 typedef struct nesinfo_tag_s {
     u8* tags_table;
     size_t tags_size;
-    char* gameName;
-    char* kanjiName;
+    const char* gameName;
+    const char* kanjiName;
 } nesinfo_tag_info;
 
 static const nesinfo_tag_info tags_table_table[FAMICOM_INTERNAL_ROM_NUM] = {
@@ -550,7 +550,7 @@ static u8* nesinfo_next_tag(u8* data) {
 }
 
 static u16 calc_check_sum2(void* data, size_t size) {
-    if (((u32)data & 1) == 0) {
+    if ((reinterpret_cast<uintptr_t>(data) & 1) == 0) {
         u16 sum;
         size_t i;
         u16* data2;
@@ -962,11 +962,16 @@ extern void nesinfo_tag_process2() {
                     case 3:
                     default: {
                         /* This gives us an effective patch application range of [0x80000000, 0x807FFFFF] */
+#ifndef TARGET_PC
                         if (patch_type >= 0x80 && patch_type <= 0xFF) {
-                            dst_p = (u8*)((0x8000 + (patch_type - 0x80)) << 16) + patch_ofs;
+                            dst_p = (u8*)(uintptr_t)((0x8000 + (patch_type - 0x80)) << 16) + patch_ofs;
                         } else {
                             dst_p = nullptr;
                         }
+#else
+                        /* Legacy patches that write directly into GameCube RAM have no PC address target. */
+                        dst_p = nullptr;
+#endif
 
                         break;
                     }

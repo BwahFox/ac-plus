@@ -1,11 +1,9 @@
 /* pc_m_card.c - memory card manager: GCI save/load, village generation, ARAM data blocks
  *
  * Card A (save/card_a/) = player's home town
- * Card B (save/card_b/) = second town for visiting (drop any AC GCI file there)
+ * Card B (save/card_b/) = towns for visiting (drop any AC GCI files there; Porter lists them)
  */
 #include "m_card.h"
-#include "m_actor.h"
-#include "m_play.h"
 #include "m_start_data_init.h"
 #include "m_common_data.h"
 #include "m_flashrom.h"
@@ -26,8 +24,10 @@
 #include "sys_math3d.h"
 #include "sys_math.h"
 #include "zurumode.h"
-#include "pc_save_bswap.h"
+#include "pc_gci.h"
+#include "pc_platform.h"
 #include "pc_settings.h"
+#include "pc_town_select.h"
 #include "m_cockroach.h"
 #include "m_all_grow_ovl.h"
 #include "m_home.h"
@@ -37,51 +37,61 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include <sys/stat.h>
-#include <unistd.h>
-#include <dirent.h>
+#include <time.h>
+#include "pc_dirent.h"
+#include "pc_ext_save.h"
+#include "m_play.h"
 #ifdef _WIN32
-#include <direct.h>  /* _mkdir */
+#include <direct.h>
 #endif
-#include <dolphin/os.h>  /* OSReport */
+#include <dolphin/os.h>
 
-/* --- Path constants --- */
-#define PC_CARD_A_DIR     "save/card_a"
-#define PC_CARD_B_DIR     "save/card_b"
-#define PC_GCI_FILENAME   "DobutsunomoriP_MURA.gci"
-#define PC_GCI_PATH       PC_CARD_A_DIR "/" PC_GCI_FILENAME
-#define PC_GCI_TMP_PATH   PC_CARD_A_DIR "/" PC_GCI_FILENAME ".tmp"
-/* The home town: one file with the GameCube image and the ac-plus data (pc_ext_save.h). A .gci found in card_a
- * without it (an older ac-plus's save, or one from Dolphin/a GameCube) is moved into it on first load. */
-#define PC_TOWN_PATH      PC_CARD_A_DIR "/town.acplus"
-#define PC_SAVE_DIR       "save"
+/* --- Save paths below the configured --user-dir --- */
+#define PC_CWD_CARD_A_GCI_PATH "save/card_a/" PC_GCI_FILENAME
+#define PC_CWD_CARD_A_PREFIXED_GCI_PATH "save/card_a/8P-GAFE-" PC_GCI_FILENAME
+#define PC_CWD_FLAT_GCI_PATH "save/" PC_GCI_FILENAME
+
+static char l_pc_save_dir[PC_GCI_PATH_MAX];
+static char l_pc_card_a_dir[PC_GCI_PATH_MAX];
+static char l_pc_card_b_dir[PC_GCI_PATH_MAX];
+static char l_pc_gci_path[PC_GCI_PATH_MAX];
+static char l_pc_gci_path_legacy[PC_GCI_PATH_MAX];
+/* ac-plus: the home town is one file with the GameCube image and the ac-plus data (pc_ext_save.h). A .gci found in
+ * card_a without it (an older ac-plus's save, or one from Dolphin/a GameCube) is moved into it on first load. */
+static char l_pc_town_path[PC_GCI_PATH_MAX];
+static char l_pc_passport_path[PC_GCI_PATH_MAX];
+static char l_pc_passport_tmp_path[PC_GCI_PATH_MAX];
+#define PC_TOWN_PATH l_pc_town_path
+#define PC_PASSPORT_PATH l_pc_passport_path
+#define PC_PASSPORT_TMP_PATH l_pc_passport_tmp_path
 #define PC_SAVE_MAX_BACKUPS 3
-#define PC_PASSPORT_PATH "save/online_passport.bin"
-#define PC_PASSPORT_TMP_PATH "save/online_passport.bin.tmp"
 
-/* Legacy paths for migration from flat save/ layout */
-#define PC_GCI_PATH_LEGACY     "save/DobutsunomoriP_MURA.gci"
-#define PC_GCI_TMP_PATH_LEGACY "save/DobutsunomoriP_MURA.gci.tmp"
+#define PC_SAVE_DIR l_pc_save_dir
+#define PC_CARD_A_DIR l_pc_card_a_dir
+#define PC_CARD_B_DIR l_pc_card_b_dir
+#define PC_GCI_PATH l_pc_gci_path
+#define PC_GCI_PATH_LEGACY l_pc_gci_path_legacy
 
-#define GCI_HEADER_SIZE      sizeof(CARDDir)        /* 64 bytes */
-#define GCI_FILE_DATA_SIZE   mCD_LAND_SAVE_SIZE     /* 0x72000 */
-#define GCI_OTHERS_OFFSET    0
-#define GCI_SAVE_MAIN_OFFSET OTHERS_SIZE            /* 0x26000 */
-#define GCI_SAVE_BACK_OFFSET (OTHERS_SIZE + sizeof(Save))  /* 0x4C000 */
-#define GCI_SECTOR_SIZE      mCD_MEMCARD_SECTORSIZE /* 0x2000 */
-#define GCI_IMAGE_SIZE       (GCI_HEADER_SIZE + GCI_FILE_DATA_SIZE)
+typedef enum {
+    PC_START_IDLE,
+    PC_START_FAILED,
+    PC_START_WRITE_PENDING,
+    PC_START_COMPLETE
+} pc_start_phase;
 
-int pc_save_loaded = 0;
+static int pc_save_loaded = 0;
 static int pc_save_ready = 0;
+static pc_save_result pc_save_load_status = PC_SAVE_MISSING;
+static pc_start_phase pc_start_state = PC_START_IDLE;
 
 /* --- Travel state --- */
 static Save l_keepSave;                        /* Other town's save data (for Card B visit) */
 static int l_keepSave_set = FALSE;
-static char l_keepSave_path[300];               /* the file l_keepSave was read from */
-static mCD_keep_mail_c l_keepMail;             /* Other town's mail ARAM block */
-static mCD_keep_original_c l_keepOriginal;     /* Other town's original designs ARAM block */
-static mCD_keep_diary_c l_keepDiary;           /* Other town's diary ARAM block */
+static char l_keepSave_path[PC_GCI_PATH_MAX]; /* the file l_keepSave was read from */
+static mCD_keep_mail_c l_keepMail;
+static mCD_keep_original_c l_keepOriginal;
+static mCD_keep_diary_c l_keepDiary;
 
 /* Passport: the traveling player's private data + departing animal */
 static union {
@@ -90,12 +100,20 @@ static union {
 } l_mcd_foreigner_file;
 
 static int l_mcd_keep_startCond = 0;
-static char l_card_b_gci_path[300] = {0};      /* Path to the Card B GCI file, if found */
+static char l_card_b_gci_path[PC_GCI_PATH_MAX] = {0};
 
-/* External: scan card_b/ for valid AC GCI file (defined in pc_card.c) */
-extern int pc_card_scan_for_gci(int chan, char* out_path, int out_size);
+typedef struct {
+    char path[PC_GCI_PATH_MAX];
+    pc_card_town_entry entry;
+} pc_card_town;
 
-/* External: functions from decomp used in mCD_toNextLand */
+_Static_assert(PC_CARD_TOWN_NAME_SIZE == LAND_NAME_SIZE, "town name size mismatch");
+
+static pc_card_town l_card_b_towns[PC_CARD_TOWN_MAX];
+static int l_card_b_town_count = 0;
+static int l_card_b_usable_count = 0;
+static int l_card_b_town_selected = FALSE;
+
 extern void mTM_rtcTime_limit_check(void);
 extern void mEv_ClearEventInfo(void);
 extern void mEv_toland_clear_common(void);
@@ -122,12 +140,11 @@ static void pc_init_diary_entries(void* block) {
     int p, m;
     for (p = 0; p < mCD_KEEP_DIARY_COUNT; p++) {
         for (m = 0; m < mCD_KEEP_DIARY_ENTRY_COUNT; m++) {
-            memset(diary->entries[p][m].text, CHAR_SPACE, mDI_ENTRY_SIZE);
+            mDi_init_diary(&diary->entries[p][m]);
         }
     }
 }
 
-/* Match GC's mCD_set_init_mail_data: clear mail slots with font=0xFF (unused) */
 static void pc_init_mail_entries(void* block) {
     mCD_keep_mail_c* keep_mail = (mCD_keep_mail_c*)block;
     Mail_c* mail = (Mail_c*)keep_mail->mail;
@@ -141,37 +158,41 @@ static void pc_init_mail_entries(void* block) {
     }
 }
 
-/* Same as m_card.c mCD_set_init_original_data: blank folder names and blank
- * designs. Without it the pattern storage (Mabel's "save designs to the memory
- * card", also the pause menu's Pattern Storage) is raw zeros: "¡¡¡" folder
- * names and black patterns. */
-static void pc_init_original_entries(void* buf) {
-    mCD_keep_original_c* keep_original = (mCD_keep_original_c*)buf;
-    int i;
-    int j;
-
-    for (i = 0; i < mCD_KEEP_ORIGINAL_PAGE_COUNT; i++) {
-        mem_clear(keep_original->folder_names[i], sizeof(keep_original->folder_names[i]), CHAR_SPACE);
-        for (j = 0; j < mCD_KEEP_ORIGINAL_COUNT; j++) {
-            mNW_InitOriginalData(&keep_original->original[i][j]);
+static void pc_init_original_entries(void* block) {
+    mCD_keep_original_c* original = (mCD_keep_original_c*)block;
+    int page, slot;
+    for (page = 0; page < mCD_KEEP_ORIGINAL_PAGE_COUNT; page++) {
+        mem_clear(original->folder_names[page], sizeof(original->folder_names[page]), CHAR_SPACE);
+        for (slot = 0; slot < mCD_KEEP_ORIGINAL_COUNT; slot++) {
+            mNW_InitOriginalData(&original->original[page][slot]);
         }
     }
 }
 
-/* Saves written before pc_init_original_entries existed hold an all-zero
- * block; a block that was ever set up has space-filled folder names. */
-static void pc_repair_original_entries(void* buf) {
-    mCD_keep_original_c* keep_original = (mCD_keep_original_c*)buf;
-    const u8* names = &keep_original->folder_names[0][0];
+/* Old PC saves can contain an entirely zeroed design block. Preserve any nonzero data. */
+static void pc_fix_zeroed_original_entries(mCD_keep_original_c* original, u16 land_id) {
+    const u8* bytes = (const u8*)original;
     u32 i;
-
-    for (i = 0; i < sizeof(keep_original->folder_names); i++) {
-        if (names[i] != 0) {
-            return;
-        }
+    for (i = 0; i < sizeof(*original); i++) {
+        if (bytes[i] != 0) return;
     }
-    OSReport("[PC] Pattern storage was never set up, initialising it\n");
-    pc_init_original_entries(buf);
+
+    pc_init_original_entries(original);
+    original->landid = land_id;
+    original->checksum = mFRm_GetFlatCheckSum((u16*)original, sizeof(*original), original->checksum);
+    OSReport("[PC] GCI: initialized all-zero Mabel design storage to GC blanks in memory\n");
+}
+
+static void pc_init_aram_block(int index) {
+    static void (*const initialize[mCD_ARAM_DATA_NUM])(void*) = {
+        pc_init_original_entries,
+        pc_init_mail_entries,
+        pc_init_diary_entries,
+    };
+    void* block = l_aram_block_p_table[index];
+    if (block == NULL) return;
+    memset(block, 0, l_aram_alloc_size_table[index]);
+    initialize[index](block);
 }
 
 void mCD_save_data_aram_malloc(void) {
@@ -179,16 +200,7 @@ void mCD_save_data_aram_malloc(void) {
     for (i = 0; i < mCD_ARAM_DATA_NUM; i++) {
         if (l_aram_block_p_table[i] == NULL) {
             l_aram_block_p_table[i] = malloc(l_aram_alloc_size_table[i]);
-            if (l_aram_block_p_table[i]) {
-                memset(l_aram_block_p_table[i], 0, l_aram_alloc_size_table[i]);
-                if (i == mCD_ARAM_DATA_DIARY) {
-                    pc_init_diary_entries(l_aram_block_p_table[i]);
-                } else if (i == mCD_ARAM_DATA_MAIL) {
-                    pc_init_mail_entries(l_aram_block_p_table[i]);
-                } else if (i == mCD_ARAM_DATA_ORIGINAL) {
-                    pc_init_original_entries(l_aram_block_p_table[i]);
-                }
-            }
+            pc_init_aram_block(i);
         }
     }
 }
@@ -225,58 +237,35 @@ int mCD_save_data_main_to_aram(void* src, u32 size, u32 idx) {
 void mCD_set_aram_save_data(void) {
     int i;
     for (i = 0; i < mCD_ARAM_DATA_NUM; i++) {
-        if (l_aram_block_p_table[i] != NULL) {
-            memset(l_aram_block_p_table[i], 0, l_aram_alloc_size_table[i]);
-            if (i == mCD_ARAM_DATA_DIARY) {
-                pc_init_diary_entries(l_aram_block_p_table[i]);
-            } else if (i == mCD_ARAM_DATA_MAIL) {
-                pc_init_mail_entries(l_aram_block_p_table[i]);
-            } else if (i == mCD_ARAM_DATA_ORIGINAL) {
-                pc_init_original_entries(l_aram_block_p_table[i]);
-            }
-        }
+        pc_init_aram_block(i);
     }
 }
 
-/* --- GCI read/write helpers --- */
+/* --- Save paths and game state --- */
 
-static void put_be32(u8* dst, u32 val) {
-    dst[0] = (u8)(val >> 24);
-    dst[1] = (u8)(val >> 16);
-    dst[2] = (u8)(val >> 8);
-    dst[3] = (u8)(val);
-}
+static int pc_save_paths_init(void) {
+    static int initialized = FALSE;
+    if (initialized) return TRUE;
 
-static void put_be16(u8* dst, u16 val) {
-    dst[0] = (u8)(val >> 8);
-    dst[1] = (u8)(val);
-}
-
-/* rotate backups: .bak3→delete, .bak2→.bak3, .bak1→.bak2, current→.bak1 */
-void pc_save_rotate_backups(const char* base_path) {
-    char older[300], newer[300];
-    int i;
-    struct stat st;
-
-    snprintf(older, sizeof(older), "%s.bak%d", base_path, PC_SAVE_MAX_BACKUPS);
-    remove(older);
-
-    /* Windows rename() fails if dest exists, so remove first */
-    for (i = PC_SAVE_MAX_BACKUPS; i > 1; i--) {
-        snprintf(older, sizeof(older), "%s.bak%d", base_path, i - 1);
-        snprintf(newer, sizeof(newer), "%s.bak%d", base_path, i);
-        remove(newer);
-        rename(older, newer);
+    if (!pc_platform_user_path("save", PC_SAVE_DIR, sizeof(l_pc_save_dir)) ||
+        !pc_platform_user_path("save/card_a", PC_CARD_A_DIR, sizeof(l_pc_card_a_dir)) ||
+        !pc_platform_user_path("save/card_b", PC_CARD_B_DIR, sizeof(l_pc_card_b_dir)) ||
+        !pc_platform_user_path("save/card_a/" PC_GCI_FILENAME, PC_GCI_PATH, sizeof(l_pc_gci_path)) ||
+        !pc_platform_user_path("save/" PC_GCI_FILENAME, PC_GCI_PATH_LEGACY,
+                               sizeof(l_pc_gci_path_legacy)) ||
+        !pc_platform_user_path("save/card_a/town.acplus", l_pc_town_path, sizeof(l_pc_town_path)) ||
+        !pc_platform_user_path("save/online_passport.bin", l_pc_passport_path, sizeof(l_pc_passport_path)) ||
+        !pc_platform_user_path("save/online_passport.bin.tmp", l_pc_passport_tmp_path,
+                               sizeof(l_pc_passport_tmp_path))) {
+        OSReport("[PC] Save path exceeds %d bytes\n", PC_GCI_PATH_MAX);
+        return FALSE;
     }
-
-    if (stat(base_path, &st) == 0) {
-        snprintf(newer, sizeof(newer), "%s.bak1", base_path);
-        remove(newer);
-        rename(base_path, newer);
-    }
+    initialized = TRUE;
+    return TRUE;
 }
 
 static void pc_ensure_save_dirs(void) {
+    if (!pc_save_paths_init()) return;
 #ifdef _WIN32
     _mkdir(PC_SAVE_DIR);
     _mkdir(PC_CARD_A_DIR);
@@ -288,8 +277,7 @@ static void pc_ensure_save_dirs(void) {
 #endif
 }
 
-static int pc_save_write_gci_to(const char* gci_path, const char* tmp_path);
-static int pc_read_gci_land_info(const char* path, Save_t* out);
+static int pc_save_write_gci_to(const char* gci_path);
 void pc_mcd_passport_write(void);
 static void pc_mcd_passport_done(void);
 static void pc_mcd_passport_restore(void);
@@ -299,15 +287,34 @@ void pc_cloud_save_push(const char* path); /* pc_cloud_save.c */
 void pc_cloud_save_pull(const char* path);
 void pc_sync_after_save(void);  /* pc_sync.c */
 void pc_sync_before_load(void);
-#include "pc_ext_save.h"
 
-/* mCD_get_land_copyProtect */
+/* rotate backups: .bak3 -> delete, .bak2 -> .bak3, .bak1 -> .bak2, current -> .bak1 (town files, pc_ext_save.c) */
+void pc_save_rotate_backups(const char* base_path) {
+    char older[PC_GCI_PATH_MAX + 8], newer[PC_GCI_PATH_MAX + 8];
+    int i;
+    struct stat st;
+
+    snprintf(older, sizeof(older), "%s.bak%d", base_path, PC_SAVE_MAX_BACKUPS);
+    remove(older);
+    /* Windows rename() fails if dest exists, so remove first */
+    for (i = PC_SAVE_MAX_BACKUPS; i > 1; i--) {
+        snprintf(older, sizeof(older), "%s.bak%d", base_path, i - 1);
+        snprintf(newer, sizeof(newer), "%s.bak%d", base_path, i);
+        remove(newer);
+        rename(older, newer);
+    }
+    if (stat(base_path, &st) == 0) {
+        snprintf(newer, sizeof(newer), "%s.bak1", base_path);
+        remove(newer);
+        rename(base_path, newer);
+    }
+}
+
 static u16 pc_get_land_copy_protect(void) {
     u16 code = (u16)RANDOM(0xFFF0);
     return (u16)(code + 1);
 }
 
-/* mCD_CheckResetCode: TRUE if no reset code armed (birthday clears it) */
 static int pc_check_reset_code(Private_c* priv) {
     if (priv->state_flags & mPr_FLAG_BIRTHDAY_ACTIVE) {
         priv->reset_code = 0;
@@ -321,8 +328,7 @@ static void pc_set_reset_code(Private_c* priv) {
     priv->reset_code++;
 }
 
-/* Money rock / Wisp / Copy Protect. save_mode mirrors GC SaveHome _04:
- * 0 = full save (clears reset code), nonzero = door save (keeps it armed) */
+/* GC save_mode: 0 is a full save; door saves leave the reset code armed. */
 static void pc_save_pre_write_side_effects(int save_mode) {
     Private_c* priv = Now_Private;
     u16 copy_protect;
@@ -355,174 +361,52 @@ static void pc_save_pre_write_side_effects(int save_mode) {
 }
 
 static int pc_save_write_gci(void) {
-    return pc_save_write_gci_to(PC_TOWN_PATH, NULL);
+    if (!pc_save_paths_init()) return FALSE;
+    return pc_save_write_gci_to(PC_TOWN_PATH);
 }
 
-/* Saves the town in memory to path: a town file (the home town, or a Card B town kept as one), else a plain .gci
- * written through tmp_path */
-static int pc_save_write_gci_to(const char* gci_path, const char* tmp_path) {
-    FILE* fp;
-    u8* image;
-    u8* file_data;
-    CARDDir dir_hdr;
-    Save_t* save_copy;
-    u16 checksum;
-    u8* others_ptr;
+static int pc_save_write_gci_to(const char* gci_path) {
+    int is_town;
 
     if (!pc_save_ready) return TRUE;
     if (pc_mcd_online_visiting()) {
         /* the town in memory is someone else's (an online visit): nothing of it goes over a save on disk */
-        printf("[save] not saving: visiting a town online (the passport instead)\n");
+        OSReport("[save] not saving: visiting a town online (the passport instead)\n");
         pc_mcd_passport_write();
         return TRUE;
     }
+    if (pc_save_load_status == PC_SAVE_INVALID || pc_save_load_status == PC_SAVE_IO_ERROR) return FALSE;
+    if (!l_aram_block_p_table[mCD_ARAM_DATA_MAIL] ||
+        !l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL] ||
+        !l_aram_block_p_table[mCD_ARAM_DATA_DIARY]) return FALSE;
 
     pc_ensure_save_dirs();
-
     Save_Get(save_exist) = TRUE;
     Save_Get(save_check).version = mFRm_VERSION;
     mFRm_SetSaveCheckData(Save_GetPointer(save_check));
 
-    image = (u8*)calloc(1, GCI_IMAGE_SIZE);
-    if (!image) return FALSE;
-    file_data = image + GCI_HEADER_SIZE;
-
-    /* Others block (offset 0) — comment, banner, ARAM blocks */
-    others_ptr = file_data + GCI_OTHERS_OFFSET;
-    {
-        const char* title = "DobutsunomoriP (AC PC Port)";
-        u8* comment = others_ptr;
-        memset(comment, 0, CARD_COMMENT_SIZE);
-        strncpy((char*)comment, title, 32);
-        memcpy(comment + 32, Save_Get(land_info).name, 8);
-    }
-
-    /* ARAM blocks: mail, original, diary (GC/Dolphin order).
-     * Set landid on mail block so load-time detection identifies the order. */
-    {
-        u32 offset = sizeof(MemcardHeader_c) + 32; /* 0x1460 */
-        u16 land_id = Save_Get(land_info).id;
-
-        offset = ALIGN_NEXT(offset, 32);
-        if (l_aram_block_p_table[mCD_ARAM_DATA_MAIL]) {
-            u8* blk = others_ptr + offset;
-            u32 sz = l_aram_alloc_size_table[mCD_ARAM_DATA_MAIL];
-            memcpy(blk, l_aram_block_p_table[mCD_ARAM_DATA_MAIL], sz);
-            pc_save_bswap_keep_mail((mCD_keep_mail_c*)blk, PC_BSWAP_TO_BE);
-            /* Set landid (BE u16 at offset 2) so load detects GC order */
-            put_be16(blk + 2, land_id);
-            /* Recompute BE checksum over the bswapped block so Dolphin's
-             * mFRm_ReturnCheckSum validates. */
-            blk[0] = 0;
-            blk[1] = 0;
-            put_be16(blk, pc_checksum_be(blk, sz, 0));
-        }
-        offset += l_aram_alloc_size_table[mCD_ARAM_DATA_MAIL];
-
-        offset = ALIGN_NEXT(offset, 32);
-        if (l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL]) {
-            u8* blk = others_ptr + offset;
-            u32 sz = l_aram_alloc_size_table[mCD_ARAM_DATA_ORIGINAL];
-            memcpy(blk, l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL], sz);
-            pc_save_bswap_keep_original((mCD_keep_original_c*)blk, PC_BSWAP_TO_BE);
-            blk[0] = 0;
-            blk[1] = 0;
-            put_be16(blk, pc_checksum_be(blk, sz, 0));
-        }
-        offset += l_aram_alloc_size_table[mCD_ARAM_DATA_ORIGINAL];
-
-        offset = ALIGN_NEXT(offset, 32);
-        if (l_aram_block_p_table[mCD_ARAM_DATA_DIARY]) {
-            u8* blk = others_ptr + offset;
-            u32 sz = l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY];
-            memcpy(blk, l_aram_block_p_table[mCD_ARAM_DATA_DIARY], sz);
-            pc_save_bswap_keep_diary((mCD_keep_diary_c*)blk, PC_BSWAP_TO_BE);
-            blk[0] = 0;
-            blk[1] = 0;
-            put_be16(blk, pc_checksum_be(blk, sz, 0));
-        }
-    }
-
-    /* Main Save_t (offset 0x26000) */
-    save_copy = (Save_t*)(file_data + GCI_SAVE_MAIN_OFFSET);
-    memcpy(save_copy, &common_data.save.save, sizeof(Save_t));
-
-    pc_save_bswap(save_copy, PC_BSWAP_TO_BE);
-    {
-        u8* chk_ptr = (u8*)&save_copy->save_check.checksum;
-        chk_ptr[0] = 0;
-        chk_ptr[1] = 0;
-    }
-    checksum = pc_checksum_be((const u8*)save_copy, sizeof(Save_t), 0);
-    put_be16((u8*)&save_copy->save_check.checksum, checksum);
-
-    /* Backup = copy of main */
-    memcpy(file_data + GCI_SAVE_BACK_OFFSET, file_data + GCI_SAVE_MAIN_OFFSET, sizeof(Save));
-
-    /* CARDDir header */
-    memset(&dir_hdr, 0, sizeof(dir_hdr));
-    memcpy(dir_hdr.gameName, "GAFE", 4);
-    memcpy(dir_hdr.company, "01", 2);
-    dir_hdr.bannerFormat = 0;
-    strncpy((char*)dir_hdr.fileName, "DobutsunomoriP_MURA", CARD_FILENAME_MAX);
-    {
-        time_t unix_now = time(NULL);
-        u32 gc_secs = (u32)(unix_now - 946684800LL);
-        put_be32((u8*)&dir_hdr.time, gc_secs);
-    }
-    put_be32((u8*)&dir_hdr.iconAddr, 0xFFFFFFFF);
-    put_be16((u8*)&dir_hdr.iconFormat, 0);
-    put_be16((u8*)&dir_hdr.iconSpeed, 0);
-    dir_hdr.permission = 0x04;
-    dir_hdr.copyTimes = 0;
-    put_be16((u8*)&dir_hdr.startBlock, 5);
-    put_be16((u8*)&dir_hdr.length, (u16)(GCI_FILE_DATA_SIZE / GCI_SECTOR_SIZE));
-    put_be32((u8*)&dir_hdr.commentAddr, 0);
-
-    memcpy(image, &dir_hdr, GCI_HEADER_SIZE);
-
-    if (strcmp(gci_path, PC_TOWN_PATH) == 0 || pc_ext_town_is_merged(gci_path)) {
-        int ok = pc_ext_town_write(gci_path, image, GCI_IMAGE_SIZE);
+    is_town = strcmp(gci_path, PC_TOWN_PATH) == 0;
+    if (is_town || pc_ext_town_is_merged(gci_path)) {
+        /* a town file (the home town, or a Card B town kept as one): the GameCube image goes in its GCIS chunk */
+        u32 size = 0;
+        u8* image = pc_gci_build(&common_data.save.save, l_aram_block_p_table[mCD_ARAM_DATA_MAIL],
+                                 l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL],
+                                 l_aram_block_p_table[mCD_ARAM_DATA_DIARY], &size);
+        int ok = image != NULL && pc_ext_town_write(gci_path, image, size);
 
         free(image);
-        if (!ok) {
-            return FALSE;
-        }
-    } else {
-        /* write temp file → rotate backups → rename */
-        fp = fopen(tmp_path, "wb");
-        if (!fp) {
-            OSReport("[PC] GCI save: failed to open temp file '%s'\n", tmp_path);
-            free(image);
-            return FALSE;
-        }
-        if (fwrite(image, GCI_IMAGE_SIZE, 1, fp) != 1) {
-            OSReport("[PC] GCI save: fwrite failed (disk full?)\n");
-            fclose(fp);
-            remove(tmp_path);
-            free(image);
-            return FALSE;
-        }
-        fflush(fp);
-        fclose(fp);
-        free(image);
-
-        pc_save_rotate_backups(gci_path);
-        if (rename(tmp_path, gci_path) != 0) {
-            OSReport("[PC] GCI save: rename '%s' -> '%s' failed, recovering...\n", tmp_path, gci_path);
-            {
-                char bak1[300];
-                snprintf(bak1, sizeof(bak1), "%s.bak1", gci_path);
-                rename(bak1, gci_path);
-            }
-            remove(tmp_path);
-            return FALSE;
-        }
+        if (!ok) return FALSE;
+    } else if (!pc_gci_write(gci_path, &common_data.save.save,
+                             l_aram_block_p_table[mCD_ARAM_DATA_MAIL],
+                             l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL],
+                             l_aram_block_p_table[mCD_ARAM_DATA_DIARY])) {
+        return FALSE;
     }
-
-    OSReport("[PC] GCI save: written successfully to %s (backups rotated)\n", gci_path);
+    OSReport("[PC] save written to %s\n", gci_path);
     pc_autosave_reset_timer();
-    if (strcmp(gci_path, PC_TOWN_PATH) == 0) {
+    if (is_town) {
+        pc_save_loaded = TRUE;
+        pc_save_load_status = PC_SAVE_LOADED;
         pc_mcd_passport_done();
         pc_cloud_save_push(gci_path);
         pc_sync_after_save();
@@ -530,128 +414,929 @@ static int pc_save_write_gci_to(const char* gci_path, const char* tmp_path) {
     return TRUE;
 }
 
-/* Reads a town's GameCube image (GCI header + card data) from a town file (or its newest good backup) or a
- * .gci; used gets the file actually read. Returns the image (free it) or NULL. */
-static u8* pc_save_load_image(const char* path, char* used, int used_size) {
-    u8* image = (u8*)malloc(GCI_IMAGE_SIZE);
-    CARDDir* hdr = (CARDDir*)image;
-    FILE* fp;
-    long file_size;
+/* path: a town file (or its newest good backup) or a .gci; used gets the file actually read (its ac-plus data is
+ * that file's, or the .gci's companion) */
+static pc_save_result pc_save_read_image_used(const char* path, pc_gci_image* image, char* used, int used_size) {
+    pc_save_result result;
 
-    if (!image) {
-        OSReport("[PC] GCI: malloc(%u) failed\n", (unsigned)GCI_IMAGE_SIZE);
-        return NULL;
-    }
-    if (pc_ext_town_is_merged(path) || strcmp(path, PC_TOWN_PATH) == 0) {
-        if (pc_ext_town_read_image(path, image, GCI_IMAGE_SIZE, used, used_size) &&
-            memcmp(hdr->gameName, "GAF", 3) == 0) {
-            return image;
+    if (strcmp(path, PC_TOWN_PATH) == 0 || pc_ext_town_is_merged(path)) {
+        u32 size = pc_gci_image_size();
+        u8* raw = (u8*)malloc(size);
+        struct stat st;
+
+        if (raw == NULL) return PC_SAVE_IO_ERROR;
+        if (!pc_ext_town_read_image(path, raw, size, used, used_size)) {
+            free(raw);
+            return stat(path, &st) == 0 ? PC_SAVE_INVALID : PC_SAVE_MISSING;
         }
-        free(image);
-        return NULL;
+        result = pc_gci_parse(raw, size, image);
+        free(raw);
+    } else {
+        result = pc_gci_read(path, image);
+        snprintf(used, used_size, "%s", path);
     }
-
-    fp = fopen(path, "rb");
-    if (!fp) {
-        OSReport("[PC] GCI: fopen('%s') failed\n", path);
-        free(image);
-        return NULL;
+    if (result == PC_SAVE_LOADED) {
+        pc_fix_zeroed_original_entries(image->original, image->save->land_info.id);
     }
-    fseek(fp, 0, SEEK_END);
-    file_size = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    OSReport("[PC] GCI: opened '%s', size = %ld (0x%lX), expected %ld (0x%lX)\n", path, file_size,
-             (unsigned long)file_size, (long)GCI_IMAGE_SIZE, (unsigned long)GCI_IMAGE_SIZE);
-    if (fread(image, GCI_IMAGE_SIZE, 1, fp) != 1) {
-        OSReport("[PC] GCI: failed to read %u bytes (file may be too small)\n", (unsigned)GCI_IMAGE_SIZE);
-        fclose(fp);
-        free(image);
-        return NULL;
-    }
-    fclose(fp);
-    OSReport("[PC] GCI: gameName='%.4s' company='%.2s' fileName='%.32s'\n", hdr->gameName, hdr->company,
-             hdr->fileName);
-    if (memcmp(hdr->gameName, "GAF", 3) != 0) {
-        OSReport("[PC] GCI: not an Animal Crossing save (expected GAFx, got '%.4s')\n", hdr->gameName);
-        free(image);
-        return NULL;
-    }
-    snprintf(used, used_size, "%s", path);
-    return image;
+    return result;
 }
 
-/* Read a town file or GCI into common_data (for home town / Card A) */
-static int pc_save_read_gci(const char* path) {
-    u8* image;
-    u8* file_data;
-    Save_t* save_src;
-    char used[340];
+static pc_save_result pc_save_read_image(const char* path, pc_gci_image* image) {
+    char used[PC_GCI_PATH_MAX + 16];
+    pc_save_result result = pc_save_read_image_used(path, image, used, sizeof(used));
+    return result;
+}
 
-    image = pc_save_load_image(path, used, sizeof(used));
-    if (!image) {
-        return FALSE;
-    }
-    file_data = image + GCI_HEADER_SIZE;
+static void pc_save_dev_after_load(void);
 
-    save_src = (Save_t*)(file_data + GCI_SAVE_MAIN_OFFSET);
-    pc_save_bswap_verify_roundtrip((const u8*)save_src, sizeof(Save_t));
-
-    memcpy(&common_data.save.save, save_src, sizeof(Save_t));
-    pc_save_bswap(&common_data.save.save, PC_BSWAP_FROM_BE);
-
-    /* --- Load ARAM blocks from Others section ---
-     * Current saves (PC + Dolphin/GC) use order: mail, original, diary.
-     * Old PC saves (before landid fix) used: original, mail, diary.
-     * Detect by checking the landid field at offset 2 of the first block:
-     * if it matches save's land_info.id, first block is mail (GC order). */
-    {
-        u8* others_ptr = file_data + GCI_OTHERS_OFFSET;
-        u32 block_start = ALIGN_NEXT(sizeof(MemcardHeader_c) + 32, 32);
-        u16 first_landid = ((u16)others_ptr[block_start + 2] << 8) | others_ptr[block_start + 3];
-        u16 save_land_id = common_data.save.save.land_info.id;
-        int gc_order = (first_landid == save_land_id && save_land_id != 0);
-        u32 mail_size = l_aram_alloc_size_table[mCD_ARAM_DATA_MAIL];
-        u32 orig_size = l_aram_alloc_size_table[mCD_ARAM_DATA_ORIGINAL];
-        u32 off_mail, off_orig, off_diary;
-
-        if (gc_order) {
-            /* Dolphin/GC save: mail, original, diary */
-            off_mail = block_start;
-            off_orig = ALIGN_NEXT(block_start + mail_size, 32);
-            off_diary = ALIGN_NEXT(off_orig + orig_size, 32);
-        } else {
-            /* PC save: original, mail, diary */
-            off_orig = block_start;
-            off_mail = ALIGN_NEXT(block_start + orig_size, 32);
-            off_diary = ALIGN_NEXT(off_mail + mail_size, 32);
-        }
-
-        if (l_aram_block_p_table[mCD_ARAM_DATA_MAIL]) {
-            pc_save_bswap_verify_roundtrip_mail(others_ptr + off_mail, mail_size);
-            memcpy(l_aram_block_p_table[mCD_ARAM_DATA_MAIL], others_ptr + off_mail, mail_size);
-            pc_save_bswap_keep_mail((mCD_keep_mail_c*)l_aram_block_p_table[mCD_ARAM_DATA_MAIL],
-                                    PC_BSWAP_FROM_BE);
-        }
-        if (l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL]) {
-            pc_save_bswap_verify_roundtrip_original(others_ptr + off_orig, orig_size);
-            memcpy(l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL], others_ptr + off_orig, orig_size);
-            pc_save_bswap_keep_original((mCD_keep_original_c*)l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL],
-                                        PC_BSWAP_FROM_BE);
-            pc_repair_original_entries(l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL]);
-        }
-        if (l_aram_block_p_table[mCD_ARAM_DATA_DIARY]) {
-            pc_save_bswap_verify_roundtrip_diary(others_ptr + off_diary,
-                                                  l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY]);
-            memcpy(l_aram_block_p_table[mCD_ARAM_DATA_DIARY], others_ptr + off_diary,
-                   l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY]);
-            pc_save_bswap_keep_diary((mCD_keep_diary_c*)l_aram_block_p_table[mCD_ARAM_DATA_DIARY],
-                                     PC_BSWAP_FROM_BE);
+static pc_save_result pc_save_read_gci(const char* path) {
+    pc_gci_image image;
+    char used[PC_GCI_PATH_MAX + 16];
+    pc_save_result result = pc_save_read_image_used(path, &image, used, sizeof(used));
+    int i;
+    if (result != PC_SAVE_LOADED) return result;
+    mCD_save_data_aram_malloc();
+    for (i = 0; i < mCD_ARAM_DATA_NUM; i++) {
+        if (!l_aram_block_p_table[i]) {
+            pc_gci_free(&image);
+            return PC_SAVE_IO_ERROR;
         }
     }
-
-    free(image);
+    memcpy(&common_data.save.save, image.save, sizeof(Save_t));
+    memcpy(l_aram_block_p_table[mCD_ARAM_DATA_MAIL], image.mail, sizeof(*image.mail));
+    memcpy(l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL], image.original, sizeof(*image.original));
+    memcpy(l_aram_block_p_table[mCD_ARAM_DATA_DIARY], image.diary, sizeof(*image.diary));
+    Common_Set(copy_protect, Save_Get(copy_protect));
+    pc_gci_free(&image);
     /* the ac-plus data of the same file (a town file, or a .gci's companion) */
     pc_ext_save_load(used);
+    pc_save_dev_after_load();
+    return PC_SAVE_LOADED;
+}
+
+static int pc_save_read_gci_to_keep(const char* path) {
+    pc_gci_image image;
+    char used[PC_GCI_PATH_MAX + 16];
+    l_keepSave_set = FALSE;
+    if (pc_save_read_image_used(path, &image, used, sizeof(used)) != PC_SAVE_LOADED) return FALSE;
+    snprintf(l_keepSave_path, sizeof(l_keepSave_path), "%s", used);
+    memcpy(&l_keepSave.save, image.save, sizeof(Save_t));
+    memcpy(&l_keepMail, image.mail, sizeof(l_keepMail));
+    memcpy(&l_keepOriginal, image.original, sizeof(l_keepOriginal));
+    memcpy(&l_keepDiary, image.diary, sizeof(l_keepDiary));
+    pc_gci_free(&image);
+    l_keepSave_set = TRUE;
+    return TRUE;
+}
+
+/* Legacy saves may be relative to the working directory or executable directory. */
+static void pc_save_migrate_legacy(void) {
+    char exe_card_a[PC_GCI_PATH_MAX] = {0};
+    char exe_card_a_prefixed[PC_GCI_PATH_MAX] = {0};
+    char exe_flat[PC_GCI_PATH_MAX] = {0};
+    const char* sources[7];
+    int count = 0;
+    int i;
+
+    sources[count++] = PC_GCI_PATH_LEGACY;
+    sources[count++] = PC_CWD_CARD_A_GCI_PATH;
+    sources[count++] = PC_CWD_CARD_A_PREFIXED_GCI_PATH;
+    sources[count++] = PC_CWD_FLAT_GCI_PATH;
+    if (pc_platform_base_path(PC_CWD_CARD_A_GCI_PATH, exe_card_a, sizeof(exe_card_a))) {
+        sources[count++] = exe_card_a;
+    }
+    if (pc_platform_base_path(PC_CWD_CARD_A_PREFIXED_GCI_PATH, exe_card_a_prefixed,
+                              sizeof(exe_card_a_prefixed))) {
+        sources[count++] = exe_card_a_prefixed;
+    }
+    if (pc_platform_base_path(PC_CWD_FLAT_GCI_PATH, exe_flat, sizeof(exe_flat))) {
+        sources[count++] = exe_flat;
+    }
+
+    pc_ensure_save_dirs();
+    for (i = 0; i < count; i++) {
+        if (pc_gci_import(sources[i], PC_GCI_PATH)) break;
+    }
+}
+
+typedef int (*pc_card_town_proc)(const char* path, void* arg);
+
+static void pc_card_scan_towns(int channel, int import_legacy, pc_card_town_proc proc, void* arg) {
+    const char* relative_dir = channel == mCD_SLOT_B ? "save/card_b" : "save/card_a";
+    char active_dir[PC_GCI_PATH_MAX];
+    char exe_dir[PC_GCI_PATH_MAX] = {0};
+    char filename[PC_GCI_PATH_MAX];
+    char path[PC_GCI_PATH_MAX];
+    char source[PC_GCI_PATH_MAX];
+    const char* directories[] = { active_dir, relative_dir, exe_dir };
+    const int directory_count = import_legacy ? ARRAY_COUNT(directories) : 1;
+    int i, length;
+    int found = 0;
+
+    if (!pc_platform_user_path(relative_dir, active_dir, sizeof(active_dir))) return;
+    if (!pc_platform_base_path(relative_dir, exe_dir, sizeof(exe_dir))) exe_dir[0] = '\0';
+
+    for (i = 0; i < directory_count && found == 0; i++) {
+        if (directories[i][0] == '\0') continue;
+        filename[0] = '\0';
+        while (pc_platform_next_gci(directories[i], filename, sizeof(filename))) {
+            length = snprintf(path, sizeof(path), "%s/%s", active_dir, filename);
+            if (length < 0 || length >= (int)sizeof(path)) continue;
+            if (i == 0) {
+                if (!pc_gci_is_town_file(path)) continue;
+            } else {
+                length = snprintf(source, sizeof(source), "%s/%s", directories[i], filename);
+                if (length < 0 || length >= (int)sizeof(source)) continue;
+                if (!pc_gci_is_town_file(source)) continue;
+                pc_ensure_save_dirs();
+                if (!pc_gci_import(source, path)) continue;
+            }
+            found++;
+            if (proc(path, arg)) return;
+        }
+    }
+}
+
+typedef struct {
+    char* path;
+    int path_size;
+} pc_card_path_buffer;
+
+static int pc_card_take_first_town(const char* path, void* arg) {
+    pc_card_path_buffer* buffer = (pc_card_path_buffer*)arg;
+    int length = snprintf(buffer->path, buffer->path_size, "%s", path);
+    if (length >= 0 && length < buffer->path_size) return TRUE;
+    buffer->path[0] = '\0';
+    return FALSE;
+}
+
+static int pc_card_find_town(int channel, char* path, int path_size) {
+    pc_card_path_buffer buffer = { path, path_size };
+    path[0] = '\0';
+    pc_card_scan_towns(channel, TRUE, pc_card_take_first_town, &buffer);
+    return path[0] != '\0';
+}
+
+static pc_save_result pc_save_scan_gci_dir(void) {
+    char path[PC_GCI_PATH_MAX];
+    pc_save_result result;
+    pc_save_result candidate;
+
+    result = pc_save_read_gci(PC_GCI_PATH);
+    if (result != PC_SAVE_MISSING) return result;
+    if (!pc_platform_user_path("save/card_a/8P-GAFE-" PC_GCI_FILENAME, path, sizeof(path))) return PC_SAVE_IO_ERROR;
+    candidate = pc_save_read_gci(path);
+    if (candidate != PC_SAVE_MISSING) return candidate;
+    if (pc_card_find_town(mCD_SLOT_A, path, sizeof(path))) {
+        return pc_save_read_gci(path);
+    }
+    return PC_SAVE_MISSING;
+}
+
+static void pc_save_convert_old(void);
+
+static pc_save_result pc_save_find_and_load(void) {
+    char tmp_path[PC_GCI_PATH_MAX + 8];
+    struct stat st;
+
+    if (!pc_save_paths_init()) return PC_SAVE_IO_ERROR;
+    pc_ensure_save_dirs();
+    pc_cloud_save_pull(PC_TOWN_PATH);
+    pc_sync_before_load();
+    if (stat(PC_TOWN_PATH, &st) != 0) {
+        /* no town file yet: a .gci from elsewhere (an older port's folder, Dolphin's name) comes to card_a, then
+         * moves into a town file */
+        pc_save_migrate_legacy();
+        pc_save_convert_old();
+    }
+    /* an interrupted save with no town file left (the town file and its backups are tried first) */
+    snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", PC_TOWN_PATH);
+    if (stat(PC_TOWN_PATH, &st) != 0 && stat(tmp_path, &st) == 0) {
+        OSReport("[PC] Found orphaned temp save '%s', recovering...\n", tmp_path);
+        rename(tmp_path, PC_TOWN_PATH);
+    }
+    /* pc_save_read_gci falls back to the newest good backup (.bak1-3) of a damaged or missing town file */
+    return pc_save_read_gci(PC_TOWN_PATH);
+}
+
+int pc_save_check_and_load(void) {
+    pc_save_result result;
+    pc_save_ready = FALSE;
+    pc_start_state = PC_START_IDLE;
+    result = pc_save_find_and_load();
+    if (result == PC_SAVE_MISSING && pc_save_load_status != PC_SAVE_MISSING) {
+        result = PC_SAVE_IO_ERROR;
+    }
+    pc_save_load_status = result;
+    pc_save_loaded = result == PC_SAVE_LOADED;
+    Common_Set(save_error_type, result == PC_SAVE_INVALID || result == PC_SAVE_IO_ERROR ? mFRm_ERROR_DATA_CORRUPTED : 0);
+    Common_Set(memcard_slot, mCD_SLOT_A);
+    if (!pc_save_loaded) mFRm_ClearSaveCheckData(Save_GetPointer(save_check));
+    if (pc_save_loaded) pc_mcd_passport_restore();
+    return pc_save_loaded;
+}
+
+/* Reload the home town from disk. PC equivalent of GC re-reading the memory card. */
+int pc_save_reload(void) {
+    if (!pc_save_loaded) return 0;
+    return pc_save_check_and_load();
+}
+
+/* --- Card B scanning --- */
+
+/* A town standing in for Card B's (a random town, pc_random_town.c), until the player is home again */
+static char l_card_b_override[PC_GCI_PATH_MAX];
+
+void pc_mcd_card_b_override(const char* path) {
+    snprintf(l_card_b_override, sizeof(l_card_b_override), "%s", path != NULL ? path : "");
+}
+
+/* a random town's trip is set up (the station's town picker stays out of it) */
+int pc_mcd_card_b_override_active(void) {
+    return l_card_b_override[0] != '\0';
+}
+
+static int pc_card_b_find_town(void) {
+    if (l_card_b_override[0] != '\0') {
+        struct stat st;
+        snprintf(l_card_b_gci_path, sizeof(l_card_b_gci_path), "%s", l_card_b_override);
+        return stat(l_card_b_gci_path, &st) == 0;
+    }
+    if (pc_card_find_town(mCD_SLOT_B, l_card_b_gci_path, sizeof(l_card_b_gci_path))) {
+        return TRUE;
+    }
+    l_card_b_gci_path[0] = '\0';
+    return FALSE;
+}
+
+static pc_save_result pc_read_gci_land_info(const char* path, mLd_land_info_c* out) {
+    pc_gci_image image;
+    pc_save_result result = pc_save_read_image(path, &image);
+    if (result != PC_SAVE_LOADED) return result;
+    memcpy(out, &image.save->land_info, sizeof(*out));
+    pc_gci_free(&image);
+    return PC_SAVE_LOADED;
+}
+
+static int pc_card_b_collect_town(const char* path, void* arg) {
+    pc_card_town* town;
+    const char* separator;
+    mLd_land_info_c land_info;
+    pc_save_result result;
+    int usable = TRUE;
+    int length;
+    (void)arg;
+
+    if (l_card_b_town_count >= PC_CARD_TOWN_MAX) {
+        OSReport("[PC] Card B: town list full (%d), ignoring '%s'\n", PC_CARD_TOWN_MAX, path);
+        return TRUE;
+    }
+    result = pc_read_gci_land_info(path, &land_info);
+    if (result != PC_SAVE_LOADED) {
+        OSReport("[PC] Card B: '%s' is unreadable (result %d)\n", path, result);
+        usable = FALSE;
+    } else if (!mLd_CheckId(land_info.id)) {
+        OSReport("[PC] Card B: '%s' has an invalid land id 0x%04X\n", path, land_info.id);
+        usable = FALSE;
+    } else if (mLd_CheckThisLand(land_info.name, land_info.id)) {
+        OSReport("[PC] Card B: skipping '%s' (current town)\n", path);
+        return FALSE;
+    }
+
+    town = &l_card_b_towns[l_card_b_town_count];
+    length = snprintf(town->path, sizeof(town->path), "%s", path);
+    if (length < 0 || length >= (int)sizeof(town->path)) return FALSE;
+    separator = strrchr(town->path, '/');
+    town->entry.file = separator != NULL ? separator + 1 : town->path;
+    if (usable) {
+        memcpy(town->entry.name, land_info.name, sizeof(town->entry.name));
+        l_card_b_usable_count++;
+    } else {
+        memset(town->entry.name, 0, sizeof(town->entry.name));
+    }
+    town->entry.usable = usable;
+    l_card_b_town_count++;
+    return FALSE;
+}
+
+int pc_card_b_refresh_towns(void) {
+    l_card_b_town_count = 0;
+    l_card_b_usable_count = 0;
+    l_card_b_town_selected = FALSE;
+    if (!pc_save_paths_init() || mLd_PlayerManKindCheck()) return 0;
+    pc_card_scan_towns(mCD_SLOT_B, TRUE, pc_card_b_collect_town, NULL);
+    OSReport("[PC] Card B: %d visitable town(s), %d damaged\n", l_card_b_usable_count,
+             l_card_b_town_count - l_card_b_usable_count);
+    return l_card_b_usable_count;
+}
+
+int pc_card_b_town_count(void) {
+    return l_card_b_town_count;
+}
+
+const pc_card_town_entry* pc_card_b_town(int index) {
+    if (index < 0 || index >= l_card_b_town_count) return NULL;
+    return &l_card_b_towns[index].entry;
+}
+
+static int pc_card_count_town(const char* path, void* arg) {
+    (void)path;
+    ++*(int*)arg;
+    return FALSE;
+}
+
+int pc_card_b_scan_town_files(void) {
+    int count = 0;
+    if (!pc_save_paths_init()) return 0;
+    pc_card_scan_towns(mCD_SLOT_B, FALSE, pc_card_count_town, &count);
+    return count;
+}
+
+int pc_card_b_town_base(char* output, int output_size) {
+    const char* separator = strrchr(l_card_b_gci_path, '/');
+    const char* extension = strrchr(l_card_b_gci_path, '.');
+    int length;
+
+    if (output == NULL || output_size <= 0 || l_card_b_gci_path[0] == '\0') return FALSE;
+    if (extension == NULL || (separator != NULL && extension < separator)) {
+        length = (int)strlen(l_card_b_gci_path);
+    } else {
+        length = (int)(extension - l_card_b_gci_path);
+    }
+    if (length <= 0 || (separator != NULL && length <= (int)(separator - l_card_b_gci_path) + 1) ||
+        length >= output_size) {
+        return FALSE;
+    }
+    memcpy(output, l_card_b_gci_path, length);
+    output[length] = '\0';
+    return TRUE;
+}
+
+int pc_card_b_is_legacy_town(void) {
+    char first[PC_GCI_PATH_MAX];
+    pc_card_path_buffer buffer = { first, sizeof(first) };
+    first[0] = '\0';
+    if (l_card_b_gci_path[0] == '\0') return FALSE;
+    pc_card_scan_towns(mCD_SLOT_B, FALSE, pc_card_take_first_town, &buffer);
+    return first[0] != '\0' && strcmp(first, l_card_b_gci_path) == 0;
+}
+
+int pc_card_b_select_town(int index) {
+    const pc_card_town_entry* town = pc_card_b_town(index);
+    if (town == NULL || !town->usable || mLd_PlayerManKindCheck()) return FALSE;
+    memcpy(l_card_b_gci_path, l_card_b_towns[index].path, sizeof(l_card_b_gci_path));
+    l_card_b_town_selected = TRUE;
+    OSReport("[PC] Card B: selected destination '%s'\n", l_card_b_gci_path);
+    return TRUE;
+}
+
+/* --- Memory card API implementation --- */
+
+void mCD_init_card(void) {
+    /* Town and NES saves bypass Aurora CARD emulation; CARDInit would create an unused card directory. */
+}
+
+void mCD_InitAll(void) {
+    pc_save_ready = FALSE;
+    pc_start_state = PC_START_IDLE;
+    /* ARAM blocks must persist — don't null them */
+    memset(&l_mcd_foreigner_file, 0, sizeof(l_mcd_foreigner_file));
+    l_keepSave_set = FALSE;
+    l_mcd_keep_startCond = 0;
+    l_card_b_gci_path[0] = '\0';
+    l_card_b_town_count = 0;
+    l_card_b_usable_count = 0;
+    l_card_b_town_selected = FALSE;
+}
+
+static int pc_start_write(void) {
+    if (!pc_save_write_gci()) return mCD_TRANS_ERR_IOERROR;
+    pc_start_state = PC_START_COMPLETE;
+    return mCD_TRANS_ERR_NONE;
+}
+
+static int pc_start_persist(void) {
+    u16 copy_protect = pc_get_land_copy_protect();
+    Common_Set(copy_protect, copy_protect);
+    Save_Set(copy_protect, copy_protect);
+    Save_Set(travel_hard_time, lbRTC_HardTime());
+    pc_start_state = PC_START_WRITE_PENDING;
+    return pc_start_write();
+}
+
+static int pc_start_resident(void) {
+    Private_c* priv = Now_Private;
+    if (priv == NULL) return mCD_TRANS_ERR_IOERROR;
+    Common_Set(reset_flag, FALSE);
+    if (!pc_check_reset_code(priv) && !ZURUMODE2_ENABLED() && !g_pc_settings.disable_resetti) {
+        Common_Set(reset_flag, TRUE);
+        priv->reset_count++;
+    }
+    pc_set_reset_code(priv);
+    return pc_start_persist();
+}
+
+static void pc_start_load_passport(int player_no) {
+    Private_c* foreigner = mPr_GetForeignerP();
+    mPr_CopyPrivateInfo(foreigner, &l_mcd_foreigner_file.file.priv);
+    memcpy(mNpc_GetInAnimalP(), &l_mcd_foreigner_file.file.remove_animal, sizeof(Animal_c));
+    mPr_LoadPak_and_SetPrivateInfo2(foreigner, (u8)player_no);
+    mFM_SetBlockKindLoadCombi();
+    mNpc_FinishRemoveAnimal(mNpc_GetInAnimalP());
+}
+
+static int pc_start_return_home(void) {
+    mHm_SetNowHome();
+    if (Common_Get(player_no) != mPr_FOREIGNER && Now_Private != NULL) {
+        pc_set_reset_code(Now_Private);
+        return pc_start_persist();
+    }
+    pc_start_state = PC_START_COMPLETE;
+    return mCD_TRANS_ERR_NONE;
+}
+
+int mCD_InitGameStart_bg(int player_no, int card_private_idx, int start_cond, s32* mounted_chan) {
+    static const int init_modes[mCD_START_COND_NUM] = {
+        mSDI_INIT_MODE_NEW, mSDI_INIT_MODE_FROM, mSDI_INIT_MODE_NEW_PLAYER,
+        mSDI_INIT_MODE_PAK, mSDI_INIT_MODE_PAK,
+    };
+    int mode;
+    (void)card_private_idx;
+    if (mounted_chan) *mounted_chan = mCD_SLOT_A;
+    if (pc_save_load_status == PC_SAVE_INVALID || pc_save_load_status == PC_SAVE_IO_ERROR ||
+        start_cond < 0 || start_cond >= mCD_START_COND_NUM || player_no < 0 || player_no >= TOTAL_PLAYER_NUM) {
+        return mCD_TRANS_ERR_IOERROR;
+    }
+
+    switch (pc_start_state) {
+        case PC_START_COMPLETE: return mCD_TRANS_ERR_NONE;
+        case PC_START_FAILED: return mCD_TRANS_ERR_IOERROR;
+        case PC_START_WRITE_PENDING: return pc_start_write();
+        case PC_START_IDLE: break;
+    }
+    pc_start_state = PC_START_FAILED;
+    mode = init_modes[start_cond];
+    if (!pc_save_loaded) {
+        if (start_cond != mCD_START_COND_0 && start_cond != mCD_START_COND_2) return mCD_TRANS_ERR_IOERROR;
+        mode = mSDI_INIT_MODE_NEW;
+    }
+    if (start_cond == mCD_START_COND_INCOMING_FOREIGNER) {
+        memcpy(mNpc_GetInAnimalP(), &l_mcd_foreigner_file.file.remove_animal, sizeof(Animal_c));
+    } else if (start_cond == mCD_START_COND_OUTGOING_FOREIGNER) {
+        pc_start_load_passport(player_no);
+    }
+    if (!mSDI_StartDataInit(gamePT, player_no, mode)) return mCD_TRANS_ERR_IOERROR;
+    l_mcd_keep_startCond = start_cond;
+    pc_save_ready = TRUE;
+
+    switch (start_cond) {
+        case mCD_START_COND_1:
+            return pc_start_resident();
+        case mCD_START_COND_OUTGOING_FOREIGNER:
+            return pc_start_return_home();
+        case mCD_START_COND_INCOMING_FOREIGNER:
+            Common_Set(now_private, &l_mcd_foreigner_file.file.priv);
+            Common_Set(player_no, mPr_FOREIGNER);
+            break;
+        default:
+            break;
+    }
+    pc_start_state = PC_START_COMPLETE;
+    return mCD_TRANS_ERR_NONE;
+}
+
+void mCD_LoadLand(void) {
+    pc_save_check_and_load();
+}
+
+int mCD_SaveHome_bg(int param_1, int* chan) {
+    int slot = mCD_GetThisLandSlotNo();
+    int result;
+
+    if (chan) *chan = slot;
+    if (slot == mCD_SLOT_B && l_card_b_gci_path[0] == '\0') {
+        OSReport("[PC] mCD_SaveHome_bg: no Card B path\n");
+        return mCD_TRANS_ERR_IOERROR;
+    }
+
+    pc_save_pre_write_side_effects(param_1);
+
+    if (slot == mCD_SLOT_B) {
+        result = pc_save_write_gci_to(l_card_b_gci_path);
+    } else {
+        result = pc_save_write_gci();
+    }
+
+    if (!result) {
+        OSReport("[PC] mCD_SaveHome_bg: save failed!\n");
+        return mCD_TRANS_ERR_IOERROR;
+    }
+
+    return mCD_TRANS_ERR_NONE;
+}
+
+/* Z+Start (pc_quick_save.c): save the town on the spot. Unlike the gyroid's
+ * save-and-quit this leaves the session alone (no wisp or money rock cleanup),
+ * but it clears the reset code like a proper save, so quitting afterwards does
+ * not bring Resetti. */
+int pc_quick_save(void) {
+    Private_c* priv = Now_Private;
+    u16 copy_protect;
+    int result;
+
+    if (priv == NULL || Common_Get(player_no) >= PLAYER_NUM) {
+        return FALSE;
+    }
+
+    mCkRh_SavePlayTime(Common_Get(player_no));
+    priv->reset_code = 0;
+    if (Common_Get(now_home) != NULL) {
+        Common_Get(now_home)->flags.has_saved = TRUE;
+    }
+
+    copy_protect = pc_get_land_copy_protect();
+    Common_Set(copy_protect, copy_protect);
+    Save_Set(copy_protect, copy_protect);
+    Save_Set(travel_hard_time, lbRTC_HardTime());
+
+    if (mCD_GetThisLandSlotNo() == mCD_SLOT_B && l_card_b_gci_path[0] != '\0') {
+        result = pc_save_write_gci_to(l_card_b_gci_path);
+    } else {
+        result = pc_save_write_gci();
+    }
+    return result;
+}
+
+/* --- Travel / Station functions --- */
+
+int mCD_CheckStation_bg(s32* chan) {
+    int is_foreigner = mLd_PlayerManKindCheck();
+    int slot = is_foreigner ? mCD_SLOT_A : mCD_SLOT_B;
+    const char* path;
+    if (!pc_save_paths_init()) return mCD_TRANS_ERR_IOERROR;
+    path = is_foreigner ? PC_TOWN_PATH : l_card_b_gci_path;
+    mLd_land_info_c land_info;
+
+    if (chan) *chan = slot;
+    if (!is_foreigner && l_card_b_override[0] != '\0') {
+        pc_card_b_find_town(); /* a random town's trip: that town, whatever was picked before */
+    } else if (!is_foreigner && !l_card_b_town_selected && !pc_card_b_find_town()) {
+        OSReport("[PC] CheckStation: no destination town on Card B\n");
+        return mCD_TRANS_ERR_NO_TOWN_DATA;
+    }
+
+    switch (pc_read_gci_land_info(path, &land_info)) {
+        case PC_SAVE_MISSING: return mCD_TRANS_ERR_NO_TOWN_DATA;
+        case PC_SAVE_INVALID: return mCD_TRANS_ERR_CORRUPT;
+        case PC_SAVE_IO_ERROR: return mCD_TRANS_ERR_IOERROR;
+        case PC_SAVE_LOADED: break;
+    }
+    if (!mLd_CheckId(land_info.id)) return mCD_TRANS_ERR_CORRUPT;
+    if (mLd_CheckThisLand(land_info.name, land_info.id)) {
+        OSReport("[PC] CheckStation: destination is the current town\n");
+        return mCD_TRANS_ERR_LAND_EXIST;
+    }
+
+    return mCD_TRANS_ERR_NONE_NEXTLAND;
+}
+
+/* Persist current town and load the "other" town into l_keepSave.
+ *  - Resident: save home (Card A, marked away) + load Card B → l_keepSave.
+ *  - Foreigner: save visited town (Card B) + load Card A → l_keepSave. */
+int mCD_SaveStation_NextLand_bg(s32* chan) {
+    int is_foreigner = mLd_PlayerManKindCheck();
+
+    l_keepSave_set = FALSE;
+    if (chan) *chan = is_foreigner ? mCD_SLOT_B : mCD_SLOT_A;
+    if (l_card_b_gci_path[0] == '\0') {
+        OSReport("[PC] SaveStation_NextLand: no Card B path\n");
+        return mCD_TRANS_ERR_NO_TOWN_DATA;
+    }
+
+    if (is_foreigner) {
+        /* Record departure info (visited town) for Rover. */
+        {
+            mCD_persistent_data_c* persistant = Common_GetPointer(travel_persistent_data);
+            int i;
+            memcpy(&persistant->land, Save_GetPointer(land_info), sizeof(mLd_land_info_c));
+            for (i = 0; i < PLAYER_NUM; i++) {
+                mPr_CopyPersonalID(&persistant->pid[i], &Save_Get(private_data[i]).player_ID);
+            }
+        }
+
+        /* Refresh passport from Now_Private so visit-time changes carry home. */
+        {
+            Private_c* current_priv = Now_Private;
+            if (current_priv) {
+                mNpc_GetRemoveAnimal(mNpc_GetInAnimalP(), TRUE);
+                mPr_CopyPrivateInfo(&l_mcd_foreigner_file.file.priv, current_priv);
+                memcpy(&l_mcd_foreigner_file.file.remove_animal, mNpc_GetInAnimalP(), sizeof(Animal_c));
+                l_mcd_foreigner_file.file.checksum = 0;
+                l_mcd_foreigner_file.file.checksum =
+                    mFRm_GetFlatCheckSum((u16*)&l_mcd_foreigner_file.file,
+                                         sizeof(mCD_foreigner_c),
+                                         l_mcd_foreigner_file.file.checksum);
+            }
+        }
+
+        if (!pc_save_write_gci_to(l_card_b_gci_path)) {
+            OSReport("[PC] SaveStation_NextLand(return): failed to save visited town\n");
+            return mCD_TRANS_ERR_IOERROR;
+        }
+
+        if (!pc_save_read_gci_to_keep(PC_TOWN_PATH)) {
+            OSReport("[PC] SaveStation_NextLand(return): failed to load home town\n");
+            if (chan) *chan = mCD_SLOT_A;
+            return mCD_TRANS_ERR_CORRUPT;
+        }
+
+        l_mcd_keep_startCond = mCD_START_COND_OUTGOING_FOREIGNER;
+
+        if (chan) *chan = mCD_SLOT_A;
+        return mCD_TRANS_ERR_NONE;
+    }
+
+    if (!pc_save_read_gci_to_keep(l_card_b_gci_path)) {
+        OSReport("[PC] SaveStation_NextLand: failed to load Card B town\n");
+        if (chan) *chan = mCD_SLOT_B;
+        return mCD_TRANS_ERR_CORRUPT;
+    }
+
+    /* Preserve the departure town for Rover's dialogue. */
+    {
+        mCD_persistent_data_c* persistant = Common_GetPointer(travel_persistent_data);
+        int i;
+        memcpy(&persistant->land, Save_GetPointer(land_info), sizeof(mLd_land_info_c));
+        for (i = 0; i < PLAYER_NUM; i++) {
+            mPr_CopyPersonalID(&persistant->pid[i], &Save_Get(private_data[i]).player_ID);
+        }
+    }
+
+    /* Capture the full player data before marking the resident as away. */
+    {
+        extern void pc_skin_note_traveller(void); /* their skin tone goes along (pc_skin.c) */
+        pc_skin_note_traveller();
+    }
+    {
+        Private_c* current_priv = Now_Private;
+        remove(PC_PASSPORT_PATH); /* a train trip: no online visit's passport may bring this player home */
+        memset(&l_mcd_foreigner_file, 0, sizeof(l_mcd_foreigner_file));
+        if (current_priv) {
+            mPr_CopyPrivateInfo(&l_mcd_foreigner_file.file.priv, current_priv);
+        }
+        mNpc_ClearInAnimal();
+        /* ac-plus: no villager follows the player to a random town ("Somewhere new", pc_random_town.c): there's
+         * no going back there, so they'd be gone for good */
+        if (l_card_b_override[0] == '\0' &&
+            (g_pc_settings.travel_move_out_chance >= 100 || RANDOM(100) < g_pc_settings.travel_move_out_chance)) {
+            mNpc_CopyRemoveAnimal(mNpc_GetInAnimalP());
+        }
+        memcpy(&l_mcd_foreigner_file.file.remove_animal, mNpc_GetInAnimalP(), sizeof(Animal_c));
+        l_mcd_foreigner_file.file.copy_protect = (u16)Common_Get(copy_protect);
+        l_mcd_foreigner_file.file.checksum = 0;
+        l_mcd_foreigner_file.file.checksum =
+            mFRm_GetFlatCheckSum((u16*)&l_mcd_foreigner_file.file,
+                                 sizeof(mCD_foreigner_c),
+                                 l_mcd_foreigner_file.file.checksum);
+    }
+
+    /* GC uses exists == FALSE to detect an interrupted visit and apply its return-home penalty. */
+    if (Now_Private != NULL && mLd_PlayerManKindCheckNo(Common_Get(player_no)) == FALSE) {
+        Now_Private->exists = FALSE;
+        Now_Private->reset_code = 0;
+    }
+
+    if (!pc_save_write_gci()) {
+        if (Now_Private != NULL) {
+            Now_Private->exists = l_mcd_foreigner_file.file.priv.exists;
+            Now_Private->reset_code = l_mcd_foreigner_file.file.priv.reset_code;
+        }
+        mNpc_ClearInAnimal();
+        l_keepSave_set = FALSE;
+        OSReport("[PC] SaveStation_NextLand: failed to save home town\n");
+        return mCD_TRANS_ERR_IOERROR;
+    }
+
+    l_mcd_keep_startCond = mCD_START_COND_INCOMING_FOREIGNER;
+
+    if (chan) *chan = mCD_SLOT_B;
+    return mCD_TRANS_ERR_NONE;
+}
+
+/* PC travel requires a destination town; standalone passport files are unsupported. */
+int mCD_SaveStation_Passport_bg(s32* chan) {
+    if (chan) *chan = mLd_PlayerManKindCheck() ? mCD_SLOT_A : mCD_SLOT_B;
+    l_keepSave_set = FALSE;
+    OSReport("[PC] SaveStation_Passport: no destination town loaded; travel blocked\n");
+    return mCD_TRANS_ERR_NO_TOWN_DATA;
+}
+
+void mCD_toNextLand(void) {
+    Save_t* save = &l_keepSave.save;
+    int scene_no;
+    mCD_persistent_data_c persis;
+    mLd_land_info_c* land_info;
+    int last_scene_no;
+    mActor_name_t last_field_id;
+    s16 demo_profile[2];
+    Time_c time;
+    Transition_c transition;
+    int rtc_enabled;
+
+    if (l_keepSave_set != TRUE) {
+        return;
+    }
+
+    land_info = &save->land_info;
+    if (!mLd_CheckId(land_info->id)) {
+        OSReport("[PC] toNextLand: invalid land_info in l_keepSave\n");
+        return;
+    }
+
+    if (g_pc_verbose) {
+        OSReport("[PC] Travel transition: from=0x%04X to=0x%04X start_cond=%d\n",
+                 Save_Get(land_info).id, land_info->id, l_mcd_keep_startCond);
+    }
+    scene_no = Save_Get(scene_no);
+
+    /* Save persistent data that must survive the common_data wipe */
+    memcpy(&persis, Common_GetPointer(travel_persistent_data), sizeof(persis));
+    last_scene_no = Common_Get(last_scene_no);
+    last_field_id = Common_Get(last_field_id);
+    memcpy(demo_profile, Common_Get(demo_profiles), sizeof(demo_profile));
+    memcpy(&time, Common_GetPointer(time), sizeof(time));
+    memcpy(&transition, Common_GetPointer(transition), sizeof(transition));
+
+    memset(&common_data, 0, sizeof(common_data_t));
+
+    memcpy(Common_GetPointer(travel_persistent_data), &persis, sizeof(persis));
+    Common_Set(last_field_id, last_field_id);
+    Common_Set(last_scene_no, last_scene_no);
+    memcpy(Common_Get(demo_profiles), demo_profile, sizeof(demo_profile));
+    memcpy(Common_GetPointer(time), &time, sizeof(time));
+    memcpy(Common_GetPointer(transition), &transition, sizeof(transition));
+
+    memcpy(Common_GetPointer(save), save, sizeof(Save));
+    /* and its ac-plus companion save (none for a town visited, so its ground has none of home's patterns and its
+     * houses none of home's rooms; home's again on the way back, before anything's saved there) */
+    pc_ext_save_load(l_keepSave_path);
+
+    Common_Set(copy_protect, Save_Get(copy_protect));
+    Save_Set(scene_no, scene_no);
+
+    rtc_enabled = Common_Get(time.rtc_enabled);
+    Common_Set(time.rtc_enabled, TRUE);
+    mTM_rtcTime_limit_check();
+    Common_Set(time.rtc_enabled, rtc_enabled);
+    lbRTC_GetTime(Common_GetPointer(time.rtc_time));
+
+    Common_Set(now_private, &l_mcd_foreigner_file.file.priv);
+    Common_Set(player_no, mPr_FOREIGNER);
+    Common_Set(auto_nwrite_set, FALSE);
+    memset(Common_GetPointer(auto_nwrite_time), 0, sizeof(Common_Get(auto_nwrite_time)));
+    Common_Set(ball_pos, ZeroVec);
+
+    /* Clear town-specific state */
+    mTM_clear_renew_is();
+    mEv_ClearEventInfo();
+    mEv_toland_clear_common();
+    mNpc_ClearInAnimal();
+    mNpc_FirstClearGoodbyMail();
+    mQst_ClearGrabItemInfo();
+    memset(Common_Get(npc_schedule), 0, sizeof(Common_Get(npc_schedule)));
+    mISL_ClearKeepIsland();
+    memset(Common_GetPointer(unused_mail_26522), 0, sizeof(Mail_c));
+    Common_Set(_2664E, 0);
+    Common_Set(_26650, 0);
+    mNpc_ClearCacheName();
+
+    Common_Set(submenu_disabled, TRUE);
+
+    pc_start_state = PC_START_IDLE;
+
+    memset(&l_keepSave, 0, sizeof(Save));
+    l_keepSave_set = FALSE;
+    l_card_b_town_selected = FALSE;
+
+    mCD_save_data_main_to_aram(&l_keepMail, l_aram_alloc_size_table[mCD_ARAM_DATA_MAIL], mCD_ARAM_DATA_MAIL);
+    mCD_save_data_main_to_aram(&l_keepOriginal, l_aram_alloc_size_table[mCD_ARAM_DATA_ORIGINAL], mCD_ARAM_DATA_ORIGINAL);
+    mCD_save_data_main_to_aram(&l_keepDiary, l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY], mCD_ARAM_DATA_DIARY);
+}
+
+void mCD_ReCheckLoadLand(GAME_PLAY* play) {
+    int scene = Save_Get(scene_no);
+
+    l_card_b_override[0] = '\0'; /* home again: a random town's trip is over */
+    /* Reload home town from Card A at the same point as GC. */
+    mCD_LoadLand();
+    Save_Set(scene_no, scene);
+
+    if (Common_Get(save_error_type) != 0) {
+        play->next_scene_no = SCENE_PLAYERSELECT_3;
+        Common_Set(house_owner_name, RSV_NO);
+        Common_Set(last_field_id, RSV_NO);
+    } else if (mFRm_CheckSaveData()) {
+        int rtc_on = Common_Get(time.rtc_enabled);
+        Common_Set(time.rtc_enabled, TRUE);
+        mTM_rtcTime_limit_check();
+        play->next_scene_no = SCENE_PLAYERSELECT_2;
+        Common_Set(time.rtc_enabled, rtc_on);
+        mEv_ClearEventInfo();
+    } else {
+        play->next_scene_no = SCENE_PLAYERSELECT;
+        Common_Set(house_owner_name, RSV_NO);
+        Common_Set(last_field_id, RSV_NO);
+    }
+}
+
+/* --- Remaining card management functions --- */
+
+int mCD_GetThisLandSlotNo(void) {
+
+    if (Common_Get(player_no) == mPr_FOREIGNER) return mCD_SLOT_B;
+    return mCD_SLOT_A;
+}
+
+int mCD_GetThisLandSlotNo_code(int* player_no, s32* slot_card_results) {
+    int slot = mCD_GetThisLandSlotNo();
+
+    if (player_no) *player_no = Common_Get(player_no);
+    if (slot_card_results) {
+        slot_card_results[mCD_SLOT_A] = CARD_RESULT_READY;
+        slot_card_results[mCD_SLOT_B] = (slot == mCD_SLOT_B) ? CARD_RESULT_READY : CARD_RESULT_NOCARD;
+    }
+    return slot;
+}
+
+int mCD_GetSaveHomeSlotNo(void) {
+    return mCD_SLOT_A;
+}
+
+int mCD_GetPlayerNum(void) {
+    return 1;
+}
+
+int mCD_GetCardPrivateNameCopy(u8* name, int idx) {
+    (void)name;
+    (void)idx;
+    return 0;
+}
+
+int mCD_CheckCardPlayerNative(int idx) {
+
+    if (Common_Get(player_no) == mPr_FOREIGNER && idx == mPr_FOREIGNER) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+int mCD_CheckPassportFile(void) {
+
+    if (l_mcd_foreigner_file.file.checksum != 0) {
+        return 0; /* passport exists on slot 0 */
+    }
+    return -1; /* no passport */
+}
+
+int mCD_CheckBrokenPassportFile(int slot) {
+    (void)slot;
+    return 0;
+}
+
+int mCD_EraseBrokenLand_bg(int* slot) {
+    if (slot) *slot = mCD_SLOT_A;
+    return mCD_TRANS_ERR_NONE;
+}
+
+int mCD_EraseLand_bg(int* slot) {
+    if (slot) *slot = mCD_SLOT_A;
+    return mCD_TRANS_ERR_NONE;
+}
+
+int mCD_ErasePassportFile_bg(int slot) {
+    (void)slot;
+
+    memset(&l_mcd_foreigner_file, 0, sizeof(l_mcd_foreigner_file));
+    return mCD_TRANS_ERR_NONE;
+}
+
+int mCD_SaveErasePlayer_bg(int* slot) {
+    if (slot) *slot = mCD_SLOT_A;
+    return mCD_TRANS_ERR_NONE;
+}
+
+int mCD_card_format_bg(s32 chan) {
+    (void)chan;
+    return mCD_TRANS_ERR_NONE;
+}
+
+void mCD_PrintErrInfo(gfxprint_t* gfxprint) {
+    (void)gfxprint;
+}
+
+/* ===================== ac-plus ===================== */
+
+static void pc_save_dev_after_load(void) {
     {
         /* dev: PC_GRANT_BASEMENT=1 gives every house a basement (and at least the M room, whose stairs reach it),
          * to try the basement on a save without one; =2 also the big main room and upstairs, as for the extra
@@ -768,134 +1453,28 @@ static int pc_save_read_gci(const char* path) {
             }
         }
     }
-    return TRUE;
-}
-
-/* Read a GCI file's Save_t into a provided buffer (for Card B — does NOT touch common_data).
- * Also loads ARAM blocks (mail/original/diary) into the l_keep* buffers.
- * Returns TRUE on success. */
-static int pc_save_read_gci_to_keep(const char* path) {
-    u8* image;
-    u8* file_data;
-    Save_t* save_src;
-    char used[340];
-
-    image = pc_save_load_image(path, used, sizeof(used));
-    if (!image) return FALSE;
-    file_data = image + GCI_HEADER_SIZE;
-
-    /* Load Save_t into l_keepSave (try main, fall back to backup) */
-    save_src = (Save_t*)(file_data + GCI_SAVE_MAIN_OFFSET);
-    memcpy(&l_keepSave.save, save_src, sizeof(Save_t));
-    pc_save_bswap(&l_keepSave.save, PC_BSWAP_FROM_BE);
-
-    /* Validate — if main is corrupt, try backup */
-    if (!mLd_CheckId(l_keepSave.save.land_info.id)) {
-        OSReport("[PC] Card B: main save invalid, trying backup\n");
-        save_src = (Save_t*)(file_data + GCI_SAVE_BACK_OFFSET);
-        memcpy(&l_keepSave.save, save_src, sizeof(Save_t));
-        pc_save_bswap(&l_keepSave.save, PC_BSWAP_FROM_BE);
-        if (!mLd_CheckId(l_keepSave.save.land_info.id)) {
-            OSReport("[PC] Card B: backup save also invalid\n");
-            free(image);
-            return FALSE;
-        }
-    }
-
-    /* Load ARAM blocks — detect GC vs legacy PC order (same landid check as main load) */
-    {
-        u8* others_ptr = file_data + GCI_OTHERS_OFFSET;
-        u32 block_start = ALIGN_NEXT(sizeof(MemcardHeader_c) + 32, 32);
-        u16 first_landid = ((u16)others_ptr[block_start + 2] << 8) | others_ptr[block_start + 3];
-        u16 save_land_id = l_keepSave.save.land_info.id;
-        int gc_order = (first_landid == save_land_id && save_land_id != 0);
-        u32 mail_size = l_aram_alloc_size_table[mCD_ARAM_DATA_MAIL];
-        u32 orig_size = l_aram_alloc_size_table[mCD_ARAM_DATA_ORIGINAL];
-        u32 off_mail, off_orig, off_diary;
-
-        if (gc_order) {
-            off_mail = block_start;
-            off_orig = ALIGN_NEXT(block_start + mail_size, 32);
-            off_diary = ALIGN_NEXT(off_orig + orig_size, 32);
-        } else {
-            off_orig = block_start;
-            off_mail = ALIGN_NEXT(block_start + orig_size, 32);
-            off_diary = ALIGN_NEXT(off_mail + mail_size, 32);
-        }
-
-        /* the blocks' sizes are rounded up to 32 bytes; copy only what the structs hold */
-        memcpy(&l_keepMail, others_ptr + off_mail, sizeof(l_keepMail));
-        pc_save_bswap_keep_mail(&l_keepMail, PC_BSWAP_FROM_BE);
-
-        memcpy(&l_keepOriginal, others_ptr + off_orig, sizeof(l_keepOriginal));
-        pc_save_bswap_keep_original(&l_keepOriginal, PC_BSWAP_FROM_BE);
-
-        memcpy(&l_keepDiary, others_ptr + off_diary, sizeof(l_keepDiary));
-        pc_save_bswap_keep_diary(&l_keepDiary, PC_BSWAP_FROM_BE);
-    }
-
-    free(image);
-    l_keepSave_set = TRUE;
-    snprintf(l_keepSave_path, sizeof(l_keepSave_path), "%s", used);
-    OSReport("[PC] Card B: loaded town '%.*s' (id=0x%04X) from '%s'\n",
-             8, l_keepSave.save.land_info.name,
-             l_keepSave.save.land_info.id, path);
-    return TRUE;
-}
-
-/* Migrate legacy flat save/ layout to save/card_a/ */
-static void pc_save_migrate_legacy(void) {
-    struct stat st_legacy, st_new;
-
-    if (stat(PC_GCI_PATH_LEGACY, &st_legacy) == 0 &&
-        stat(PC_GCI_PATH, &st_new) != 0) {
-        int b;
-        OSReport("[PC] Migrating save from '%s' to '%s'\n", PC_GCI_PATH_LEGACY, PC_GCI_PATH);
-        pc_ensure_save_dirs();
-
-        /* Move main save */
-        remove(PC_GCI_PATH); /* in case it somehow exists */
-        rename(PC_GCI_PATH_LEGACY, PC_GCI_PATH);
-
-        /* Move backups */
-        for (b = 1; b <= PC_SAVE_MAX_BACKUPS; b++) {
-            char old_bak[300], new_bak[300];
-            snprintf(old_bak, sizeof(old_bak), "%s.bak%d", PC_GCI_PATH_LEGACY, b);
-            snprintf(new_bak, sizeof(new_bak), "%s.bak%d", PC_GCI_PATH, b);
-            remove(new_bak);
-            rename(old_bak, new_bak);
-        }
-
-        /* Move temp file if orphaned */
-        {
-            char old_tmp[300];
-            snprintf(old_tmp, sizeof(old_tmp), "%s.tmp", PC_GCI_PATH_LEGACY);
-            remove(PC_GCI_TMP_PATH);
-            rename(old_tmp, PC_GCI_TMP_PATH);
-        }
-
-        OSReport("[PC] Migration complete\n");
-    }
 }
 
 /* An older save in card_a (a .gci, with its companion .acplus if any; or a .gci from Dolphin or a GameCube) and no
  * town file: the town moves into one. The old files go to a folder of their own, so nothing reads them again
  * (a new town file is never overwritten by an old .gci) and they're still there to go back to. */
 static void pc_save_convert_old(void) {
-    static const char* gci_names[] = {
-        PC_CARD_A_DIR "/DobutsunomoriP_MURA.gci",
-        PC_CARD_A_DIR "/8P-GAFE-DobutsunomoriP_MURA.gci",
-        NULL,
-    };
-    char found[300];
-    char from[320];
-    char keep_dir[300];
+    char name0[PC_GCI_PATH_MAX + 64], name1[PC_GCI_PATH_MAX + 64];
+    const char* gci_names[3];
+    char found[PC_GCI_PATH_MAX];
+    char from[PC_GCI_PATH_MAX + 16];
+    char keep_dir[PC_GCI_PATH_MAX + 64];
     const char* gci = NULL;
     struct stat st;
-    Save_t* info;
+    mLd_land_info_c* info;
     int i;
     int ok = FALSE;
 
+    snprintf(name0, sizeof(name0), "%s/DobutsunomoriP_MURA.gci", PC_CARD_A_DIR);
+    snprintf(name1, sizeof(name1), "%s/8P-GAFE-DobutsunomoriP_MURA.gci", PC_CARD_A_DIR);
+    gci_names[0] = name0;
+    gci_names[1] = name1;
+    gci_names[2] = NULL;
     if (stat(PC_TOWN_PATH, &st) == 0) {
         return;
     }
@@ -904,13 +1483,13 @@ static void pc_save_convert_old(void) {
             gci = gci_names[i];
         }
     }
-    if (gci == NULL && pc_card_scan_for_gci(0, found, sizeof(found))) {
+    if (gci == NULL && pc_card_find_town(mCD_SLOT_A, found, sizeof(found))) {
         gci = found;
     }
     if (gci == NULL) {
         return;
     }
-    info = (Save_t*)malloc(sizeof(Save_t));
+    info = (mLd_land_info_c*)malloc(sizeof(mLd_land_info_c));
     if (info == NULL) {
         return;
     }
@@ -923,8 +1502,8 @@ static void pc_save_convert_old(void) {
         } else {
             snprintf(from, sizeof(from), "%s.bak%d", gci, i - 1);
         }
-        ok = stat(from, &st) == 0 && pc_read_gci_land_info(from, info) && mLd_CheckId(info->land_info.id) &&
-             pc_ext_town_convert(from, gci, PC_TOWN_PATH, info->land_info.id);
+        ok = stat(from, &st) == 0 && pc_read_gci_land_info(from, info) == PC_SAVE_LOADED && mLd_CheckId(info->id) &&
+             pc_ext_town_convert(from, gci, PC_TOWN_PATH, info->id);
     }
     free(info);
     if (!ok) {
@@ -941,8 +1520,8 @@ static void pc_save_convert_old(void) {
         DIR* d;
         struct dirent* e;
 
-        snprintf(keep_dir, sizeof(keep_dir), PC_CARD_A_DIR "/before-town-file-%04d-%02d-%02d_%02d%02d%02d",
-                 t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
+        snprintf(keep_dir, sizeof(keep_dir), "%s/before-town-file-%04d-%02d-%02d_%02d%02d%02d",
+                 PC_CARD_A_DIR, t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
 #ifdef _WIN32
         _mkdir(keep_dir);
 #else
@@ -950,13 +1529,13 @@ static void pc_save_convert_old(void) {
 #endif
         d = opendir(PC_CARD_A_DIR);
         while (d != NULL && (e = readdir(d)) != NULL) {
-            char old_path[600];
-            char new_path[600];
+            char old_path[PC_GCI_PATH_MAX * 2];
+            char new_path[PC_GCI_PATH_MAX * 3];
 
             if (strncmp(e->d_name, base, base_len) != 0) {
                 continue;
             }
-            snprintf(old_path, sizeof(old_path), PC_CARD_A_DIR "/%s", e->d_name);
+            snprintf(old_path, sizeof(old_path), "%s/%s", PC_CARD_A_DIR, e->d_name);
             snprintf(new_path, sizeof(new_path), "%s/%s", keep_dir, e->d_name);
             if (rename(old_path, new_path) != 0) {
                 OSReport("[PC] Couldn't move %s to %s\n", old_path, keep_dir);
@@ -1046,123 +1625,30 @@ static int pc_save_strip_for_gc(Save_t* sv) {
 }
 
 void pc_save_export_gci(const char* out_path) {
-    u8* image;
-    char used[340];
+    pc_gci_image image;
+    char used[PC_GCI_PATH_MAX + 16];
+    u8* gci = NULL;
+    u32 size = 0;
     FILE* f;
     int ok = FALSE;
 
+    if (!pc_save_paths_init()) return;
     pc_ensure_save_dirs();
     pc_save_convert_old();
-    image = pc_save_load_image(PC_TOWN_PATH, used, sizeof(used));
-    if (image != NULL) {
-        u8* main = image + GCI_HEADER_SIZE + GCI_SAVE_MAIN_OFFSET;
-        Save_t* sv = (Save_t*)malloc(sizeof(Save_t));
+    used[0] = '\0';
+    if (pc_save_read_image_used(PC_TOWN_PATH, &image, used, sizeof(used)) == PC_SAVE_LOADED) {
+        int gone = pc_save_strip_for_gc(image.save);
 
-        if (sv != NULL) {
-            int gone;
-            u16 checksum;
-
-            memcpy(sv, main, sizeof(Save_t));
-            pc_save_bswap(sv, PC_BSWAP_FROM_BE);
-            gone = pc_save_strip_for_gc(sv);
-            pc_save_bswap(sv, PC_BSWAP_TO_BE);
-            memcpy(main, sv, sizeof(Save_t));
-            free(sv);
-            /* its checksum again, as pc_save_write_gci_to makes it; the backup copy is the main one */
-            {
-                u8* chk_ptr = (u8*)&((Save_t*)main)->save_check.checksum;
-                chk_ptr[0] = 0;
-                chk_ptr[1] = 0;
-            }
-            checksum = pc_checksum_be(main, sizeof(Save_t), 0);
-            put_be16((u8*)&((Save_t*)main)->save_check.checksum, checksum);
-            memcpy(image + GCI_HEADER_SIZE + GCI_SAVE_BACK_OFFSET, main, sizeof(Save));
-            OSReport("[PC] Export: %d ac-plus things left out for the GameCube\n", gone);
-        }
-        if ((f = fopen(out_path, "wb")) != NULL) {
-            ok = fwrite(image, GCI_IMAGE_SIZE, 1, f) == 1;
-            ok = fclose(f) == 0 && ok;
-        }
-        free(image);
+        OSReport("[PC] Export: %d ac-plus things left out for the GameCube\n", gone);
+        gci = pc_gci_build(image.save, image.mail, image.original, image.diary, &size);
+        pc_gci_free(&image);
     }
+    if (gci != NULL && (f = fopen(out_path, "wb")) != NULL) {
+        ok = fwrite(gci, size, 1, f) == 1;
+        ok = fclose(f) == 0 && ok;
+    }
+    free(gci);
     OSReport("[PC] %s %s as %s\n", ok ? "Exported" : "Could not export", used, out_path);
-}
-
-/* Reload the home town from disk. PC equivalent of GC re-reading the memory card. */
-int pc_save_reload(void) {
-    int ok;
-    if (!pc_save_loaded) return 0;
-    ok = pc_save_read_gci(PC_TOWN_PATH);
-    if (ok) {
-        pc_mcd_passport_restore();
-    }
-    return ok;
-}
-
-static int pc_save_load_home(void);
-
-int pc_save_check_and_load(void) {
-    int ok = pc_save_load_home();
-    if (ok) {
-        pc_mcd_passport_restore();
-    }
-    return ok;
-}
-
-static int pc_save_load_home(void) {
-    char tmp_path[340];
-    struct stat st;
-    {
-        char cwd[512];
-        if (getcwd(cwd, sizeof(cwd))) {
-            OSReport("[PC] Save: current working directory = '%s'\n", cwd);
-        }
-    }
-
-    pc_ensure_save_dirs();
-    pc_save_migrate_legacy();
-    pc_cloud_save_pull(PC_TOWN_PATH);
-    pc_sync_before_load();
-    pc_save_convert_old();
-
-    /* an interrupted save with no town file left (the town file and its backups are tried first) */
-    snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", PC_TOWN_PATH);
-    if (stat(PC_TOWN_PATH, &st) != 0 && stat(tmp_path, &st) == 0) {
-        OSReport("[PC] Found orphaned temp save '%s', recovering...\n", tmp_path);
-        rename(tmp_path, PC_TOWN_PATH);
-    }
-    /* pc_save_read_gci falls back to the newest good backup (.bak1-3) of a damaged or missing town file */
-    if (pc_save_read_gci(PC_TOWN_PATH)) {
-        OSReport("[PC] Town loaded\n");
-        return TRUE;
-    }
-    OSReport("[PC] No save file found\n");
-    return FALSE;
-}
-
-/* --- Card B scanning --- */
-
-/* Check if Card B directory has a valid AC town GCI */
-/* A town standing in for Card B's (a random town, pc_random_town.c), until the player is home again */
-static char l_card_b_override[300];
-
-void pc_mcd_card_b_override(const char* path) {
-    snprintf(l_card_b_override, sizeof(l_card_b_override), "%s", path != NULL ? path : "");
-}
-
-static int pc_card_b_find_town(void) {
-    struct stat st;
-
-    if (l_card_b_override[0] != '\0') {
-        snprintf(l_card_b_gci_path, sizeof(l_card_b_gci_path), "%s", l_card_b_override);
-        return stat(l_card_b_gci_path, &st) == 0;
-    }
-    if (pc_card_scan_for_gci(1, l_card_b_gci_path, sizeof(l_card_b_gci_path))) {
-        OSReport("[PC] Card B: found GCI at '%s'\n", l_card_b_gci_path);
-        return TRUE;
-    }
-    l_card_b_gci_path[0] = '\0';
-    return FALSE;
 }
 
 /* Writes `town` as a GameCube save at path, for a Card B trip to it (pc_random_town.c): the town in memory and the
@@ -1171,7 +1657,6 @@ int pc_mcd_write_town_gci(const Save_t* town, const char* path) {
     Save_t* keep = (Save_t*)malloc(sizeof(Save_t));
     void* keep_blocks[mCD_ARAM_DATA_NUM];
     void* blocks[mCD_ARAM_DATA_NUM];
-    char tmp[320];
     int ok = keep != NULL;
     int i;
 
@@ -1190,8 +1675,7 @@ int pc_mcd_write_town_gci(const Save_t* town, const char* path) {
             l_aram_block_p_table[i] = blocks[i];
         }
         pc_ensure_save_dirs();
-        snprintf(tmp, sizeof(tmp), "%s.tmp", path);
-        ok = pc_save_write_gci_to(path, tmp);
+        ok = pc_save_write_gci_to(path);
         for (i = 0; i < mCD_ARAM_DATA_NUM; i++) {
             l_aram_block_p_table[i] = keep_blocks[i];
         }
@@ -1204,593 +1688,6 @@ int pc_mcd_write_town_gci(const Save_t* town, const char* path) {
     return ok;
 }
 
-/* --- Memory card API implementation --- */
-
-void mCD_init_card(void) {
-    CARDInit();
-}
-
-void mCD_InitAll(void) {
-    /* ARAM blocks must persist — don't null them */
-    memset(&l_mcd_foreigner_file, 0, sizeof(l_mcd_foreigner_file));
-    l_keepSave_set = FALSE;
-    l_mcd_keep_startCond = 0;
-    l_card_b_gci_path[0] = '\0';
-}
-
-int mCD_InitGameStart_bg(int player_no, int card_private_idx, int start_cond, s32* mounted_chan) {
-    static int init_done = 0;
-
-    /* On GC, save is re-read from the memory card each game start.
-     * On PC, the save was already reloaded from disk in common_data_reinit
-     * and aAL_title_game_data_init_start_select. We just need to allow
-     * mSDI_StartDataInit to re-process it. */
-    if (init_done && pc_save_loaded) {
-        init_done = 0;
-    }
-
-    if (!init_done) {
-        init_done = 1; /* before call — prevents re-entry via crash recovery */
-
-        if (pc_save_loaded) {
-            static int init_mode_table[] = { mSDI_INIT_MODE_NEW, mSDI_INIT_MODE_FROM,
-                                             mSDI_INIT_MODE_NEW_PLAYER, mSDI_INIT_MODE_PAK,
-                                             mSDI_INIT_MODE_PAK };
-            int mode = mSDI_INIT_MODE_FROM;
-            if (start_cond >= 0 && start_cond < 5) {
-                mode = init_mode_table[start_cond];
-            }
-            mSDI_StartDataInit(gamePT, player_no, mode);
-            l_mcd_keep_startCond = start_cond;
-            pc_save_ready = 1;
-
-            /* Reset detection (Resetti): check if previous session ended without saving */
-            if (Now_Private != NULL && start_cond != mCD_START_COND_INCOMING_FOREIGNER
-                && start_cond != mCD_START_COND_OUTGOING_FOREIGNER) {
-                Common_Set(reset_flag, FALSE);
-                if (Now_Private->reset_code != 0) {
-                    /* Birthday clears reset penalty (matches original) */
-                    if (Now_Private->state_flags & mPr_FLAG_BIRTHDAY_ACTIVE) {
-                        Now_Private->reset_code = 0;
-                    } else if (!ZURUMODE2_ENABLED() && !g_pc_settings.disable_resetti) {
-                        Common_Set(reset_flag, TRUE);
-                        Now_Private->reset_count++;
-                        OSReport("[PC] Reset detected! reset_count=%d — Resetti will appear\n",
-                                 Now_Private->reset_count);
-                    }
-                }
-                /* Arm reset code: if player quits without saving, next load detects it */
-                pc_set_reset_code(Now_Private);
-
-                /* GC writes the save (armed code included) back to the card
-                 * here (bg_write_main/bg_write_bk). Persist to disk or the
-                 * armed code never survives a quit and Resetti can't trigger.
-                 * Cond 1 only - matches GC (new players aren't saved yet). */
-                if (start_cond == mCD_START_COND_1) {
-                    u16 copy_protect = pc_get_land_copy_protect();
-                    Common_Set(copy_protect, copy_protect);
-                    Save_Set(copy_protect, copy_protect);
-                    Save_Set(travel_hard_time, lbRTC_HardTime());
-                    if (!pc_save_write_gci()) {
-                        OSReport("[PC] InitGameStart: reset-code persist failed\n");
-                    }
-                }
-            }
-
-            /* Handle foreigner start conditions */
-            if (start_cond == mCD_START_COND_INCOMING_FOREIGNER) {
-                /* Arriving at another town as foreigner — point now_private to passport */
-                Common_Set(now_private, &l_mcd_foreigner_file.file.priv);
-                Common_Set(player_no, mPr_FOREIGNER);
-                OSReport("[PC] InitGameStart: INCOMING_FOREIGNER — player is visiting\n");
-            } else if (start_cond == mCD_START_COND_OUTGOING_FOREIGNER) {
-                /* Returning home. Matches m_card.c:4780 (GC case 4): merge
-                 * the session passport back into the matching home save slot
-                 * — this restores player_no/now_private and carries visit
-                 * inventory changes into the home save. */
-                Private_c* foreigner = mPr_GetForeignerP();
-                mPr_CopyPrivateInfo(foreigner, &l_mcd_foreigner_file.file.priv);
-                mPr_LoadPak_and_SetPrivateInfo2(foreigner, (u8)player_no);
-                mHm_SetNowHome();
-
-                /* Cond 4 fires on both train rides; write card A only after
-                 * a real home landing (merge left player_no in a home slot). */
-                if (Common_Get(player_no) != mPr_FOREIGNER && Now_Private != NULL) {
-                    u16 copy_protect = pc_get_land_copy_protect();
-                    pc_set_reset_code(Now_Private);
-                    Common_Set(copy_protect, copy_protect);
-                    Save_Set(copy_protect, copy_protect);
-                    Save_Set(travel_hard_time, lbRTC_HardTime());
-                    if (!pc_save_write_gci()) {
-                        OSReport("[PC] InitGameStart: return-home persist failed\n");
-                        if (mounted_chan) *mounted_chan = mCD_SLOT_A;
-                        return mCD_TRANS_ERR_IOERROR;
-                    }
-                }
-                OSReport("[PC] InitGameStart: OUTGOING_FOREIGNER — landed player_no=%d\n",
-                         Common_Get(player_no));
-            }
-        } else if (start_cond == mCD_START_COND_0 || start_cond == mCD_START_COND_2) {
-            mSDI_StartDataInit(gamePT, player_no, mSDI_INIT_MODE_NEW);
-            pc_save_ready = 1;
-        }
-    }
-
-    if (mounted_chan) *mounted_chan = mCD_SLOT_A;
-    return mCD_TRANS_ERR_NONE;
-}
-
-void mCD_LoadLand(void) {
-    (void)pc_save_loaded;
-}
-
-int mCD_SaveHome_bg(int param_1, int* chan) {
-    int slot = mCD_GetThisLandSlotNo();
-    int result;
-
-
-    pc_save_pre_write_side_effects(param_1);
-
-    if (slot == mCD_SLOT_B && l_card_b_gci_path[0] != '\0') {
-        /* Visiting Card B's town — save to Card B GCI */
-        char tmp_path[300];
-        snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", l_card_b_gci_path);
-        result = pc_save_write_gci_to(l_card_b_gci_path, tmp_path);
-        if (chan) *chan = mCD_SLOT_B;
-    } else {
-        result = pc_save_write_gci();
-        if (chan) *chan = mCD_SLOT_A;
-    }
-
-    if (!result) {
-        OSReport("[PC] mCD_SaveHome_bg: save failed!\n");
-        return mCD_TRANS_ERR_IOERROR;
-    }
-
-    return mCD_TRANS_ERR_NONE;
-}
-
-/* Z+Start (pc_quick_save.c): save the town on the spot. Unlike the gyroid's
- * save-and-quit this leaves the session alone (no wisp or money rock cleanup),
- * but it clears the reset code like a proper save, so quitting afterwards does
- * not bring Resetti. */
-int pc_quick_save(void) {
-    Private_c* priv = Now_Private;
-    u16 copy_protect;
-    int result;
-
-    if (priv == NULL || Common_Get(player_no) >= PLAYER_NUM) {
-        return FALSE;
-    }
-
-    mCkRh_SavePlayTime(Common_Get(player_no));
-    priv->reset_code = 0;
-    if (Common_Get(now_home) != NULL) {
-        Common_Get(now_home)->flags.has_saved = TRUE;
-    }
-
-    copy_protect = pc_get_land_copy_protect();
-    Common_Set(copy_protect, copy_protect);
-    Save_Set(copy_protect, copy_protect);
-    Save_Set(travel_hard_time, lbRTC_HardTime());
-
-    if (mCD_GetThisLandSlotNo() == mCD_SLOT_B && l_card_b_gci_path[0] != '\0') {
-        char tmp_path[300];
-        snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", l_card_b_gci_path);
-        result = pc_save_write_gci_to(l_card_b_gci_path, tmp_path);
-    } else {
-        result = pc_save_write_gci();
-    }
-    return result;
-}
-
-/* --- Travel / Station functions --- */
-
-/* Read a GCI's Save_t into `out` (byte-swapped). Returns TRUE on success. */
-static int pc_read_gci_land_info(const char* path, Save_t* out) {
-    char used[340];
-    u8* image = pc_save_load_image(path, used, sizeof(used));
-
-    if (!image) return FALSE;
-    memcpy(out, image + GCI_HEADER_SIZE + GCI_SAVE_MAIN_OFFSET, sizeof(Save_t));
-    pc_save_bswap(out, PC_BSWAP_FROM_BE);
-    free(image);
-    return TRUE;
-}
-
-/* Scan the "other" card for a travel-eligible town.
- *  - Resident: scan Card B for a different town.
- *  - Foreigner: scan Card A for the home town. */
-int mCD_CheckStation_bg(s32* chan) {
-    int is_foreigner = mLd_PlayerManKindCheck();
-
-    if (is_foreigner) {
-        Save_t temp_save;
-        if (chan) *chan = mCD_SLOT_B;
-        if (pc_read_gci_land_info(PC_TOWN_PATH, &temp_save)) {
-            if (mLd_CheckId(temp_save.land_info.id) &&
-                !mLd_CheckThisLand(temp_save.land_info.name, temp_save.land_info.id)) {
-                OSReport("[PC] CheckStation: Card A has home town '%.*s' (id=0x%04X) — return available\n",
-                         8, temp_save.land_info.name, temp_save.land_info.id);
-                if (chan) *chan = mCD_SLOT_A;
-                return mCD_TRANS_ERR_NONE_NEXTLAND;
-            }
-            OSReport("[PC] CheckStation: Card A has same town as current (unexpected)\n");
-        } else {
-            OSReport("[PC] CheckStation: could not read Card A save\n");
-        }
-        return mCD_TRANS_ERR_NONE;
-    }
-
-    if (chan) *chan = mCD_SLOT_A;
-    if (pc_card_b_find_town()) {
-        Save_t temp_save;
-        if (pc_read_gci_land_info(l_card_b_gci_path, &temp_save)) {
-            if (mLd_CheckId(temp_save.land_info.id)) {
-                if (!mLd_CheckThisLand(temp_save.land_info.name, temp_save.land_info.id)) {
-                    OSReport("[PC] CheckStation: Card B has town '%.*s' (id=0x%04X) — travel available\n",
-                             8, temp_save.land_info.name, temp_save.land_info.id);
-                    if (chan) *chan = mCD_SLOT_B;
-                    return mCD_TRANS_ERR_NONE_NEXTLAND;
-                }
-                OSReport("[PC] CheckStation: Card B has same town as Card A\n");
-            } else {
-                OSReport("[PC] CheckStation: Card B has invalid land_info\n");
-            }
-        }
-    }
-
-    return mCD_TRANS_ERR_NONE;
-}
-
-/* Persist current town and load the "other" town into l_keepSave.
- *  - Resident: save home (Card A, marked away) + load Card B → l_keepSave.
- *  - Foreigner: save visited town (Card B) + load Card A → l_keepSave. */
-int mCD_SaveStation_NextLand_bg(s32* chan) {
-    int is_foreigner = mLd_PlayerManKindCheck();
-
-    if (is_foreigner) {
-        /* Record departure info (visited town) for Rover. */
-        {
-            mCD_persistent_data_c* persistant = Common_GetPointer(travel_persistent_data);
-            int i;
-            memcpy(&persistant->land, Save_GetPointer(land_info), sizeof(mLd_land_info_c));
-            for (i = 0; i < PLAYER_NUM; i++) {
-                mPr_CopyPersonalID(&persistant->pid[i], &Save_Get(private_data[i]).player_ID);
-            }
-        }
-
-        /* Refresh passport from Now_Private so visit-time changes carry home. */
-        {
-            Private_c* current_priv = Now_Private;
-            if (current_priv) {
-                mPr_CopyPrivateInfo(&l_mcd_foreigner_file.file.priv, current_priv);
-                l_mcd_foreigner_file.file.checksum = 0;
-                l_mcd_foreigner_file.file.checksum =
-                    mFRm_GetFlatCheckSum((u16*)&l_mcd_foreigner_file.file,
-                                         sizeof(mCD_foreigner_c),
-                                         l_mcd_foreigner_file.file.checksum);
-                OSReport("[PC] SaveStation_NextLand(return): refreshed passport for '%.*s'\n",
-                         PLAYER_NAME_LEN, l_mcd_foreigner_file.file.priv.player_ID.player_name);
-            }
-        }
-
-        /* Persist visited-town state to its Card B GCI. */
-        if (l_card_b_gci_path[0] != '\0') {
-            char tmp_path[320];
-            snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", l_card_b_gci_path);
-            if (!pc_save_write_gci_to(l_card_b_gci_path, tmp_path)) {
-                OSReport("[PC] SaveStation_NextLand(return): failed to save visited town\n");
-                if (chan) *chan = mCD_SLOT_B;
-                return mCD_TRANS_ERR_IOERROR;
-            }
-        } else {
-            OSReport("[PC] SaveStation_NextLand(return): no Card B path cached\n");
-        }
-
-        if (!pc_save_read_gci_to_keep(PC_TOWN_PATH)) {
-            OSReport("[PC] SaveStation_NextLand(return): failed to load home town\n");
-            if (chan) *chan = mCD_SLOT_A;
-            return mCD_TRANS_ERR_CORRUPT;
-        }
-
-        l_mcd_keep_startCond = mCD_START_COND_OUTGOING_FOREIGNER;
-
-        if (chan) *chan = mCD_SLOT_A;
-        return mCD_TRANS_ERR_NONE;
-    }
-
-    if (chan) *chan = mCD_SLOT_A;
-
-    /* Must have a Card B town path from prior CheckStation */
-    if (l_card_b_gci_path[0] == '\0') {
-        OSReport("[PC] SaveStation_NextLand: no Card B path\n");
-        return mCD_TRANS_ERR_NO_TOWN_DATA;
-    }
-
-    /* 0. Record home town info for Rover's dialogue (departure town name) */
-    {
-        mCD_persistent_data_c* persistant = Common_GetPointer(travel_persistent_data);
-        int i;
-        memcpy(&persistant->land, Save_GetPointer(land_info), sizeof(mLd_land_info_c));
-        for (i = 0; i < PLAYER_NUM; i++) {
-            mPr_CopyPersonalID(&persistant->pid[i], &Save_Get(private_data[i]).player_ID);
-        }
-    }
-
-    /* 1. Build passport BEFORE marking player as away (need full player data) */
-    {
-        extern void pc_skin_note_traveller(void); /* their skin tone goes along (pc_skin.c) */
-        pc_skin_note_traveller();
-    }
-    {
-        Private_c* current_priv = Now_Private;
-        remove(PC_PASSPORT_PATH); /* a train trip: no online visit's passport may bring this player home */
-        memset(&l_mcd_foreigner_file, 0, sizeof(l_mcd_foreigner_file));
-        if (current_priv) {
-            mPr_CopyPrivateInfo(&l_mcd_foreigner_file.file.priv, current_priv);
-        }
-        memset(&l_mcd_foreigner_file.file.remove_animal, 0, sizeof(Animal_c));
-        l_mcd_foreigner_file.file.copy_protect = (u16)Common_Get(copy_protect);
-        l_mcd_foreigner_file.file.checksum = 0;
-        l_mcd_foreigner_file.file.checksum =
-            mFRm_GetFlatCheckSum((u16*)&l_mcd_foreigner_file.file,
-                                 sizeof(mCD_foreigner_c),
-                                 l_mcd_foreigner_file.file.checksum);
-        OSReport("[PC] SaveStation_NextLand: built passport for '%.*s'\n",
-                 PLAYER_NAME_LEN, l_mcd_foreigner_file.file.priv.player_ID.player_name);
-    }
-
-    /* 2. Mark player as "away" and clear reset code before saving Card A.
-     * If the player quits during the visit, next load sees exists==FALSE
-     * → gyroid face + inventory cleared as punishment (m_start_data_init.c:426) */
-    if (Now_Private != NULL && mLd_PlayerManKindCheckNo(Common_Get(player_no)) == FALSE) {
-        Now_Private->exists = FALSE;
-        Now_Private->reset_code = 0;
-        OSReport("[PC] SaveStation_NextLand: marked player as away (exists=FALSE)\n");
-    }
-
-    /* 3. Save home town to Card A (with player marked as away) */
-    if (!pc_save_write_gci()) {
-        /* Restore player state on failure */
-        if (Now_Private != NULL) Now_Private->exists = TRUE;
-        OSReport("[PC] SaveStation_NextLand: failed to save home town\n");
-        return mCD_TRANS_ERR_IOERROR;
-    }
-
-    /* 3. Load other town from Card B into l_keepSave + l_keep* ARAM blocks */
-    if (!pc_save_read_gci_to_keep(l_card_b_gci_path)) {
-        OSReport("[PC] SaveStation_NextLand: failed to load Card B town\n");
-        return mCD_TRANS_ERR_CORRUPT;
-    }
-
-    l_mcd_keep_startCond = mCD_START_COND_INCOMING_FOREIGNER;
-
-    if (chan) *chan = mCD_SLOT_B;
-    return mCD_TRANS_ERR_NONE;
-}
-
-/* Save passport file on Card B (simplified for PC).
- * On GC this creates a separate GCI file; on PC the passport is just in memory. */
-int mCD_SaveStation_Passport_bg(s32* chan) {
-    if (chan) *chan = mCD_SLOT_B;
-
-    /* The passport is already built in l_mcd_foreigner_file from SaveStation_NextLand_bg.
-     * On PC we don't need to write a separate passport GCI file — the foreigner data
-     * persists in memory through the town transition (mCD_toNextLand). */
-    OSReport("[PC] SaveStation_Passport: passport ready in memory\n");
-    return mCD_TRANS_ERR_NONE;
-}
-
-/* Transition to the other town. Called from scene cleanup when switching to the visited town.
- * Faithfully reproduces the original mCD_toNextLand from m_card.c:7188. */
-void mCD_toNextLand(void) {
-    Save_t* save = &l_keepSave.save;
-    int scene_no;
-    mCD_persistent_data_c persis;
-    mLd_land_info_c* land_info;
-    int last_scene_no;
-    mActor_name_t last_field_id;
-    s16 demo_profile[2];
-    Time_c time;
-    Transition_c transition;
-    int rtc_enabled;
-
-    if (l_keepSave_set != TRUE) {
-        OSReport("[PC] toNextLand: l_keepSave not set, aborting\n");
-        return;
-    }
-
-    land_info = &save->land_info;
-    if (!mLd_CheckId(land_info->id)) {
-        OSReport("[PC] toNextLand: invalid land_info in l_keepSave\n");
-        return;
-    }
-
-    scene_no = Save_Get(scene_no);
-
-    /* Save persistent data that must survive the common_data wipe */
-    memcpy(&persis, Common_GetPointer(travel_persistent_data), sizeof(persis));
-    last_scene_no = Common_Get(last_scene_no);
-    last_field_id = Common_Get(last_field_id);
-    memcpy(demo_profile, Common_Get(demo_profiles), sizeof(demo_profile));
-    memcpy(&time, Common_GetPointer(time), sizeof(time));
-    memcpy(&transition, Common_GetPointer(transition), sizeof(transition));
-
-    /* Wipe common_data */
-    memset(&common_data, 0, sizeof(common_data_t));
-
-    /* Restore persistent fields */
-    memcpy(Common_GetPointer(travel_persistent_data), &persis, sizeof(persis));
-    Common_Set(last_field_id, last_field_id);
-    Common_Set(last_scene_no, last_scene_no);
-    memcpy(Common_Get(demo_profiles), demo_profile, sizeof(demo_profile));
-    memcpy(Common_GetPointer(time), &time, sizeof(time));
-    memcpy(Common_GetPointer(transition), &transition, sizeof(transition));
-
-    /* Load the other town's save data */
-    memcpy(Common_GetPointer(save), save, sizeof(Save));
-    /* and its ac-plus companion save (none for a town visited, so its ground has none of home's patterns and its
-     * houses none of home's rooms; home's again on the way back, before anything's saved there) */
-    pc_ext_save_load(l_keepSave_path);
-
-    Common_Set(copy_protect, Save_Get(copy_protect));
-    Save_Set(scene_no, scene_no);
-
-    /* RTC check */
-    rtc_enabled = Common_Get(time.rtc_enabled);
-    Common_Set(time.rtc_enabled, TRUE);
-    mTM_rtcTime_limit_check();
-    Common_Set(time.rtc_enabled, rtc_enabled);
-    lbRTC_GetTime(Common_GetPointer(time.rtc_time));
-
-    /* Set current player as foreigner */
-    Common_Set(now_private, &l_mcd_foreigner_file.file.priv);
-    Common_Set(player_no, mPr_FOREIGNER);
-    Common_Set(auto_nwrite_set, FALSE);
-    memset(Common_GetPointer(auto_nwrite_time), 0, sizeof(Common_Get(auto_nwrite_time)));
-    Common_Set(ball_pos, ZeroVec);
-
-    /* Clear town-specific state */
-    mTM_clear_renew_is();
-    mEv_ClearEventInfo();
-    mEv_toland_clear_common();
-    mNpc_ClearInAnimal();
-    mNpc_FirstClearGoodbyMail();
-    mQst_ClearGrabItemInfo();
-    memset(Common_Get(npc_schedule), 0, sizeof(Common_Get(npc_schedule)));
-    mISL_ClearKeepIsland();
-    memset(Common_GetPointer(unused_mail_26522), 0, sizeof(Mail_c));
-    Common_Set(_2664E, 0);
-    Common_Set(_26650, 0);
-    mNpc_ClearCacheName();
-
-    Common_Set(submenu_disabled, TRUE);
-
-    /* Clear keepSave now that it's been applied */
-    memset(&l_keepSave, 0, sizeof(Save));
-    l_keepSave_set = FALSE;
-
-    /* Load ARAM blocks from the other town */
-    mCD_save_data_main_to_aram(&l_keepMail, sizeof(l_keepMail), mCD_ARAM_DATA_MAIL);
-    mCD_save_data_main_to_aram(&l_keepOriginal, sizeof(l_keepOriginal), mCD_ARAM_DATA_ORIGINAL);
-    mCD_save_data_main_to_aram(&l_keepDiary, sizeof(l_keepDiary), mCD_ARAM_DATA_DIARY);
-
-    OSReport("[PC] toNextLand: transitioned to visited town, player_no=%d\n",
-             Common_Get(player_no));
-}
-
-/* Re-check and reload home town after returning from visit */
-void mCD_ReCheckLoadLand(GAME_PLAY* play) {
-    int scene = Save_Get(scene_no);
-
-    l_card_b_override[0] = '\0'; /* home again: a random town's trip is over */
-
-    /* Reload home town from Card A */
-    pc_save_check_and_load();
-    Save_Set(scene_no, scene);
-
-    if (mFRm_CheckSaveData()) {
-        int rtc_on = Common_Get(time.rtc_enabled);
-        Common_Set(time.rtc_enabled, TRUE);
-        mTM_rtcTime_limit_check();
-        play->next_scene_no = SCENE_PLAYERSELECT_2;
-        Common_Set(time.rtc_enabled, rtc_on);
-        mEv_ClearEventInfo();
-    } else {
-        play->next_scene_no = SCENE_PLAYERSELECT;
-        Common_Set(house_owner_name, RSV_NO);
-        Common_Set(last_field_id, RSV_NO);
-    }
-
-    OSReport("[PC] ReCheckLoadLand: next_scene=%d\n", play->next_scene_no);
-}
-
-/* --- Remaining card management functions --- */
-
-int mCD_GetThisLandSlotNo(void) {
-    /* If visiting another town, current land is on Card B */
-    if (Common_Get(player_no) == mPr_FOREIGNER) return mCD_SLOT_B;
-    return mCD_SLOT_A;
-}
-
-int mCD_GetThisLandSlotNo_code(int* player_no, s32* slot_card_results) {
-    int slot = mCD_GetThisLandSlotNo();
-
-    if (player_no) *player_no = Common_Get(player_no);
-    if (slot_card_results) {
-        slot_card_results[mCD_SLOT_A] = CARD_RESULT_READY;
-        slot_card_results[mCD_SLOT_B] = (slot == mCD_SLOT_B) ? CARD_RESULT_READY : CARD_RESULT_NOCARD;
-    }
-    return slot;
-}
-
-int mCD_GetSaveHomeSlotNo(void) {
-    return mCD_SLOT_A;
-}
-
-int mCD_GetPlayerNum(void) {
-    return 1;
-}
-
-int mCD_GetCardPrivateNameCopy(u8* name, int idx) {
-    (void)name;
-    (void)idx;
-    return 0;
-}
-
-int mCD_CheckCardPlayerNative(int idx) {
-    /* If foreigner mode is active, player 4 (mPr_FOREIGNER) is not native */
-    if (Common_Get(player_no) == mPr_FOREIGNER && idx == mPr_FOREIGNER) {
-        return FALSE;
-    }
-    return TRUE;
-}
-
-int mCD_CheckPassportFile(void) {
-    /* Check if there's a passport in memory (from a previous travel) */
-    if (l_mcd_foreigner_file.file.checksum != 0) {
-        return 0; /* passport exists on slot 0 */
-    }
-    return -1; /* no passport */
-}
-
-int mCD_CheckBrokenPassportFile(int slot) {
-    (void)slot;
-    return 0;
-}
-
-int mCD_EraseBrokenLand_bg(int* slot) {
-    if (slot) *slot = mCD_SLOT_A;
-    return mCD_TRANS_ERR_NONE;
-}
-
-int mCD_EraseLand_bg(int* slot) {
-    if (slot) *slot = mCD_SLOT_A;
-    return mCD_TRANS_ERR_NONE;
-}
-
-int mCD_ErasePassportFile_bg(int slot) {
-    (void)slot;
-    /* Clear the in-memory passport */
-    memset(&l_mcd_foreigner_file, 0, sizeof(l_mcd_foreigner_file));
-    return mCD_TRANS_ERR_NONE;
-}
-
-int mCD_SaveErasePlayer_bg(int* slot) {
-    if (slot) *slot = mCD_SLOT_A;
-    return mCD_TRANS_ERR_NONE;
-}
-
-int mCD_card_format_bg(s32 chan) {
-    (void)chan;
-    return mCD_TRANS_ERR_NONE;
-}
-
-void mCD_PrintErrInfo(gfxprint_t* gfxprint) {
-    (void)gfxprint;
-}
-
 /* --- Online visits (multiplayer, pc_mp.c) ---
  * The GameCube trip with a passport, with the other town coming from the host over the network (already checked
  * and built by pc_mp_town.c) instead of from card B, and no train: the scene change after these goes straight to
@@ -1800,7 +1697,7 @@ void mCD_PrintErrInfo(gfxprint_t* gfxprint) {
 static int l_online_pending = 0; /* start condition to run after the swap, 0 = none */
 static int l_online_home_player = 0;
 
-#define PC_ONLINE_KEEP_PATH "save/online_visit.gci" /* never exists: the visited town has no companion save */
+#define PC_ONLINE_KEEP_PATH "online_visit.gci" /* never exists: the visited town has no companion save */
 
 /* The passport: while visiting online, the player as they are right now (pockets, bells, everything), in a file next
  * to the home save. Online, a visit can end without the trip home - a closed window, a crash, a lost connection - and
@@ -1869,12 +1766,12 @@ static void pc_mcd_passport_done(void) {
 
 /* right after the home save is read from disk: a player it says is away, whose passport is here, comes home */
 static void pc_mcd_passport_restore(void) {
-    FILE* fp = fopen(PC_PASSPORT_PATH, "rb");
+    FILE* fp;
     Private_c* priv;
     u16 sum;
     int ok;
 
-    if (fp == NULL) {
+    if (!pc_save_paths_init() || (fp = fopen(PC_PASSPORT_PATH, "rb")) == NULL) {
         return;
     }
     memset(&l_passport, 0, sizeof(l_passport));
@@ -1985,7 +1882,7 @@ int pc_mcd_online_return(void) {
                                                                   l_mcd_foreigner_file.file.checksum);
     }
     OSReport("[PC] online visit: loading home\n");
-    if (!pc_save_read_gci_to_keep(PC_TOWN_PATH)) {
+    if (!pc_save_paths_init() || !pc_save_read_gci_to_keep(PC_TOWN_PATH)) {
         OSReport("[PC] online visit: couldn't load home to go back\n");
         return FALSE;
     }

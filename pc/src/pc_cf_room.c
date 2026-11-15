@@ -1,16 +1,15 @@
 /* pc_cf_room.c - City Folk rooms drawn in the GameCube game. See pc_cf_room.h. */
-#include "pc_gx_internal.h"
 #include "pc_cf_room.h"
+#include "pc_acplus_gx.h"
+#include "pc_platform.h"
 
 #include "m_play.h"
 #include "graph.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-extern void pc_gx_restore_after_nes(void);
-extern void GXGetProjectionv(f32* p);
 
 #define PC_CF_ROOM_MAX 4
 #define PC_CF_ROOM_NAME 32
@@ -22,7 +21,7 @@ typedef struct {
     u8 wrap_s, wrap_t; /* 0 clamp, 1 repeat, 2 mirror, as the material's GX wrap modes */
     int vert_num;
     float* verts; /* x y z nx ny nz u v, then rgba as u8 packed into the last float slot */
-    GLuint vao, vbo;
+    float* shade; /* per vertex: the light from its normal (0.82-1.0), worked out once */
 } pc_cf_mesh_c;
 
 typedef struct {
@@ -32,7 +31,7 @@ typedef struct {
     int* tex_w;
     int* tex_h;
     u8** tex_px;
-    GLuint* tex_gl;
+    PCGXHTex* tex_gx;
     int mesh_num;
     pc_cf_mesh_c* mesh;
     int has_grid;
@@ -76,7 +75,7 @@ static void pc_cf_room_load(pc_cf_room_c* r) {
     r->tex_w = calloc(n, sizeof(int));
     r->tex_h = calloc(n, sizeof(int));
     r->tex_px = calloc(n, sizeof(u8*));
-    r->tex_gl = calloc(n, sizeof(GLuint));
+    r->tex_gx = calloc(n, sizeof(PCGXHTex));
     for (i = 0; i < n; i++) {
         char name[32];
         u16 wh[2];
@@ -203,227 +202,120 @@ int pc_cf_room_play_draw(GAME_PLAY* play, const char* name, float light, float y
 
 /* --- render side --- */
 
-static const char* l_vert_src =
-    "#version 330 core\n"
-    "layout(location = 0) in vec3 a_pos;\n"
-    "layout(location = 1) in vec3 a_nrm;\n"
-    "layout(location = 2) in vec2 a_uv;\n"
-    "layout(location = 3) in vec4 a_col;\n"
-    "uniform mat4 u_proj;\n"
-    "uniform mat4 u_view;\n"
-    "out vec2 v_uv;\n"
-    "out vec4 v_col;\n"
-    "out vec3 v_nrm;\n"
-    "out vec3 v_pos;\n"
-    "void main() {\n"
-    "    gl_Position = u_proj * (u_view * vec4(a_pos, 1.0));\n"
-    "    v_pos = a_pos;\n"
-    "    v_uv = a_uv;\n"
-    "    v_col = a_col;\n"
-    "    v_nrm = a_nrm;\n"
-    "}\n";
-
-static const char* l_frag_src =
-    "#version 330 core\n"
-    "in vec2 v_uv;\n"
-    "in vec4 v_col;\n"
-    "in vec3 v_nrm;\n"
-    "in vec3 v_pos;\n"
-    "out vec4 frag;\n"
-    "uniform sampler2D u_tex;\n"
-    "uniform int u_has_tex;\n"
-    "uniform int u_alpha_test;\n"
-    "uniform float u_light;\n"
-    "uniform vec4 u_spot; /* x, z, radius, strength */\n"
-    "void main() {\n"
-    "    vec4 c = v_col;\n"
-    "    if (u_has_tex != 0) c *= texture(u_tex, v_uv);\n"
-    "    if (u_alpha_test != 0 && c.a < 0.5) discard;\n"
-    "    /* a little shape from the normals, as the room's own lights would */\n"
-    "    float shade = 0.82 + 0.18 * clamp(dot(normalize(v_nrm), normalize(vec3(0.3, 1.0, 0.6))), 0.0, 1.0);\n"
-    "    float spot = u_spot.w * (1.0 - smoothstep(0.55 * u_spot.z, u_spot.z, length(v_pos.xz - u_spot.xy)));\n"
-    "    vec3 lit = mix(vec3(u_light), vec3(1.08, 1.0, 0.86), spot);\n"
-    "    frag = vec4(c.rgb * shade * lit, c.a);\n"
-    "}\n";
-
-static GLuint l_prog;
-static GLint l_u_proj, l_u_view, l_u_has_tex, l_u_alpha_test, l_u_light, l_u_spot;
-
-static GLuint pc_cf_compile(GLenum type, const char* src) {
-    GLuint sh = glCreateShader(type);
-    GLint ok = 0;
-
-    glShaderSource(sh, 1, &src, NULL);
-    glCompileShader(sh);
-    glGetShaderiv(sh, GL_COMPILE_STATUS, &ok);
-    if (!ok) {
-        char log[512];
-        glGetShaderInfoLog(sh, sizeof(log), NULL, log);
-        printf("[CFRoom] shader compile failed: %s\n", log);
-    }
-    return sh;
-}
-
-static int pc_cf_init(void) {
-    GLuint vs, fs;
-    GLint ok = 0;
-
-    if (l_prog != 0) {
-        return TRUE;
-    }
-    vs = pc_cf_compile(GL_VERTEX_SHADER, l_vert_src);
-    fs = pc_cf_compile(GL_FRAGMENT_SHADER, l_frag_src);
-    l_prog = glCreateProgram();
-    glAttachShader(l_prog, vs);
-    glAttachShader(l_prog, fs);
-    glLinkProgram(l_prog);
-    glDeleteShader(vs);
-    glDeleteShader(fs);
-    glGetProgramiv(l_prog, GL_LINK_STATUS, &ok);
-    if (!ok) {
-        printf("[CFRoom] shader link failed\n");
-        glDeleteProgram(l_prog);
-        l_prog = 0;
-        return FALSE;
-    }
-    l_u_proj = glGetUniformLocation(l_prog, "u_proj");
-    l_u_view = glGetUniformLocation(l_prog, "u_view");
-    l_u_has_tex = glGetUniformLocation(l_prog, "u_has_tex");
-    l_u_alpha_test = glGetUniformLocation(l_prog, "u_alpha_test");
-    l_u_light = glGetUniformLocation(l_prog, "u_light");
-    l_u_spot = glGetUniformLocation(l_prog, "u_spot");
-    glUseProgram(l_prog);
-    glUniform1i(glGetUniformLocation(l_prog, "u_tex"), 0);
-    return TRUE;
-}
-
-/* GL objects for a room, the first time it's drawn */
+/* GX textures and the normals' light, the first time a room is drawn */
 static void pc_cf_upload(pc_cf_room_c* r) {
-    int i;
+    static const float L[3] = { 0.2491f, 0.8305f, 0.4983f }; /* normalize(0.3, 1.0, 0.6) */
+    int i, v;
 
     for (i = 0; i < r->tex_num; i++) {
-        if (r->tex_gl[i] != 0 || r->tex_px[i] == NULL) {
-            continue;
+        if (!r->tex_gx[i].ready && r->tex_px[i] != NULL) {
+            pc_gxh_tex_init(&r->tex_gx[i], r->tex_px[i], r->tex_w[i], r->tex_h[i], 1, 1, TRUE);
         }
-        glGenTextures(1, &r->tex_gl[i]);
-        glBindTexture(GL_TEXTURE_2D, r->tex_gl[i]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, r->tex_w[i], r->tex_h[i], 0, GL_RGBA, GL_UNSIGNED_BYTE, r->tex_px[i]);
-        glGenerateMipmap(GL_TEXTURE_2D);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     }
     for (i = 0; i < r->mesh_num; i++) {
         pc_cf_mesh_c* m = &r->mesh[i];
-        GLsizei stride = PC_CF_VERT_FLOATS * sizeof(float);
 
-        if (m->vao != 0 || m->verts == NULL) {
+        if (m->shade != NULL || m->verts == NULL) {
             continue;
         }
-        glGenVertexArrays(1, &m->vao);
-        glBindVertexArray(m->vao);
-        glGenBuffers(1, &m->vbo);
-        glBindBuffer(GL_ARRAY_BUFFER, m->vbo);
-        glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)m->vert_num * stride, m->verts, GL_STATIC_DRAW);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(6 * sizeof(float)));
-        glEnableVertexAttribArray(3);
-        glVertexAttribPointer(3, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)(8 * sizeof(float)));
+        m->shade = malloc((size_t)m->vert_num * sizeof(float));
+        for (v = 0; m->shade != NULL && v < m->vert_num; v++) {
+            const float* d = &m->verts[v * PC_CF_VERT_FLOATS];
+            float len = sqrtf(d[3] * d[3] + d[4] * d[4] + d[5] * d[5]);
+            float dot = len > 0.0f ? (d[3] * L[0] + d[4] * L[1] + d[5] * L[2]) / len : 0.0f;
+
+            /* a little shape from the normals, as the room's own lights would */
+            m->shade[v] = 0.82f + 0.18f * (dot < 0.0f ? 0.0f : dot > 1.0f ? 1.0f : dot);
+        }
     }
-    glBindVertexArray(0);
 }
 
-static void pc_cf_draw(const float view[3][4]) {
-    pc_cf_room_c* r = l_frame.room;
-    float proj[16], v[16];
-    int pass, i;
+static float pc_cf_smoothstep(float e0, float e1, float x) {
+    float t = (x - e0) / (e1 - e0);
 
-    if (r == NULL || r->loaded != 1 || !pc_cf_init()) {
+    t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+    return t * t * (3.0f - 2.0f * t);
+}
+
+static u8 pc_cf_u8(float v) {
+    return (u8)(v <= 0.0f ? 0 : v >= 255.0f ? 255 : v + 0.5f);
+}
+
+static void pc_cf_draw(const float proj[4][4], const float view[3][4]) {
+    pc_cf_room_c* r = l_frame.room;
+    float v[3][4];
+    const float* spot = l_frame.spot;
+    int pass, i, k;
+
+    if (r == NULL || r->loaded != 1) {
         return;
     }
-    pc_gx_draw_pending();
     pc_cf_upload(r);
-
-    GXGetProjectionv(proj);
     {
         static int logged;
         if (!logged++ || (getenv("PC_CF_ROOM_LOG") != NULL && logged % 120 == 0)) {
-            printf("[CFRoom] view %.2f %.2f %.2f %.1f / %.2f %.2f %.2f %.1f / %.2f %.2f %.2f %.1f proj00 %.3f 11 %.3f 22 %.4f 23 %.2f 32 %.2f\n",
+            printf("[CFRoom] view %.2f %.2f %.2f %.1f / %.2f %.2f %.2f %.1f / %.2f %.2f %.2f %.1f proj00 %.3f 11 %.3f\n",
                    view[0][0], view[0][1], view[0][2], view[0][3], view[1][0], view[1][1], view[1][2], view[1][3],
-                   view[2][0], view[2][1], view[2][2], view[2][3], proj[0], proj[5], proj[10], proj[11], proj[14]);
+                   view[2][0], view[2][1], view[2][2], view[2][3], proj[0][0], proj[1][1]);
             fflush(stdout);
         }
     }
-    memset(v, 0, sizeof(v));
     for (i = 0; i < 3; i++) {
-        v[i * 4 + 0] = view[i][0];
-        v[i * 4 + 1] = view[i][1];
-        v[i * 4 + 2] = view[i][2];
-        v[i * 4 + 3] = view[i][3] + view[i][1] * l_frame.y_offset; /* the room raised by y_offset */
+        for (k = 0; k < 4; k++) {
+            v[i][k] = view[i][k];
+        }
+        v[i][3] += view[i][1] * l_frame.y_offset; /* the room raised by y_offset */
     }
-    v[15] = 1.0f;
+    pc_gxh_camera(proj, (const float(*)[4])v);
 
-    glUseProgram(l_prog);
-    glUniformMatrix4fv(l_u_proj, 1, GL_TRUE, proj); /* both row-major, as pc_gx.c uploads them */
-    glUniformMatrix4fv(l_u_view, 1, GL_TRUE, v);
-    glUniform1f(l_u_light, l_frame.light);
-    glUniform4fv(l_u_spot, 1, l_frame.spot);
-    glDisable(GL_SCISSOR_TEST);
-    glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LEQUAL);
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    glActiveTexture(GL_TEXTURE0);
     for (pass = 0; pass < 2; pass++) {
         for (i = 0; i < r->mesh_num; i++) {
             pc_cf_mesh_c* m = &r->mesh[i];
+            const PCGXHTex* tex = NULL;
+            GXCullMode cull;
+            int n;
 
-            if (m->xlu != pass || m->vao == 0) {
+            if (m->xlu != pass || m->verts == NULL || m->shade == NULL || m->vert_num <= 0) {
                 continue;
             }
-            if (m->cull == 0) {
-                glDisable(GL_CULL_FACE);
-            } else {
-                /* GX culls by its own winding; the converter keeps the model's, so cull the other side */
-                glEnable(GL_CULL_FACE);
-                glFrontFace(GL_CW);
-                glCullFace(m->cull == 1 ? GL_FRONT : m->cull == 2 ? GL_BACK : GL_FRONT_AND_BACK);
+            if (m->tex >= 0 && m->tex < r->tex_num && r->tex_gx[m->tex].ready) {
+                tex = &r->tex_gx[m->tex];
+                pc_gxh_tex_set_wrap(&r->tex_gx[m->tex], m->wrap_s & 3, m->wrap_t & 3);
             }
-            if (pass == 1) {
-                glEnable(GL_BLEND);
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                glDepthMask(GL_FALSE);
-            } else {
-                glDisable(GL_BLEND);
-                glDepthMask(GL_TRUE);
-            }
-            glUniform1i(l_u_alpha_test, pass == 0 && m->alpha_test);
-            glUniform1i(l_u_has_tex, m->tex >= 0 && m->tex < r->tex_num);
-            if (m->tex >= 0 && m->tex < r->tex_num) {
-                static const GLint wraps[] = { GL_CLAMP_TO_EDGE, GL_REPEAT, GL_MIRRORED_REPEAT, GL_REPEAT };
+            /* GX culls by its own winding; the converter keeps the model's, so cull the other side */
+            cull = m->cull == 0 ? GX_CULL_NONE : m->cull == 1 ? GX_CULL_FRONT : m->cull == 2 ? GX_CULL_BACK : GX_CULL_ALL;
+            pc_gxh_mesh_state(tex, pass == 1 ? 1 : 0, pass == 0 && m->alpha_test, pass == 1 ? 1 : 2, cull);
 
-                glBindTexture(GL_TEXTURE_2D, r->tex_gl[m->tex]);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wraps[m->wrap_s & 3]);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wraps[m->wrap_t & 3]);
+            GXBegin(GX_TRIANGLES, PC_GXH_VTXFMT, GX_AUTO);
+            for (n = 0; n < m->vert_num; n++) {
+                const float* d = &m->verts[n * PC_CF_VERT_FLOATS];
+                const u8* c = (const u8*)&d[8];
+                float lit_r = l_frame.light, lit_g = l_frame.light, lit_b = l_frame.light;
+                float shade = m->shade[n] * 0.5f; /* halved: the TEV doubles it back (a spot goes past full) */
+
+                if (spot[3] > 0.0f) {
+                    float dx = d[0] - spot[0], dz = d[2] - spot[1];
+                    float s = spot[3] * (1.0f - pc_cf_smoothstep(0.55f * spot[2], spot[2], sqrtf(dx * dx + dz * dz)));
+
+                    lit_r += (1.08f - lit_r) * s;
+                    lit_g += (1.0f - lit_g) * s;
+                    lit_b += (0.86f - lit_b) * s;
+                }
+                GXPosition3f32(d[0], d[1], d[2]);
+                GXColor4u8(pc_cf_u8(c[0] * shade * lit_r), pc_cf_u8(c[1] * shade * lit_g),
+                           pc_cf_u8(c[2] * shade * lit_b), c[3]);
+                if (tex != NULL) {
+                    GXTexCoord2f32(d[6], d[7]);
+                }
             }
-            glBindVertexArray(m->vao);
-            glDrawArrays(GL_TRIANGLES, 0, m->vert_num);
+            GXEnd();
         }
     }
-    glBindVertexArray(0);
-    glDisable(GL_BLEND);
-    glDisable(GL_CULL_FACE);
-    glFrontFace(GL_CCW);
-    glDepthMask(GL_TRUE);
-    pc_gx_restore_after_nes(); /* rebinds the game's GL objects and marks all GX state dirty */
 }
 
 void pc_cf_room_noop(unsigned int tag, const float proj[4][4], const float view[3][4]) {
-    (void)proj;
     if (tag == PC_NOOP_CF_ROOM) {
-        pc_cf_draw(view);
+        pc_cf_draw(proj, view);
         l_frame.room = NULL;
     }
 }

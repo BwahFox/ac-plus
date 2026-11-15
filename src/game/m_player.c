@@ -39,6 +39,10 @@
 #include "pc_outdoor_ftr.h"
 #endif
 
+#ifdef MOUSE_INPUT
+#include "game_pointer.h"
+#endif
+
 static int l_skip_other_func_set_wade = FALSE;
 static xyz_t l_wade_end_pos = { 0.0f, 0.0f, 0.0f };
 
@@ -269,9 +273,9 @@ static int Player_actor_request_main_demo_get_golden_item2_all(GAME*, int, int);
 static int Player_actor_request_main_demo_get_golden_axe_wait_all(GAME*, int);
 static int Player_actor_check_request_main_priority(GAME*, int);
 static void* Player_actor_get_door_label(GAME*);
-static int Player_actor_Set_Item_net_catch_request_table(ACTOR*, GAME*, u32, s8, const xyz_t*, f32);
+static int Player_actor_Set_Item_net_catch_request_table(ACTOR*, GAME*, mPlayer_label_t, s8, const xyz_t*, f32);
 static f32 Player_actor_Get_Item_net_catch_swing_timer(ACTOR*, GAME*);
-static int Player_actor_Set_Item_net_catch_request_force(ACTOR*, GAME*, u32, s8);
+static int Player_actor_Set_Item_net_catch_request_force(ACTOR*, GAME*, mPlayer_label_t, s8);
 static void Player_actor_Set_force_position_angle(GAME*, const xyz_t*, const s_xyz*, u8);
 static u8 Player_actor_Get_force_position_angle(GAME*, xyz_t*, s_xyz*);
 static int Player_actor_Get_WadeEndPos(GAME*, xyz_t*);
@@ -281,8 +285,8 @@ static int Player_actor_able_submenu_request_main_index(GAME*);
 static int Player_actor_check_able_change_camera_normal_index(ACTOR*);
 static int Player_actor_Check_able_force_speak_label(GAME*, void*);
 static int Player_actor_check_cancel_request_change_proc_index(int);
-static u32 Player_actor_Get_item_net_catch_label(ACTOR*);
-static int Player_actor_Change_item_net_catch_label(ACTOR*, u32, s8);
+static mPlayer_label_t Player_actor_Get_item_net_catch_label(ACTOR*);
+static int Player_actor_Change_item_net_catch_label(ACTOR*, mPlayer_label_t, s8);
 static int Player_actor_Check_StopNet(ACTOR*, xyz_t*);
 static int Player_actor_Check_HitAxe(ACTOR*, xyz_t*);
 static int Player_actor_Check_VibUnit_OneFrame(ACTOR*, const xyz_t*);
@@ -362,7 +366,7 @@ static int Player_actor_request_main_fall_pitfall_all(GAME* game, int prio);
 static int Player_actor_request_main_struggle_pitfall_all(GAME* game, int prio);
 static int Player_actor_request_main_climbup_pitfall_all(GAME* game, int prio);
 static int Player_actor_request_main_notice_bee_all(GAME* game, int prio);
-static int Player_actor_request_main_notice_mosquito(GAME* game, u32 label, int prio);
+static int Player_actor_request_main_notice_mosquito(GAME* game, mPlayer_label_t label, int prio);
 static int Player_actor_request_main_demo_geton_boat_sitdown_all(GAME* game, int prio);
 static int Player_actor_request_main_demo_geton_boat_wait_all(GAME* game, int prio);
 static int Player_actor_request_main_demo_getoff_boat_all(GAME* game, const xyz_t* pos_p, s16 angle_y, int prio);
@@ -1482,22 +1486,27 @@ static void Player_actor_main_Demo_get_golden_axe_wait(ACTOR*, GAME*);
     static int last_tool_slot = 0;
     static int last_direction = 0;
 
-    static void TrySwitchToolSlot(GAME* game, int direction) {
+    static void TryPutawayTool(GAME* game);
+
+    static void TrySwitchToolSlot(GAME* game, int direction, int include_empty_hands) {
         Private_c* priv;
         mActor_name_t held_item;
         mActor_name_t slot_item;
         int search_slot;
+        int empty_slot;
         int i;
 
         priv = Common_Get(now_private);
         held_item = priv->equipment;
+        /* One free pocket represents the empty-hands stop in the wheel cycle. */
+        empty_slot = include_empty_hands && held_item != EMPTY_NO ? mPr_GetPossessionItemIdx(priv, EMPTY_NO) : -1;
 
         if (last_tool_slot < 0 || last_tool_slot >= mPr_POCKETS_SLOT_COUNT) {
             last_tool_slot = 0;
         }
 
         /* try last used slot first */
-        if (held_item == EMPTY_NO) {
+        if (held_item == EMPTY_NO && !include_empty_hands) {
             slot_item = priv->inventory.pockets[last_tool_slot];
 
             if (mPr_GET_ITEM_COND(priv->inventory.item_conditions, last_tool_slot) == mPr_ITEM_COND_NORMAL &&
@@ -1517,6 +1526,13 @@ static void Player_actor_main_Demo_get_golden_axe_wait(ACTOR*, GAME*);
         search_slot = last_tool_slot;
 
         for (i = 0; i < mPr_POCKETS_SLOT_COUNT; i++) {
+            if (search_slot == empty_slot) {
+                TryPutawayTool(game);
+                last_tool_slot = WrapToolSlot(search_slot + direction);
+                last_direction = direction;
+                return;
+            }
+
             slot_item = priv->inventory.pockets[search_slot];
 
             if (mPr_GET_ITEM_COND(priv->inventory.item_conditions, search_slot) == mPr_ITEM_COND_NORMAL &&
@@ -1597,16 +1613,27 @@ static void Player_actor_main_Demo_get_golden_axe_wait(ACTOR*, GAME*);
         }
 
         if (chkTrigger(BUTTON_DLEFT)) {
-            TrySwitchToolSlot(game, -1);
+            TrySwitchToolSlot(game, -1, FALSE);
             return;
         }
         if (chkTrigger(BUTTON_DRIGHT)) {
-            TrySwitchToolSlot(game, 1);
+            TrySwitchToolSlot(game, 1, FALSE);
             return;
         }
         if (chkTrigger(BUTTON_DDOWN)) {
             TryPutawayTool(game);
+            return;
         }
+
+#ifdef MOUSE_INPUT
+        const GamePointerFrame* pointer = acgc_pointer_frame();
+        if (mMsg_CHECK_MAINHIDE() && pointer->visible) {
+            int mouse_wheel = pointer->scroll_steps_y;
+            if (mouse_wheel != 0) {
+                TrySwitchToolSlot(game, mouse_wheel < 0 ? -1 : 1, TRUE);
+            }
+        }
+#endif
     }
 #endif
 

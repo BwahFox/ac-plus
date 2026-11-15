@@ -10,6 +10,10 @@
 #include "m_diary.h"
 #include "dolphin/card.h"
 
+#ifndef CARD_NUM_CHANS
+#define CARD_NUM_CHANS 2
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -144,12 +148,12 @@ typedef struct {
 #define mCD_KEEP_ORIGINAL_FOLDER_NAME_LEN 12
 
 typedef struct {
-    u16 checksum;
+    ATTRIBUTE_ALIGN(32) u16 checksum;
     u16 landid;
     u8 folder_names[mCD_KEEP_ORIGINAL_PAGE_COUNT][mCD_KEEP_ORIGINAL_FOLDER_NAME_LEN];
     mNW_original_design_c original[mCD_KEEP_ORIGINAL_PAGE_COUNT][mCD_KEEP_ORIGINAL_COUNT];
     int _CC80; // force size to 0xCCA0
-} mCD_keep_original_c ATTRIBUTE_ALIGN(32);
+} mCD_keep_original_c;
 
 #define mCD_KEEP_ORIGINAL_SIZE ALIGN_NEXT(sizeof(mCD_keep_original_c), 32)
 
@@ -158,11 +162,11 @@ typedef struct {
 #define mCD_KEEP_MAIL_FOLDER_NAME_LEN 12
 
 typedef struct {
-    u16 checksum;
+    ATTRIBUTE_ALIGN(32) u16 checksum;
     u16 landid;
     u8 folder_names[mCD_KEEP_MAIL_PAGE_COUNT][mCD_KEEP_MAIL_FOLDER_NAME_LEN];
     Mail_c mail[mCD_KEEP_MAIL_PAGE_COUNT][mCD_KEEP_MAIL_COUNT];
-} mCD_keep_mail_c ATTRIBUTE_ALIGN(32);
+} mCD_keep_mail_c;
 
 #define mCD_KEEP_MAIL_SIZE ALIGN_NEXT(sizeof(mCD_keep_mail_c), 32)
 
@@ -170,18 +174,18 @@ typedef struct {
 #define mCD_KEEP_DIARY_ENTRY_COUNT lbRTC_MONTHS_MAX
 
 typedef struct {
-    u16 checksum;
+    ATTRIBUTE_ALIGN(32) u16 checksum;
     mDi_entry_c entries[mCD_KEEP_DIARY_COUNT][mCD_KEEP_DIARY_ENTRY_COUNT];
-} mCD_keep_diary_c ATTRIBUTE_ALIGN(32);
+} mCD_keep_diary_c;
 
 #define mCD_KEEP_DIARY_SIZE ALIGN_NEXT(sizeof(mCD_keep_diary_c), 32)
 
 typedef struct {
     MemcardHeader_c header;
     u8 pad[32];
-    mCD_keep_original_c original ATTRIBUTE_ALIGN(32);
-    mCD_keep_mail_c mail ATTRIBUTE_ALIGN(32);
-    mCD_keep_diary_c diary ATTRIBUTE_ALIGN(32);
+    ATTRIBUTE_ALIGN(32) mCD_keep_original_c original;
+    ATTRIBUTE_ALIGN(32) mCD_keep_mail_c mail;
+    ATTRIBUTE_ALIGN(32) mCD_keep_diary_c diary;
 } mCD_others_c;
 
 typedef struct {
@@ -261,15 +265,15 @@ typedef union {
         MemcardHeader_c header;
         PresentSave_c save;
     };
-    u8 __align_sector[mCD_MEMCARD_SECTORSIZE];
-} PresentSaveFile_c ATTRIBUTE_ALIGN(32);
+    ATTRIBUTE_ALIGN(32) u8 __align_sector[mCD_MEMCARD_SECTORSIZE];
+} PresentSaveFile_c;
 
 typedef struct {
     MemcardHeader_c header;
     u16 checksum; // presumed
-    mCD_keep_mail_c keep_mail ATTRIBUTE_ALIGN(32);
-    mCD_keep_original_c keep_original ATTRIBUTE_ALIGN(32);
-    mCD_keep_diary_c keep_diary ATTRIBUTE_ALIGN(32);
+    ATTRIBUTE_ALIGN(32) mCD_keep_mail_c keep_mail;
+    ATTRIBUTE_ALIGN(32) mCD_keep_original_c keep_original;
+    ATTRIBUTE_ALIGN(32) mCD_keep_diary_c keep_diary;
 } OthersSave_c;
 
 typedef union {
@@ -320,11 +324,7 @@ extern int mCD_save_data_aram_to_main(void* dst, u32 size, u32 idx);
 extern int mCD_save_data_main_to_aram(void* src, u32 size, u32 idx);
 
 #ifdef TARGET_PC
-extern int pc_save_loaded;
-extern int pc_save_reload(void);
-
-/* These structs are local to m_card.c in the original decomp, but the PC port
-   needs them in pc_m_card.c and pc_save_bswap.c for foreigner/travel support. */
+/* PC travel shares the passport structs that are local to m_card.c on GC. */
 
 typedef struct {
     u16 checksum;

@@ -1,4 +1,7 @@
 #include "ac_my_room.h"
+#include <stdlib.h> /* getenv: ac-plus dev switches */
+#include "m_skin_matrix.h" /* Skin_Matrix_PrjMulVector: outdoor furniture culled where the curved world draws it */
+extern void aSG_pc_field_move(void); /* ac-plus: items on outdoor furniture (ac_shop_goods.c), called from ac_my_room_move.c_inc */
 
 #include "m_bgm.h"
 #include "m_name_table.h"
@@ -2441,7 +2444,7 @@ static void aMR_CallSitDownOngenPosSE(const xyz_t* pos) {
         /* Check for massage chair */
         switch (ftr_actor->name) {
             case FTR_KON_MASAJI:
-                sAdo_OngenPos((u32)ftr_actor, 39, &ftr_actor->position);
+                sAdo_OngenPos((JaudioObjectId)(uintptr_t)ftr_actor, 39, &ftr_actor->position);
                 break;
         }
     }

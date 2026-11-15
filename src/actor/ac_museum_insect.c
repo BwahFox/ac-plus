@@ -702,6 +702,11 @@ int Museum_Insect_GetMsgNo(ACTOR* actorx) {
     int insect_caught_by = actor->_2F80[actor->_2F7C].insectInfo;
     s16 insect_no = ITM_INSECT_START + actor->_2F80[actor->_2F7C].insectName;
     int msgNo;
+#ifdef TARGET_PC
+    if (actor->_2F80[actor->_2F7C].insectName & PC_CF_PLAQUE) { /* City Folk's */
+        insect_no = (s16)(PC_CF_BUG_ITEM + (actor->_2F80[actor->_2F7C].insectName & 0xFF));
+    }
+#endif
     mIN_copy_name_str(item_name, insect_no);
     mMsg_Set_item_str_art(mMsg_Get_base_window_p(), mMsg_ITEM_STR0, item_name, ARRAY_COUNT(item_name),
                           mIN_get_item_article(insect_no));
@@ -771,6 +776,21 @@ void Museum_Insect_Set_MsgInsectInfo(ACTOR* actorx, int groupNum) {
             actor->_2F78++;
         }
     }
+#ifdef TARGET_PC
+    {
+        /* City Folk's bugs in the beds nearest this plaque (pc_cf_creature.c) */
+        static const xyz_t plaques[6] = { { 140.f, 40.f, 60.f },  { 420.f, 40.f, 60.f },  { 220.f, 40.f, 300.f },
+                                          { 380.f, 40.f, 300.f }, { 180.f, 40.f, 540.f }, { 340.f, 40.f, 540.f } };
+        s16 names[30], donors[30];
+        int n = pc_cf_museum_plaque_bugs(groupNum, plaques, 6, names, donors, 30), k;
+
+        for (k = 0; k < n && actor->_2F78 < (int)ARRAY_COUNT(actor->_2F80); k++) {
+            actor->_2F80[actor->_2F78].insectName = names[k];
+            actor->_2F80[actor->_2F78].insectInfo = donors[k];
+            actor->_2F78++;
+        }
+    }
+#endif
 }
 
 void Museum_Insect_set_talk_info(ACTOR* actorx) {
@@ -902,21 +922,21 @@ static void Museum_Insect_RefreshPosSounds(MUSEUM_INSECT_ACTOR* actor, GAME* gam
 
     insect = &actor->privInsects[aINS_INSECT_TYPE_COCKROACH];
     if ((insect->_8C & 1) && insect->_72 == 0 && insect->_40 > 0.0f) {
-        sAdo_OngenPos((u32)insect, 0xa8, &insect->_1C);
+        sAdo_OngenPos((JaudioObjectId)(uintptr_t)insect, 0xa8, &insect->_1C);
     }
 
     insect = &actor->privInsects[aINS_INSECT_TYPE_MOSQUITO];
     if ((insect->_8C & 1) && search_position_distanceXZ(&insect->_1C, &player_pos) < 300.0f) {
-        sAdo_OngenPos((u32)insect, 0xcf, &insect->_1C);
+        sAdo_OngenPos((JaudioObjectId)(uintptr_t)insect, 0xcf, &insect->_1C);
     }
 
     insect = &actor->privInsects[aINS_INSECT_TYPE_MOLE_CRICKET];
     if (insect->_8C & 1) {
         dist = search_position_distance(&insect->_1C, &player_pos);
         if (insect->_04 == okera_dig_wait_process && dist < 200.0f) {
-            sAdo_OngenPos((u32)insect, 68, &insect->_1C);
+            sAdo_OngenPos((JaudioObjectId)(uintptr_t)insect, 68, &insect->_1C);
         } else if (insect->_04 == okera_dig_up_process && dist < 200.0f) {
-            sAdo_OngenPos((u32)insect, 69, &insect->_1C);
+            sAdo_OngenPos((JaudioObjectId)(uintptr_t)insect, 69, &insect->_1C);
         }
     }
 
@@ -927,7 +947,7 @@ static void Museum_Insect_RefreshPosSounds(MUSEUM_INSECT_ACTOR* actor, GAME* gam
             insect = &actor->privInsects[i];
             if ((insect->_8C & 1) && insect->_8E && insect->_78 == 1 && insect->_72 == insect->_74 &&
                 search_position_distance(&insect->_1C, &player_pos) < 200.0f) {
-                sAdo_OngenPos((u32)insect, semi_sound_data[i - aINS_INSECT_TYPE_ROBUST_CICADA], &insect->_1C);
+                sAdo_OngenPos((JaudioObjectId)(uintptr_t)insect, semi_sound_data[i - aINS_INSECT_TYPE_ROBUST_CICADA], &insect->_1C);
             }
         }
 
@@ -937,7 +957,7 @@ static void Museum_Insect_RefreshPosSounds(MUSEUM_INSECT_ACTOR* actor, GAME* gam
                 ((insect->_04 != minsect_batta_silent_process && insect->_8E) ||
                  (insect->_04 == minsect_batta_silent_process && insect->_8E == 0)) &&
                 search_position_distanceXZ(&insect->_1C, &player_pos) < 200.0f) {
-                sAdo_OngenPos((u32)insect, batta_sound_data[i - aINS_INSECT_TYPE_CRICKET], &insect->_1C);
+                sAdo_OngenPos((JaudioObjectId)(uintptr_t)insect, batta_sound_data[i - aINS_INSECT_TYPE_CRICKET], &insect->_1C);
             }
         }
     }

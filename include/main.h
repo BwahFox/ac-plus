@@ -20,7 +20,9 @@ extern int ScreenHeight;
 extern OSThread graphThread;
 extern u8 SegmentBaseAddress[0x40];
 
-void main(void);
+#if !(defined(_MSC_VER) && defined(__clang__))
+void main(void); /* (clang-cl refuses a main that isn't int: ac-plus's Windows cross-build; main.c has its own) */
+#endif
 extern void mainproc(void* val);
 
 #ifdef __cplusplus

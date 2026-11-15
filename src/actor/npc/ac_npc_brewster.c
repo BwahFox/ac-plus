@@ -672,7 +672,7 @@ static void aBRW_set_request_act(NPC_BREWSTER_ACTOR* brw) {
 static void aBRW_act_proc(NPC_ACTOR* actorx, GAME_PLAY* play, int action) {
     switch (action) {
         case 0: /* init */
-            (*Common_Get(clip).npc_clip->animation_init_proc)(actorx, aNPC_ANIM_WAIT1, FALSE);
+            (*Common_Get(clip).npc_clip->animation_init_proc)((ACTOR*)actorx, aNPC_ANIM_WAIT1, FALSE);
             actorx->condition_info.demo_flg = 0;
             actorx->head.angle_add_y = DEG2SHORT_ANGLE(5.625f);
             actorx->movement.mv_angl = DEG2SHORT_ANGLE(-90.0f); /* across the counter, to the stools */

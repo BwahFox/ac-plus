@@ -35,7 +35,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../lib/stb/stb_image_write.h"
 
-#include <dirent.h>
+#include "pc_dirent.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -471,7 +471,7 @@ static void qr_export_png(const char* path, const u8* qr, int size, const mNW_or
 #define QR_IMPORT_MAX 32
 
 typedef struct {
-    u8 tex[QR_TEX_MAX * QR_TEX_MAX / 2] ATTRIBUTE_ALIGN(32);
+    ATTRIBUTE_ALIGN(32) u8 tex[QR_TEX_MAX * QR_TEX_MAX / 2];
     int tex_size;
 } QrTex;
 
@@ -483,7 +483,7 @@ typedef struct {
 enum { QR_PAGE_SHARE, QR_PAGE_IMPORT, QR_PAGE_CONFIRM };
 enum { QR_ACT_UP = 1, QR_ACT_DOWN, QR_ACT_LEFT, QR_ACT_RIGHT, QR_ACT_CONFIRM, QR_ACT_CANCEL };
 
-static u16 l_qr_tlut[16] ATTRIBUTE_ALIGN(32) = { 0xFFFF, 0x8000 }; /* white, black */
+ATTRIBUTE_ALIGN(32) static u16 l_qr_tlut[16] = { 0xFFFF, 0x8000 }; /* white, black */
 static QrTex l_qr_slot_tex[mPr_ORIGINAL_DESIGN_COUNT];
 static QrImport l_qr_imports[QR_IMPORT_MAX];
 static int l_qr_import_count;

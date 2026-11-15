@@ -171,6 +171,7 @@ void pc_skin_swatch(int tone, u8* r, u8* g, u8* b) {
 /* --- the picker --- */
 
 extern int g_pc_paused;
+extern int g_pc_acplus_menu_open; /* ac-plus pause menu (pc_pause_menu.c) */
 void pc_pause_menu_open_skin(void);
 void mPlib_change_player_face_pallet(GAME* game);
 
@@ -338,7 +339,7 @@ int pc_skin_ask_busy(void) {
             }
             break;
         case ASK_PICK:
-            if (!l_pick.active && !g_pc_paused) {
+            if (!l_pick.active && !(g_pc_paused || g_pc_acplus_menu_open)) {
                 mMsg_ChangeMsgData(msg_p, l_ask_next);
                 mMsg_Set_ForceNext(msg_p);
                 mMsg_request_main_appear_wait_type1(msg_p);

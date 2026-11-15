@@ -1,11 +1,18 @@
 #include "JSystem/JUtility/JUTAssertion.h"
 #include "JSystem/JKernel/JKRHeap.h"
 #include "dolphin/os.h"
-#include "dolphin/os/OSArena.h"
+#include <dolphin/os.h>
 #include "dolphin/os/OSAlloc.h"
 #include "dolphin/os/OSMemory.h"
-#include "dolphin/os/OSUtil.h"
 #include "dolphin/os.h"
+
+#ifdef TARGET_PC
+#include <cassert>
+#include <cstdlib>
+#if defined(_WIN32)
+#include <malloc.h>
+#endif
+#endif
 
 JKRHeap* JKRHeap::sSystemHeap;
 JKRHeap* JKRHeap::sCurrentHeap;
@@ -70,7 +77,7 @@ bool JKRHeap::initArena(char** outUserRamStart, u32* outUserRamSize, int numHeap
     OSSetArenaLo(arenaHi);
     OSSetArenaHi(arenaHi);
     *outUserRamStart = (char*)arenaLo;
-    *outUserRamSize = (u32)arenaHi - (u32)arenaLo;
+    *outUserRamSize = (u32)((uintptr_t)arenaHi - (uintptr_t)arenaLo);
     return true;
 }
 
@@ -89,6 +96,10 @@ JKRHeap* JKRHeap::becomeCurrentHeap() {
 void JKRHeap::destroy(JKRHeap* heap) {
     JUT_ASSERT(heap != 0);
     heap->destroy();
+}
+
+void JKRHeap::destroy() {
+    JKR_DELETE(this);
 }
 
 void* JKRHeap::alloc(u32 byteCount, int padding, JKRHeap* heap) {
@@ -207,7 +218,7 @@ JKRHeap* JKRHeap::findAllHeap(void* memory) const {
 }
 
 // generates __as__25JSUTreeIterator<7JKRHeap>FP17JSUTree<7JKRHeap> and __ct__25JSUTreeIterator<7JKRHeap>Fv, remove this
-void JKRHeap::dispose_subroutine(u32 begin, u32 end) {
+void JKRHeap::dispose_subroutine(uintptr_t begin, uintptr_t end) {
     JSUListIterator<JKRDisposer> last_iterator;
     JSUListIterator<JKRDisposer> next_iterator;
     JSUListIterator<JKRDisposer> iterator;
@@ -231,14 +242,14 @@ void JKRHeap::dispose_subroutine(u32 begin, u32 end) {
 }
 
 bool JKRHeap::dispose(void* memory, u32 size) {
-    u32 begin = (u32)memory;
-    u32 end = (u32)memory + size;
+    uintptr_t begin = (uintptr_t)memory;
+    uintptr_t end = (uintptr_t)memory + size;
     dispose_subroutine(begin, end);
     return false;
 }
 
 void JKRHeap::dispose(void* begin, void* end) {
-    dispose_subroutine((u32)begin, (u32)end);
+    dispose_subroutine((uintptr_t)begin, (uintptr_t)end);
 }
 
 void JKRHeap::dispose() {
@@ -296,41 +307,118 @@ bool JKRHeap::isSubHeap(JKRHeap* heap) const {
     return false;
 }
 
-void* operator new(u32 byteCount) {
-    return JKRHeap::alloc(byteCount, 4, nullptr);
-}
-void* operator new(u32 byteCount, int alignment) {
-    return JKRHeap::alloc(byteCount, alignment, nullptr);
-}
-void* operator new(u32 byteCount, JKRHeap* heap, int alignment) {
-    return JKRHeap::alloc(byteCount, alignment, heap);
+#ifdef TARGET_PC
+static void* JKRAllocOrHost(size_t byteCount, int alignment, JKRHeap* heap) noexcept {
+    void* memory = JKRHeap::alloc((u32)byteCount, alignment, heap);
+    if (memory != nullptr) {
+        return memory;
+    }
+
+    size_t hostAlignment = alignment < 0 ? (size_t)-alignment : (size_t)alignment;
+    if (hostAlignment == 0) {
+        hostAlignment = alignof(max_align_t);
+    }
+    assert((hostAlignment & (hostAlignment - 1)) == 0 && "Alignment must be a power of two");
+#if defined(_WIN32)
+    if (hostAlignment < alignof(max_align_t)) {
+        hostAlignment = alignof(max_align_t);
+    }
+    // As in Dusklight, every tagged Windows fallback uses the aligned
+    // allocator so tagged delete can always pair it with _aligned_free.
+    return _aligned_malloc(byteCount, hostAlignment);
+#else
+    const size_t alignedSize = (byteCount + hostAlignment - 1) & ~(hostAlignment - 1);
+    return std::aligned_alloc(hostAlignment, alignedSize);
+#endif
 }
 
-void* operator new[](u32 byteCount) {
-    return JKRHeap::alloc(byteCount, 4, nullptr);
+void* operator new(size_t byteCount, JKRHeapToken) noexcept {
+    return JKRAllocOrHost(byteCount, (int)alignof(max_align_t), nullptr);
 }
-void* operator new[](u32 byteCount, int alignment) {
-    return JKRHeap::alloc(byteCount, alignment, nullptr);
+#else
+void* operator new(size_t byteCount) {
+    return JKRHeap::alloc((u32)byteCount, 4, nullptr);
 }
-void* operator new[](u32 byteCount, JKRHeap* heap, int alignment) {
-    return JKRHeap::alloc(byteCount, alignment, heap);
+#endif
+#ifdef TARGET_PC
+void* operator new(size_t byteCount, JKRHeapToken, int alignment) noexcept {
+    return JKRAllocOrHost(byteCount, alignment, nullptr);
 }
+void* operator new(size_t byteCount, JKRHeapToken, JKRHeap* heap, int alignment) noexcept {
+    return JKRAllocOrHost(byteCount, alignment, heap);
+}
+#else
+void* operator new(size_t byteCount, int alignment) {
+    return JKRHeap::alloc((u32)byteCount, alignment, nullptr);
+}
+void* operator new(size_t byteCount, JKRHeap* heap, int alignment) {
+    return JKRHeap::alloc((u32)byteCount, alignment, heap);
+}
+#endif
 
+#ifdef TARGET_PC
+void* operator new[](size_t, JKRHeapToken) noexcept {
+    OSPanic(__FILE__, __LINE__, "Allocation should go through JKR_NEW_ARRAY instead");
+}
+void* operator new[](size_t, JKRHeapToken, int) noexcept {
+    OSPanic(__FILE__, __LINE__, "Allocation should go through JKR_NEW_ARRAY_ARGS instead");
+}
+void* operator new[](size_t, JKRHeapToken, JKRHeap*, int) noexcept {
+    OSPanic(__FILE__, __LINE__, "Allocation should go through JKR_NEW_ARRAY_ARGS instead");
+}
+#else
+void* operator new[](size_t byteCount) {
+    return JKRHeap::alloc((u32)byteCount, 4, nullptr);
+}
+void* operator new[](size_t byteCount, int alignment) {
+    return JKRHeap::alloc((u32)byteCount, alignment, nullptr);
+}
+void* operator new[](size_t byteCount, JKRHeap* heap, int alignment) {
+    return JKRHeap::alloc((u32)byteCount, alignment, heap);
+}
+#endif
+
+#ifdef TARGET_PC
+void operator delete(void* memory, JKRHeapToken) noexcept {
+    if (memory == nullptr) {
+        return;
+    }
+    JKRHeap* heap = JKRHeap::findFromRoot(memory);
+    if (heap == nullptr) {
+#if defined(_WIN32)
+        _aligned_free(memory);
+#else
+        std::free(memory);
+#endif
+        return;
+    }
+    JKRHeap::free(memory, heap);
+}
+#else
 // this is not needed without the other pragma and asm bs
 void operator delete(void* memory) {
     JKRHeap::free(memory, nullptr);
 }
-void operator delete[](void* memory) {
-    JKRHeap::free(memory, nullptr);
-}
+#endif
+
 #ifdef TARGET_PC
-/* C++14 sized deallocation - GCC 15 generates calls to these by default.
-   Without these, sized delete falls through to CRT free() which crashes
-   on pointers from the JKR heap (inside the game's arena memory). */
-void operator delete(void* memory, size_t) {
-    JKRHeap::free(memory, nullptr);
+void operator delete[](void* memory, JKRHeapToken) noexcept {
+    if (memory == nullptr) {
+        return;
+    }
+    JKRHeap* heap = JKRHeap::findFromRoot(memory);
+    if (heap == nullptr) {
+#if defined(_WIN32)
+        _aligned_free(memory);
+#else
+        std::free(memory);
+#endif
+        return;
+    }
+    JKRHeap::free(memory, heap);
 }
-void operator delete[](void* memory, size_t) {
+#else
+void operator delete[](void* memory) {
     JKRHeap::free(memory, nullptr);
 }
 #endif

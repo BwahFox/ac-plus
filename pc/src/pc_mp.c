@@ -7,6 +7,7 @@
  *
  * Prototype controls (no menus yet): PC_MP_HOST=port (or 1 for the default port) hosts this town,
  * PC_MP_JOIN=address[:port] visits one. */
+#include <SDL3/SDL.h>
 #include "pc_cf_ftr.h"
 #include "pc_mp.h"
 #include "pc_cf_anim.h"
@@ -52,7 +53,7 @@
 #include "mp/mp_link.h"
 #include "mp/mp_mm.h"
 
-extern unsigned int SDL_GetTicks(void);
+#include <SDL3/SDL.h>
 extern void mPlib_pc_load_face(int sex, int face_type, int tone, int sunburn_rank, u8* face_tex, u16* face_pal);
 extern u8* mPlib_get_player_tex_p(GAME* game);
 extern u16* mPlib_get_player_pallet_p(GAME* game);
@@ -62,6 +63,7 @@ extern int pc_mcd_online_visiting(void);
 /* ac_npc_station_master.c: Porter puts the player on his train (FALSE when he isn't at his post with them near) */
 extern int pc_aSTM_online_board(GAME_PLAY* play);
 extern int g_pc_paused; /* pc_pause_menu.c */
+extern int g_pc_acplus_menu_open; /* ac-plus pause menu (pc_pause_menu.c) */
 extern void pc_os_mp_set_clock(int on, int year, int month, int day, int hour, int min, int sec);
 
 #define MP_ID_FILE "save/multiplayer_id.bin"
@@ -2374,7 +2376,7 @@ static void mp_visitor_travel(GAME_PLAY* play) {
         }
         if (l_mp.via_porter) {
             /* on Porter's train: he has to be at his post with the player by him, the menu closed */
-            if (g_pc_paused) {
+            if ((g_pc_paused || g_pc_acplus_menu_open)) {
                 return; /* the menu Porter opened closes by itself (pc_mp_menu_draw) */
             }
             if (!pc_aSTM_online_board(play)) {

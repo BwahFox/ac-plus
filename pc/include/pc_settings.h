@@ -6,24 +6,30 @@ extern "C" {
 #endif
 
 typedef struct {
+    /* Nookery's own (acgc_settings.cpp, config.json; positional initializer there: keep this order) */
     int window_width;
     int window_height;
     int fullscreen;       /* 0=windowed, 1=fullscreen, 2=borderless */
     int vsync;            /* 0=off, 1=on */
     int max_fps;          /* 0=uncapped, otherwise frame limiter target */
-    int msaa;             /* 0=off, 2/4/8=samples */
-    int texture_filtering; /* 0=force nearest-neighbor, 1=use the game's texture filtering */
     int preload_textures; /* 0=off (load on demand), 1=on (load all at startup), 2=on + cache file */
-    int world_curve;      /* City Folk style curved ground + sky outdoors, strength in percent (0=flat, default 75) */
-    int cf_weather;       /* 1 = City Folk style weather: changes during the day, overcast, rainbows (default) */
-    int cf_tv;            /* 1 = TVs show City Folk's programs through the day, when converted (default) */
-    int tanning;          /* 1 = the sun tans the player (as the GameCube), 0 = skin keeps its chosen tone (default) */
-    char weather_clear_days[128]; /* "M/D,M/D,...": days the City Folk weather stays clear all day (pc_weather.c) */
     int disable_resetti;  /* 0=normal (Resetti appears on reset), 1=disable reset penalty */
     int disable_shop_visitor_req; /* 0=normal (Nookington's needs a foreign-town shopper), 1=skip requirement */
     int borderless_acres; /* 0=original acre transitions (faster, draws less), 1=continuous camera/movement */
     int nes_aspect;       /* NES emulator aspect: 0=fullscreen stretch, 1=4:3 pillarbox (default) */
     int master_volume;    /* Applied at the PC audio output, 0-100 (default 100) */
+    int stick_deadzone;   /* Gamepad main stick deadzone, percent 0-40 (default 12) */
+    int cstick_deadzone;  /* Gamepad C-stick deadzone, percent 0-40 (default 12) */
+    int fast_text;        /* 0=normal (B latches fast text per message), 1=always fast text */
+    int travel_move_out_chance; /* Percent chance the moving villager follows a traveler: 10, 50 or 100 (default) */
+    int hud_at_edges;     /* 0=corner HUD stays in the centered 4:3 area, 1=anchored to widescreen edges */
+    /* ac-plus (pc_acplus_settings.c, ac-plus.ini) */
+    int world_curve;      /* City Folk style curved ground + sky outdoors, strength in percent (0=flat, default 75) */
+    int cf_weather;       /* 1 = City Folk style weather: changes during the day, overcast, rainbows (default) */
+    int cf_tv;            /* 1 = TVs show City Folk's programs through the day, when converted (default) */
+    int tanning;          /* 1 = the sun tans the player (as the GameCube), 0 = skin keeps its chosen tone (default) */
+    int mouse_hold_pockets; /* 1 = holding right-click with empty hands opens the pockets (Nookery's), 0 = off (default) */
+    char weather_clear_days[128]; /* "M/D,M/D,...": days the City Folk weather stays clear all day (pc_weather.c) */
     char music_pack[64];  /* Folder under music/ with custom hourly tracks, empty = off (see pc_music.h) */
     int music_volume;     /* Custom music pack volume, 0-100 (default 100) */
     int music_custom;     /* 1 = play the music pack (default), 0 = the game's own music even with a pack set */
@@ -48,8 +54,6 @@ typedef struct {
     int update_check;     /* 1 = at startup, look for a newer ac-plus release and offer it (pc_updater.c, default) */
     char update_repo[128]; /* the GitHub repository releases come from, owner/name (default BwahFox/ac-plus) */
     char update_skip[32];  /* a release the player chose to skip ("Skip this version"), e.g. alpha-6 */
-    int stick_deadzone;   /* Gamepad main stick deadzone, percent 0-40 (default 12) */
-    int cstick_deadzone;  /* Gamepad C-stick deadzone, percent 0-40 (default 12) */
     int mouse_mode;       /* 0 = off, 1 = menus and designer (pc_mouse.c, default), 2 = ac-plus designer only (pc_designer_mouse.c_inc) */
 } PCSettings;
 
@@ -59,6 +63,8 @@ void pc_settings_load(void);
 void pc_settings_save(void);
 void pc_settings_apply(void);
 void pc_settings_cycle_resolution(int* width, int* height, int dir);
+/* ac-plus: its own settings (ac-plus.ini; from an older ac-plus's settings.ini the first time) */
+void pc_acplus_settings_load(void);
 
 #ifdef __cplusplus
 }

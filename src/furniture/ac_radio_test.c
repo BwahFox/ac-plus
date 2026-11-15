@@ -29,7 +29,7 @@ extern Gfx radio_DL_model[];
 #ifdef TARGET_PC
 extern u16 obj_e_radio_pal[];
 #else
-static u16 radio_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u16 radio_pal[] = {
 #include "assets/radio_pal.inc"
 };
 #endif

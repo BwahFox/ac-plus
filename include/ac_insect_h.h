@@ -231,6 +231,8 @@ typedef struct insect_actor_s {
     s16 light_step;
 #ifdef TARGET_PC
     int pc_cf; /* City Folk's: which of theirs it is (pc_cf_creature.h), its type standing for how it moves; 0 not */
+    /* The cockroach actor stores an item pointer in s32_work3 on GameCube. */
+    mActor_name_t* pc_item_p;
 #endif
 } aINS_INSECT_ACTOR;
 
@@ -242,10 +244,10 @@ typedef struct insect_ctrl_actor_s {
 
 /* sizeof(aINS_overlay_entry_c) == 0x1C08 */
 typedef struct insect_overlay_s {
-    u8 data[0x1C00];
+    ATTRIBUTE_ALIGN(8) u8 data[0x1C00];
     int _1C00;
     int _1C04;
-} ATTRIBUTE_ALIGN(8) aINS_overlay_entry_c;
+} aINS_overlay_entry_c;
 
 typedef struct {
     aINS_overlay_entry_c entries[3];

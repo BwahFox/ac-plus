@@ -21,7 +21,7 @@ static void fSGT_mv(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game, u8* 
 
     cKF_SkeletonInfo_R_play(keyframe);
     keyframe->frame_control.speed = 0.5f;
-    sAdo_OngenPos((u32)ftr_actor, 0x57, &ftr_actor->position);
+    sAdo_OngenPos((JaudioObjectId)(uintptr_t)ftr_actor, 0x57, &ftr_actor->position);
 }
 
 extern Gfx sugi_fireto_model[];
@@ -75,7 +75,7 @@ static Gfx* fSGT_GetTwoTileGfx(int x0, int y0, int x1, int y1, GAME* game) {
 
 static void fSGT_dw(FTR_ACTOR* ftr_actor, ACTOR* my_room_actor, GAME* game, u8* data) {
     cKF_SkeletonInfo_R_c* keyframe = &ftr_actor->keyframe;
-    Mtx* mtx = ftr_actor->skeleton_mtx[game->frame_counter & 1];
+    N64Mtx* mtx = ftr_actor->skeleton_mtx[game->frame_counter & 1];
     int ctr_ofs = (int)ftr_actor->dynamic_work_f[0];
     Gfx* scroll_gfx = fSGT_GetTwoTileGfx(0, 0, 0, -ctr_ofs * 8, game);
 

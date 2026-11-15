@@ -6,6 +6,7 @@
  *   Audio thread:  pc_music_mix() follows each slot's group (running state and
  *                  fade volume) and mixes the decoded PCM into the output.
  * One mutex guards the slots and the track cache. */
+#include <SDL3/SDL.h>
 #include "pc_platform.h"
 #include "pc_settings.h"
 #include "pc_music.h"
@@ -46,11 +47,11 @@ typedef struct {
     int scene;     /* stands in for whatever BGM plays in this scene (pc_music_set_scene_track) */
 } MusicSlot;
 
-static SDL_mutex* s_lock = NULL;
+static SDL_Mutex* s_lock = NULL;
 static MusicTrack s_tracks[TRACK_CACHE_NUM];
 static MusicSlot s_slots[AUDIO_GROUP_MAX];
 static volatile int s_silenced[AUDIO_GROUP_MAX];
-static SDL_atomic_t s_any_active;
+static SDL_AtomicInt s_any_active;
 static u32 s_use_clock = 0;
 static char s_scene_path[MUSIC_PATH_MAX]; /* the scene's own track, or "" */
 
@@ -198,7 +199,7 @@ static void update_any_active(void) {
     for (g = 0; g < AUDIO_GROUP_MAX; g++) {
         if (s_slots[g].active) any = TRUE;
     }
-    SDL_AtomicSet(&s_any_active, any);
+    SDL_SetAtomicInt(&s_any_active, any);
 }
 
 /* --- game thread --- */
@@ -326,7 +327,7 @@ void pc_music_mix(short* buf, unsigned int n_samples) {
     int g;
     int changed = FALSE;
 
-    if (!SDL_AtomicGet(&s_any_active) || frames == 0) return;
+    if (!SDL_GetAtomicInt(&s_any_active) || frames == 0) return;
 
     music_lock();
     for (g = 0; g < AUDIO_GROUP_MAX; g++) {

@@ -6,9 +6,9 @@
 #include "ef_effect_control.h"
 
 #ifdef TARGET_PC
-u8 tim_win_newtokei_tex[0x20] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) u8 tim_win_newtokei_tex[0x20];
 #else
-u8 tim_win_newtokei_tex[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) u8 tim_win_newtokei_tex[] = {
 #include "assets/tim_win_newtokei_tex.inc"
 };
 #endif
@@ -431,9 +431,11 @@ Gfx tim_win_moji_model[] = {
     gsDPSetTextureImage_Dolphin(G_IM_FMT_I, G_IM_SIZ_4b, 16, 16, tim_win_on_tex),
     gsDPSetTile_Dolphin(G_DOLPHIN_TLUT_DEFAULT_MODE, 0, 15, GX_CLAMP, GX_CLAMP, 0, 0),
     gsSPNTrianglesInit_5b(2, 12, 13, 14, 13, 15, 14, 0, 0, 0),
+#ifndef TARGET_PC
     gsDPSetTextureImage_Dolphin(G_IM_FMT_I, G_IM_SIZ_4b, 16, 16, tim_win_moji_tex),
     gsDPSetTile_Dolphin(G_DOLPHIN_TLUT_DEFAULT_MODE, 0, 15, GX_CLAMP, GX_CLAMP, 0, 0),
     gsSPNTrianglesInit_5b(2, 16, 17, 18, 17, 19, 18, 0, 0, 0),
+#endif
     gsSPEndDisplayList(),
 };
 

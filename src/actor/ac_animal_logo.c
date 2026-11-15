@@ -21,12 +21,8 @@
 #include "m_font.h"
 #include "libultra/libultra.h"
 #include "m_flashrom.h"
-#ifdef PC_ENHANCEMENTS
-#include "pc_settings.h"
-#include "pc_settings_menu.h"
-#include "pc_menu_util.h"
-#include "main.h"
-#include <stdio.h>
+#ifdef MOUSE_INPUT
+#include "game_pointer.h"
 #endif
 
 #define G_CC_TITLE PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, PRIMITIVE, 0, TEXEL0, 0
@@ -124,12 +120,6 @@ static void aAL_actor_ct(ACTOR* actor, GAME* game) {
 static void aAL_actor_dt(ACTOR* actor, GAME* game) {
   ANIMAL_LOGO_ACTOR* logo_actor = (ANIMAL_LOGO_ACTOR*)actor;
 
-#ifdef TARGET_PC
-  /* Stop blocking pause once the title actor is gone. */
-  { extern int g_pc_title_main_menu_visible;
-    g_pc_title_main_menu_visible = 0; }
-#endif
-
   if (Common_Get(clip.animal_logo_clip) != NULL) {
     zelda_free(Common_Get(clip.animal_logo_clip));
     Common_Set(clip.animal_logo_clip, NULL);
@@ -151,14 +141,6 @@ static void aAL_actor_dt(ACTOR* actor, GAME* game) {
 static void aAL_title_game_data_init_start_select(ANIMAL_LOGO_ACTOR* actor, GAME* game) {
   GAME_PLAY* play = (GAME_PLAY*)game;
 
-#ifdef TARGET_PC
-  /* Reload save from disk; the title demo mutated save data in RAM.
-   * On GC the memory card is re-read; on PC re-read the GCI file. */
-  if (pc_save_loaded) {
-    pc_save_reload();
-  }
-#endif
-
   play->fb_fade_type = FADE_TYPE_SELECT;
   play->fb_wipe_type = WIPE_TYPE_FADE_BLACK;
   Common_Set(transition.wipe_type, WIPE_TYPE_FADE_BLACK);
@@ -177,7 +159,7 @@ static void aAL_title_decide_p_sel_npc() {
       break;
     }
   }
-  
+
   idx = mNpc_SearchAnimalinfo(Save_Get(animals), npc_name, ANIMAL_NUM_MAX);
   mNpc_RegistEventNpc(SP_NPC_P_SEL2, npc_name, npc_name, Save_Get(animals[idx].cloth));
 }
@@ -195,11 +177,10 @@ static int aAL_wipe_end_check(GAME* game) {
 }
 
 static int aAL_chk_start_key() {
-  int res = FALSE;
-
-  if (padmgr_isConnectedController(PAD0) && ((gamePT->pads[PAD0].on.button & BUTTON_START) == BUTTON_START || (gamePT->pads[PAD0].on.button & BUTTON_A) == BUTTON_A)) {
-    res = TRUE;
-  }
+  int res = (gamePT->pads[PAD0].on.button & (BUTTON_START | BUTTON_A)) != 0;
+#ifdef MOUSE_INPUT
+  res = res || (acgc_pointer_frame()->pressed & (GAME_POINTER_LEFT | GAME_POINTER_RIGHT));
+#endif
 
   return res;
 }
@@ -207,7 +188,7 @@ static int aAL_chk_start_key() {
 static int aAL_chk_start_key2(ANIMAL_LOGO_ACTOR* actor, GAME* game) {
   int res = FALSE;
 
-  if (aAL_chk_start_key() == TRUE) {
+  if (padmgr_isConnectedController(PAD0) && aAL_chk_start_key()) {
     aAL_setupAction(actor, game, aAL_ACTION_START_KEY_CHK_START);
     res = TRUE;
   }
@@ -219,7 +200,7 @@ static void aAL_logo_in(ANIMAL_LOGO_ACTOR* actor, GAME* game) {
   int animal_done;
   int cros_done;
   int sing_done;
-    
+
   if (aAL_chk_start_key2(actor, game) == FALSE) {
     animal_done = cKF_SkeletonInfo_R_play(&actor->animal.skeleton);
     cros_done = cKF_SkeletonInfo_R_play(&actor->cros.skeleton);
@@ -256,9 +237,11 @@ static void aAL_game_start_wait(ANIMAL_LOGO_ACTOR* actor, GAME* game) {
   s16 t;
   float new_opacity_timer;
 
+  t = F32_TO_S16(actor->start_opacity_timer);
   new_opacity_timer = actor->start_opacity_timer;
-  new_opacity_timer += game->graph->dt_num_60fps_frames * (32768.0f / (actor->start_opacity_timer > 0 ? 50.0f : 22.0f));
-  start_opacity = 127.5f * sin_s((u16)new_opacity_timer) + 127.5f; // 127.5f + 127.5f * [0, 1] = [127.5f, 255.0f] (opacity)
+  new_opacity_timer += game->graph->dt_num_60fps_frames * F32_TO_S16(32768.0f / (t > 0 ? 50.0f : 22.0f));
+  t = F32_TO_S16(new_opacity_timer);
+  start_opacity = 127.5f * sin_s(t) + 127.5f; // 127.5f + 127.5f * [0, 1] = [127.5f, 255.0f] (opacity)
 
   if (start_opacity > 255.0f) {
     start_opacity = 255.0f;
@@ -274,7 +257,7 @@ static void aAL_game_start_wait(ANIMAL_LOGO_ACTOR* actor, GAME* game) {
     aAL_setupAction(actor, game, aAL_ACTION_6);
   }
   else if (
-     ((gamePT->pads[PAD0].on.button & BUTTON_START) == BUTTON_START || (gamePT->pads[PAD0].on.button & BUTTON_A) == BUTTON_A) &&
+     aAL_chk_start_key() &&
      mLd_CheckStartFlag() == TRUE &&
      aAL_wipe_end_check(game) == TRUE &&
      mTD_tdemo_button_ok_check()
@@ -334,99 +317,6 @@ static void aAL_fade_out_start_wait_init(ANIMAL_LOGO_ACTOR* actor, GAME* game) {
   actor->press_start_opacity = 255.0f;
 }
 
-#ifdef PC_ENHANCEMENTS
-static void aAL_pc_game_start_wait(ANIMAL_LOGO_ACTOR* actor, GAME* game) {
-  GAME_PLAY* play = (GAME_PLAY*)game;
-  f32 dt = (f32)game->graph->dt_num_60fps_frames;
-  u16 on_btn = gamePT->pads[PAD0].on.button;
-  s8 stick_y = gamePT->pads[PAD0].now.stick_y;
-
-  /* No blinking — full opacity for menu */
-  actor->press_start_opacity = 255.0f;
-
-  if (play->fb_fade_type == FADE_TYPE_SELECT_END) {
-    aAL_setupAction(actor, game, aAL_ACTION_6);
-    return;
-  }
-
-  /* Debounce */
-  if (actor->pc_cursor_cooldown > 0.0f) {
-    actor->pc_cursor_cooldown -= dt;
-    if (actor->pc_cursor_cooldown < 0.0f) {
-      actor->pc_cursor_cooldown = 0.0f;
-    }
-  }
-
-  if (actor->pc_options_open) {
-    s8 stick_x = gamePT->pads[PAD0].now.stick_x;
-
-    /* Keybinding capture is fed raw SDL events by pc_main; pad-derived nav
-     * must stand down until the just-pressed input is released. */
-    if (pc_settings_menu_capture_blocking()) {
-      return;
-    }
-
-    /* Drive the shared settings menu. It returns 0 when the user picks
-     * Back from the main settings page, which we treat as "close". */
-    if (actor->pc_cursor_cooldown <= 0.0f) {
-      if (on_btn & BUTTON_A || on_btn & BUTTON_START) {
-        if (!pc_settings_menu_confirm()) actor->pc_options_open = 0;
-        actor->pc_cursor_cooldown = 10.0f;
-      } else if (on_btn & BUTTON_B) {
-        if (!pc_settings_menu_cancel()) actor->pc_options_open = 0;
-        actor->pc_cursor_cooldown = 10.0f;
-      } else if (stick_y > 30 || (on_btn & BUTTON_DUP)) {
-        pc_settings_menu_nav_up();   actor->pc_cursor_cooldown = 8.0f;
-      } else if (stick_y < -30 || (on_btn & BUTTON_DDOWN)) {
-        pc_settings_menu_nav_down(); actor->pc_cursor_cooldown = 8.0f;
-      } else if (stick_x > 30 || (on_btn & BUTTON_DRIGHT)) {
-        pc_settings_menu_nav_right(); actor->pc_cursor_cooldown = 8.0f;
-      } else if (stick_x < -30 || (on_btn & BUTTON_DLEFT)) {
-        pc_settings_menu_nav_left(); actor->pc_cursor_cooldown = 8.0f;
-      }
-    }
-    return;
-  }
-
-  /* Main menu navigation (3 items: Start / Options / Quit) */
-  if (actor->pc_cursor_cooldown <= 0.0f) {
-    if (stick_y > 30 || (on_btn & BUTTON_DUP)) {
-      if (actor->pc_menu_sel > 0) {
-        actor->pc_menu_sel--;
-        actor->pc_cursor_cooldown = 10.0f;
-      }
-    } else if (stick_y < -30 || (on_btn & BUTTON_DDOWN)) {
-      if (actor->pc_menu_sel < 2) {
-        actor->pc_menu_sel++;
-        actor->pc_cursor_cooldown = 10.0f;
-      }
-    }
-  }
-
-  /* Select */
-  if (on_btn & (BUTTON_A | BUTTON_START)) {
-    switch (actor->pc_menu_sel) {
-      case 0: /* Start Game */
-        if (mLd_CheckStartFlag() == TRUE &&
-            aAL_wipe_end_check(game) == TRUE &&
-            mTD_tdemo_button_ok_check()) {
-          aAL_setupAction(actor, game, aAL_ACTION_FADE_OUT_START);
-        }
-        break;
-      case 1: /* Options */
-        actor->pc_options_open = 1;
-        actor->pc_cursor_cooldown = 10.0f;
-        pc_settings_menu_enter();
-        break;
-      case 2: /* Quit Game */
-        g_pc_running = 0;
-        actor->pc_cursor_cooldown = 10.0f;
-        break;
-    }
-  }
-}
-#endif
-
 static void aAL_setupAction(ANIMAL_LOGO_ACTOR* actor, GAME* game, int action) {
   static const ANIMAL_LOGO_ACTION_PROC init_proc[aAL_ACTION_NUM] = {
     &aAL_logo_in_init,
@@ -442,11 +332,7 @@ static void aAL_setupAction(ANIMAL_LOGO_ACTOR* actor, GAME* game, int action) {
     &aAL_logo_in,
     &aAL_back_fadein,
     &aAL_start_key_chk_start_wait,
-#ifdef PC_ENHANCEMENTS
-    &aAL_pc_game_start_wait,
-#else
     &aAL_game_start_wait,
-#endif
     &aAL_fade_out_start_wait,
     (ANIMAL_LOGO_ACTION_PROC)&none_proc1,
     (ANIMAL_LOGO_ACTION_PROC)&none_proc1
@@ -612,7 +498,7 @@ static void aAL_tm_draw(GRAPH* graph) {
   gSPDisplayList(gfx++, init_disp);
   gSPDisplayList(gfx++, logo_us_tm_model);
   SET_FONT_DISP(gfx);
-  
+
   CLOSE_DISP(graph);
 
   Matrix_pull();
@@ -657,7 +543,7 @@ static void aAL_press_start_draw(ANIMAL_LOGO_ACTOR* actor, GRAPH* graph) {
   static const u32 ps_prim_r[5] = { 70, 60, 60, 40, 40 };
   static const u32 ps_prim_g[5] = { 40, 50, 40, 50, 50 };
   static const u32 ps_prim_b[5] = { 40, 30, 60, 70, 60 };
-  
+
   static const u32 ps_env_r[5] = { 255, 255, 255, 120, 165 };
   static const u32 ps_env_g[5] = {  90, 135, 100, 205, 245 };
   static const u32 ps_env_b[5] = {  30,   0, 255, 245,   0 };
@@ -723,11 +609,11 @@ static void aAL_press_start_draw(ANIMAL_LOGO_ACTOR* actor, GRAPH* graph) {
 }
 
 static void aAL_skl_draw(GAME* game, cKF_SkeletonInfo_R_c* skl_keyframe) {
-  Mtx* m;
+  N64Mtx* m;
 
   OPEN_DISP(game->graph);
 
-  m = GRAPH_ALLOC_TYPE(game->graph, Mtx, skl_keyframe->skeleton->num_shown_joints);
+  m = GRAPH_ALLOC_TYPE(game->graph, N64Mtx, skl_keyframe->skeleton->num_shown_joints);
   if (m != NULL) {
     cKF_Si3_draw_R_SV(game, skl_keyframe, m, NULL, NULL, NULL);
   }
@@ -759,7 +645,7 @@ static void aAL_title_draw(GAME* game, ANIMAL_LOGO_ACTOR* actor) {
   SET_POLY_OPA_DISP(NOW_FONT_DISP);
   gSPMatrix(NOW_POLY_OPA_DISP++, _Matrix_to_Mtx_new(graph), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
   gSPDisplayList(NOW_POLY_OPA_DISP++, init_disp);
-  
+
   aAL_skl_draw(game, &actor->animal.skeleton);
   aAL_skl_draw(game, &actor->cros.skeleton);
   aAL_skl_draw(game, &actor->sing.skeleton);
@@ -772,81 +658,11 @@ static void aAL_title_draw(GAME* game, ANIMAL_LOGO_ACTOR* actor) {
   Matrix_pull();
 }
 
-#ifdef PC_ENHANCEMENTS
-static void aAL_pc_menu_draw(ANIMAL_LOGO_ACTOR* actor, GAME* game) {
-  GRAPH* graph = game->graph;
-  int td = actor->titledemo_no;
-
-  /* pc_text_draw emits modelview-transformed verts, but title_draw left the
-   * modelview transformed; reset it to identity first. */
-  {
-    Gfx* gfx;
-    OPEN_DISP(graph);
-    gfx = NOW_FONT_DISP;
-    gSPMatrix(gfx++, &Mtx_clear, G_MTX_MODELVIEW | G_MTX_LOAD | G_MTX_NOPUSH);
-    SET_FONT_DISP(gfx);
-    CLOSE_DISP(graph);
-  }
-
-  static const u32 sel_r[5] = { 255, 255, 255, 120, 165 };
-  static const u32 sel_g[5] = {  90, 135, 100, 205, 245 };
-  static const u32 sel_b[5] = {  30,   0, 255, 245,   0 };
-  static const u32 dim_r[5] = {  70,  60,  60,  40,  40 };
-  static const u32 dim_g[5] = {  40,  50,  40,  50,  50 };
-  static const u32 dim_b[5] = {  40,  30,  60,  70,  60 };
-
-  static const char* const labels[3] = { "Start Game", "Options", "Quit Game" }; // me when const
-
-  f32 y_base = 135.0f;
-  f32 line_h = 18.0f;
-  int sel = actor->pc_menu_sel;
-
-  /* Hide the title's main menu items while the Options overlay is open, else
-   * Start/Options/Quit bleed through the dimmed backdrop. */
-  if (!actor->pc_options_open) {
-    for (int i = 0; i < 3; i++) {
-      int on = (sel == i);
-      pc_menu_draw_centered(game, labels[i], y_base + i * line_h,
-        on ? sel_r[td] : dim_r[td],
-        on ? sel_g[td] : dim_g[td],
-        on ? sel_b[td] : dim_b[td],
-        on ? 255 : 220,
-        on ? PC_MENU_SCALE_SELECTED : 1.0f);
-    }
-  }
-
-  /* ac-plus: which version this is, small in the bottom-right corner (pc_updater.c) */
-  if (!actor->pc_options_open) {
-    extern const char* pc_updater_version_label(void);
-
-    pc_menu_draw_left(game, pc_updater_version_label(), 236.0f, 222.0f, 245, 245, 235, 230, 0.6f);
-  }
-
-  /* Options sub-menu, shared with the in-game pause menu. */
-  if (actor->pc_options_open) {
-    pc_settings_menu_tick();
-    pc_settings_menu_draw(game, /*with_dim_backdrop=*/1);
-    /* The shared module may close itself from inside (Back from
-     * settings, or the res-confirm timer snapping back). */
-    if (!pc_settings_menu_active()) {
-      actor->pc_options_open = 0;
-    }
-  }
-}
-#endif
-
 static int aAL_draw_log_counter = 0;
 static void aAL_actor_draw(ACTOR* actor, GAME* game) {
   ANIMAL_LOGO_ACTOR* logo_actor = (ANIMAL_LOGO_ACTOR*)actor;
   GRAPH* graph = game->graph;
   int pad_connected = padmgr_isConnectedController(PAD0);
-
-#ifdef TARGET_PC
-  /* Default each frame to "menu not visible". The menu-draw branch below
-   * sets it back to 1 if it actually runs. Cleared on actor cleanup. */
-  { extern int g_pc_title_main_menu_visible;
-    g_pc_title_main_menu_visible = 0; }
-#endif
 
 #ifdef TARGET_PC
   { extern int g_pc_verbose; if (g_pc_verbose && (aAL_draw_log_counter % 60) == 0) {
@@ -880,13 +696,7 @@ static void aAL_actor_draw(ACTOR* actor, GAME* game) {
       case aAL_ACTION_GAME_START:
       case aAL_ACTION_FADE_OUT_START:
       case aAL_ACTION_OUT:
-#ifdef PC_ENHANCEMENTS
-        { extern int g_pc_title_main_menu_visible;
-          g_pc_title_main_menu_visible = 1; }
-        aAL_pc_menu_draw(logo_actor, game);
-#else
         aAL_press_start_draw(logo_actor, graph);
-#endif
         break;
     }
   }

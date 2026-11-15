@@ -20,7 +20,7 @@
 
 #define G_CC_LOGO 0, 0, 0, PRIMITIVE, TEXEL0, 0, PRIMITIVE, 0
 
-static Mtx model_cursor;
+static N64Mtx model_cursor;
 static u8 progressive_mode;
 
 static Gfx gam_win1_cursor_setup[] = {
@@ -44,35 +44,35 @@ static Vp viewport = {
   1280, 960, 511, 0
 };
 
-static Mtx projection = {
+static N64Mtx projection = {
   0x00000000, 0x00000000, 0x00000000, 0x00000000,
   0x00000000, 0xFFFF0000, 0x00000000, 0xFFFF0001,
   0x00CC0000, 0x00000000, 0x00000111, 0x00000000,
   0x00000000, 0xFFFF0000, 0x00000000, 0x00000000
 };
 
-static Mtx lookat = {
+static N64Mtx lookat = {
   0x10000, 0x00000, 0x00001, 0x00000,
   0x00000, 0x10000, 0x00000, 0x00001,
   0x00000, 0x00000, 0x00000, 0x00000,
   0x00000, 0x00000, 0x00000, 0x00000
 };
 
-static Mtx default_model_scale = {
+static N64Mtx default_model_scale = {
   0x20000, 0x00000, 0x00002, 0x00000,
   0x00000, 0x10000, 0x00000, 0x00001,
   0x00000, 0x00000, 0x00000, 0x00000,
   0x00000, 0x00000, 0x00000, 0x00000
 };
 
-static Mtx logo_projection = {
+static N64Mtx logo_projection = {
   0x00000000, 0x00000000, 0x00000000, 0x00000000,
   0x00000000, 0xFFFF0000, 0x00000000, 0x00000001,
   0x00CC0000, 0x00000000, 0x000000F9, 0x00000000,
   0x00000000, 0x00000000, 0x0000007C, 0x00000000
 };
 
-static Mtx logo_model_scale = {
+static N64Mtx logo_model_scale = {
   0x10000, 0x00000, 0x00001, 0x00000,
   0x00000, 0x10000, 0x00000, 0x00001,
   0x00000, 0x00000, 0x00000, 0x00000,
@@ -401,7 +401,7 @@ extern void proc(void* arg) {
     }
   } while (!proc_done);
 
-  osSendMesg(&statusQ, (OSMessage)msg, OS_MESSAGE_NOBLOCK); // signal done
+  osSendMesg(&statusQ, (OSMessage)(uintptr_t)msg, OS_MESSAGE_NOBLOCK); // signal done
 }
 
 static void* my_alloc(size_t size) {
@@ -413,6 +413,15 @@ static void my_free(void* ptr) {
 }
 
 extern void initial_menu_init() {
+#ifdef AURORA
+  /* Cocoa event pumping and Aurora frame submission belong to the main
+   * thread. The GC boot menu owns a second rendering thread, so skip that
+   * short-lived progressive-scan UI while keeping the surrounding fades. */
+  Thread_p = NULL;
+  initialMenuStack = NULL;
+  JC_JFWDisplay_startFadeIn(JC_JFWDisplay_getManager(), 32);
+  return;
+#endif
   Thread_p = (OSThread*)my_alloc(sizeof(OSThread));
   initialMenuStack = my_alloc(INITIAL_MENU_STACK_SIZE);
   if (Thread_p == NULL || initialMenuStack == NULL) {
@@ -425,7 +434,8 @@ extern void initial_menu_init() {
   else {
     osCreateMesgQueue(&commandQ, commandMsgBuf, 2);
     osCreateMesgQueue(&statusQ, statusMsgBuf, 1);
-    osCreateThread2(Thread_p, 1, &proc, NULL, (void*)((int)initialMenuStack + INITIAL_MENU_STACK_SIZE), INITIAL_MENU_STACK_SIZE, 1);
+    osCreateThread2(Thread_p, 1, &proc, NULL,
+                    (void*)((uintptr_t)initialMenuStack + INITIAL_MENU_STACK_SIZE), INITIAL_MENU_STACK_SIZE, 1);
     osStartThread(Thread_p);
     JC_JFWDisplay_startFadeIn(JC_JFWDisplay_getManager(), 32);
     osSendMesg(&commandQ, (OSMessage)INITIAL_MENU_OSMESG_INIT_DONE, OS_MESSAGE_NOBLOCK);

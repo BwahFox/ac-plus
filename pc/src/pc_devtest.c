@@ -51,7 +51,7 @@
  * same moment with or without --no-framelimit.
  */
 #include "pc_platform.h"
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include "PR/gbi.h"
 
 #include <stdlib.h>
@@ -273,11 +273,11 @@ u32 pc_devtest_buttons(void) {
                 SDL_Event ev;
 
                 memset(&ev, 0, sizeof(ev));
-                ev.type = SDL_KEYDOWN;
-                ev.key.keysym.sym = SDL_GetKeyFromName(name);
-                ev.key.keysym.scancode = SDL_GetScancodeFromKey(ev.key.keysym.sym);
+                ev.type = SDL_EVENT_KEY_DOWN;
+                ev.key.key = SDL_GetKeyFromName(name);
+                ev.key.scancode = SDL_GetScancodeFromKey(ev.key.key, NULL);
                 SDL_PushEvent(&ev);
-                ev.type = SDL_KEYUP;
+                ev.type = SDL_EVENT_KEY_UP;
                 SDL_PushEvent(&ev);
             }
             k = strchr(k, ';');
@@ -287,7 +287,7 @@ u32 pc_devtest_buttons(void) {
         }
     }
     {
-        /* PC_TYPE=F:text;...  types text (SDL_TEXTINPUT) at frame F */
+        /* PC_TYPE=F:text;...  types text (SDL_EVENT_TEXT_INPUT) at frame F */
         const char* t = getenv("PC_TYPE");
         char text[32];
         int f;
@@ -297,7 +297,7 @@ u32 pc_devtest_buttons(void) {
                 SDL_Event ev;
 
                 memset(&ev, 0, sizeof(ev));
-                ev.type = SDL_TEXTINPUT;
+                ev.type = SDL_EVENT_TEXT_INPUT;
                 snprintf(ev.text.text, sizeof(ev.text.text), "%s", text);
                 SDL_PushEvent(&ev);
             }
@@ -404,33 +404,10 @@ int pc_devtest_mouse(int* wx, int* wy, u32* buttons) {
     return TRUE;
 }
 
-/* Called just before the back buffer is presented. */
-/* The picture on screen now, to path (PPM) */
+/* The game's picture, to path (pc_acplus_shot.c: written a few frames later) */
+void pc_shot_request(const char* path);
 static void devtest_write_shot(const char* path) {
-    int w = g_pc_window_w;
-    int h = g_pc_window_h;
-    unsigned char* rgb = malloc((size_t)w * h * 3);
-    FILE* f;
-    int y;
-
-    if (rgb == NULL) {
-        return;
-    }
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-    glReadBuffer(GL_BACK);
-    glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, rgb);
-    f = fopen(path, "wb");
-    if (f != NULL) {
-        fprintf(f, "P6\n%d %d\n255\n", w, h);
-        for (y = h - 1; y >= 0; y--) { /* GL rows are bottom-up */
-            fwrite(rgb + (size_t)y * w * 3, 1, (size_t)w * 3, f);
-        }
-        fclose(f);
-        printf("[devtest] wrote %s\n", path);
-        fflush(stdout);
-    }
-    free(rgb);
+    pc_shot_request(path);
 }
 
 /* Button names for PC_CTL (PAD_BUTTON_*) */
@@ -538,6 +515,14 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
         if (gamePT != NULL) {
             mPlib_change_player_face_pallet(gamePT);
         }
+    } else if (strcmp(cmd, "acplusui") == 0) {
+        /* acplusui: Nookery's menu with the ac-plus window open */
+        extern void pc_acplus_ui_open(void);
+        pc_acplus_ui_open();
+    } else if (strcmp(cmd, "acplus") == 0) {
+        /* acplus: open ac-plus's menu, as the "ac-plus" tab of Nookery's menu bar does */
+        extern void pc_pause_menu_open_main(void);
+        pc_pause_menu_open_main();
     } else if (strcmp(cmd, "menu") == 0 && sscanf(line, "%*s %d", &n) == 1) {
         extern void pc_pause_menu_dev_action(int act);
         pc_pause_menu_dev_action(n); /* 0 open/close, 1 up, 2 down, 3 left, 4 right, 5 A, 6 B */
@@ -664,28 +649,28 @@ static void devctl_run(const char* line, int* quit_at, int* exit_at) {
         /* sdlkey NAME: a real key press through SDL's queue (SDL scancode name, e.g. T, Return) */
         SDL_Event ev;
         memset(&ev, 0, sizeof(ev));
-        ev.type = SDL_KEYDOWN;
-        ev.key.state = SDL_PRESSED;
-        ev.key.keysym.scancode = SDL_GetScancodeFromName(a);
-        ev.key.keysym.sym = SDL_GetKeyFromScancode(ev.key.keysym.scancode);
+        ev.type = SDL_EVENT_KEY_DOWN;
+        ev.key.down = true;
+        ev.key.scancode = SDL_GetScancodeFromName(a);
+        ev.key.key = SDL_GetKeyFromScancode(ev.key.scancode, SDL_KMOD_NONE, false);
         SDL_PushEvent(&ev);
-        ev.type = SDL_KEYUP;
-        ev.key.state = SDL_RELEASED;
+        ev.type = SDL_EVENT_KEY_UP;
+        ev.key.down = false;
         SDL_PushEvent(&ev);
     } else if (strcmp(cmd, "sdltext") == 0 && strlen(line) > 8) {
-        /* sdltext TEXT: typed text, as SDL_TEXTINPUT */
+        /* sdltext TEXT: typed text, as SDL_EVENT_TEXT_INPUT */
         SDL_Event ev;
         memset(&ev, 0, sizeof(ev));
-        ev.type = SDL_TEXTINPUT;
+        ev.type = SDL_EVENT_TEXT_INPUT;
         snprintf(ev.text.text, sizeof(ev.text.text), "%s", line + 8);
         SDL_PushEvent(&ev);
     } else if (strcmp(cmd, "sdlpad") == 0 && sscanf(line, "%*s %d", &n) == 1) {
         /* sdlpad N: a controller button press (SDL_GameControllerButton number; 9 = LB) */
         SDL_Event ev;
         memset(&ev, 0, sizeof(ev));
-        ev.type = SDL_CONTROLLERBUTTONDOWN;
-        ev.cbutton.button = (Uint8)n;
-        ev.cbutton.state = SDL_PRESSED;
+        ev.type = SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+        ev.gbutton.button = (Uint8)n;
+        ev.gbutton.down = true;
         SDL_PushEvent(&ev);
     } else if (strcmp(cmd, "say") == 0 && strlen(line) > 4) {
         extern int pc_mp_say(const char* text);
@@ -857,6 +842,10 @@ void pc_devtest_frame_end(void) {
     if (exit_at < 0) {
         exit_at = devtest_env_int("PC_EXIT_AT");
         quit_at = devtest_env_int("PC_QUIT_AT");
+    }
+    {
+        extern void pc_shot_frame_end(void);
+        pc_shot_frame_end(); /* pictures asked for earlier (pc_acplus_shot.c) */
     }
     if (shot != 0) {
         shot = devtest_next_shot(shot);

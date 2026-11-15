@@ -44,7 +44,7 @@ typedef enum {
 #define GRAPH_MSG_BUF_COUNT 8
 
 typedef struct graph_s {
-    /* 0x0000 */ Gfx* Gfx_list00; /* polygon opaque */
+    /* 0x0000 */ ATTRIBUTE_ALIGN(8) Gfx* Gfx_list00; /* polygon opaque */
     /* 0x0004 */ Gfx* Gfx_list01; /* polygon translucent */
     /* 0x0008 */ void* DepthBuffer;
     /* 0x000C */ Gfx* Gfx_list03; /* unused */
@@ -93,7 +93,7 @@ typedef struct graph_s {
     /* 0x0368 */ double dt; // number of seconds that have passed since the last execution frame
     /* 0x0370 */ double dt_num_60fps_frames; // the number of 60FPS frames that have passed since the last execution frame
     /* 0x0378 */ double dt_total_60fps_frames;
-} GRAPH ATTRIBUTE_ALIGN(8);       // one of the missing structs is likely aligned to 8 bytes.
+} GRAPH;       // one of the missing structs is likely aligned to 8 bytes.
 
 extern void graph_proc(void* arg);
 extern void graph_ct(GRAPH* graph);
@@ -107,6 +107,8 @@ int graph_dt_60hz_ticks(struct game_s* game, float* accum);
 int graph_dt_period_elapsed(struct game_s* game, float* accum, float period_frames);
 double graph_dt_frame_time(struct game_s* game);
 int graph_dt_frame_phase(struct game_s* game, int period_frames);
+int graph_dt_due(struct game_s* game, float remaining_frames);
+int graph_dt_scaled_step(struct game_s* game, int step, float* accum);
 
 #define GRAPH_SET_DOING_POINT(g, point) ((g)->doing_point = GRAPH_DOING_##point)
 
@@ -288,7 +290,7 @@ int graph_dt_frame_phase(struct game_s* game, int period_frames);
 
 #define GRAPH_ALLOC(graph, size)                        \
     ((void*)((graph)->polygon_opaque_thaga.tha.tail_p = \
-                 (char*)((int)(graph)->polygon_opaque_thaga.tha.tail_p - (int)(size))))
+                 (graph)->polygon_opaque_thaga.tha.tail_p - (size)))
 #define GRAPH_ALLOC_TYPE(graph, type, num) (GRAPH_ALLOC(graph, sizeof(type) * (num)))
 
 #if VERSION != VER_GAFU01_00

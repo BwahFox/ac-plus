@@ -22,6 +22,7 @@
 #include <string.h>
 
 extern int g_pc_paused;
+extern int g_pc_acplus_menu_open; /* ac-plus pause menu (pc_pause_menu.c) */
 
 static void aCEL_actor_ct(ACTOR* actorx, GAME* game);
 static void aCEL_actor_dt(ACTOR* actorx, GAME* game);
@@ -431,7 +432,7 @@ static void aCEL_talk_open_wait(NPC_CELESTE_ACTOR* cel, GAME_PLAY* play) {
 
 /* After the telescope or the list */
 static void aCEL_talk_scope_wait(NPC_CELESTE_ACTOR* cel, GAME_PLAY* play) {
-    if (pc_const_edit_active() || g_pc_paused) {
+    if (pc_const_edit_active() || g_pc_paused || g_pc_acplus_menu_open) {
         return;
     }
     switch (cel->after_close) {
@@ -573,7 +574,7 @@ static void aCEL_set_request_act(NPC_CELESTE_ACTOR* cel) {
 static void aCEL_act_proc(NPC_ACTOR* actorx, GAME_PLAY* play, int action) {
     switch (action) {
         case 0: /* init */
-            (*Common_Get(clip).npc_clip->animation_init_proc)(actorx, aNPC_ANIM_WAIT1, FALSE);
+            (*Common_Get(clip).npc_clip->animation_init_proc)((ACTOR*)actorx, aNPC_ANIM_WAIT1, FALSE);
             actorx->condition_info.demo_flg = 0;
             actorx->head.angle_add_y = DEG2SHORT_ANGLE(5.625f);
             actorx->movement.mv_angl = DEG2SHORT_ANGLE(0.0f);

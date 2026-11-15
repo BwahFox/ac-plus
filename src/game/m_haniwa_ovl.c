@@ -256,7 +256,11 @@ static void mHW_haniwa_ovl_move(Submenu* submenu) {
         submenu->overlay->menu_control.animation_flag = menu_info->proc_status == mSM_OVL_PROC_PLAY;
         return;
     }
+    if (submenu->overlay->haniwa_ovl == NULL) {
+        return;
+    }
 #endif
+
     mHW_make_message(submenu, menu_info);
 
     switch (menu_info->proc_status) {

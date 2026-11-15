@@ -3,13 +3,20 @@
 
 #include "types.h"
 // #include "va_args.h"
+#ifdef TARGET_PC
+#include <stdarg.h>
+#else
 #include <libc/stdarg.h>
+#endif
 #include "MSL_C/printf.h"
 #include "libforest/gbi_extensions.h"
 #include "libforest/emu64/texture_cache.h"
+#ifndef TARGET_PC
 #include "dolphin/os/__ppc_eabi_init.h"
+#endif
 #include "dolphin/gx.h"
 #include "dolphin/mtx.h"
+#include "pc_tracy.h"
 #include "sys_ucode.h"
 #include "libforest/emu64/emu64_wrapper.h"
 #include "sys_ucode.h"
@@ -135,7 +142,13 @@ namespace std {
 typedef va_list __tag_va_List;
 }
 
-float fastcast_float(register unsigned char* s) {
+#ifdef TARGET_PC
+#define EMU64_REGISTER
+#else
+#define EMU64_REGISTER register
+#endif
+
+float fastcast_float(EMU64_REGISTER unsigned char* s) {
 #ifdef TARGET_PC
     return (float)(*s);
 #else
@@ -151,7 +164,7 @@ float fastcast_float(register unsigned char* s) {
 #endif
 }
 
-float fastcast_float(register unsigned short* s) {
+float fastcast_float(EMU64_REGISTER unsigned short* s) {
 #ifdef TARGET_PC
     return (float)(*s);
 #else
@@ -167,7 +180,7 @@ float fastcast_float(register unsigned short* s) {
 #endif
 }
 
-float fastcast_float(register signed char* s) {
+float fastcast_float(EMU64_REGISTER signed char* s) {
 #ifdef TARGET_PC
     return (float)(*s);
 #else
@@ -183,7 +196,7 @@ float fastcast_float(register signed char* s) {
 #endif
 }
 
-float fastcast_float(register short* s) {
+float fastcast_float(EMU64_REGISTER short* s) {
 #ifdef TARGET_PC
     return (float)(*s);
 #else
@@ -199,10 +212,12 @@ float fastcast_float(register short* s) {
 #endif
 }
 
+#undef EMU64_REGISTER
+
 #define number(n) ARRAY_COUNT(n)
 
-void guMtxNormalize(GC_Mtx mtx);
-void N64Mtx_to_DOLMtx(const Mtx* n64, MtxP gc);
+void guMtxNormalize(Mtx mtx);
+void N64Mtx_to_DOLMtx(const N64Mtx* n64, MtxPtr gc);
 
 typedef union {
     GXColor color;
@@ -569,20 +584,19 @@ class emu64_print {
     } while (0)
 
 #ifdef EMU64_DEBUG
-#define EMU64_TIMED_SEGMENT_BEGIN()       \
-    {                                     \
-        u32 __timer_start = osGetCount(); \
-        do {                              \
-        } while (0)
-#define EMU64_TIMED_SEGMENT_END(stat)              \
-    this->#stat += (osGetCount() - __timer_start); \
-    (void)__timer_start;                           \
-    }                                              \
-    do {                                           \
+#define EMU64_TIMED_SEGMENT_BEGIN() u32 __timer_start = osGetCount()
+#define EMU64_TIMED_SEGMENT_END(stat)                 \
+    do {                                              \
+        this->stat += (osGetCount() - __timer_start); \
+        (void)__timer_start;                          \
     } while (0)
 #else
-#define EMU64_TIMED_SEGMENT_BEGIN()
-#define EMU64_TIMED_SEGMENT_END(stat)
+#define EMU64_TIMED_SEGMENT_BEGIN() TracyCZone(__emu64_timed_segment, 1)
+#define EMU64_TIMED_SEGMENT_END(stat)                                  \
+    do {                                                               \
+        TracyCZoneName(__emu64_timed_segment, #stat, sizeof(#stat) - 1); \
+        TracyCZoneEnd(__emu64_timed_segment);                           \
+    } while (0)
 #endif
 
 #define EMU64_CAN_DRAW_POLYGON()         \
@@ -594,7 +608,7 @@ class emu64 : public emu64_print {
     void emu64_init();
     void emu64_cleanup();
     void printInfo();
-    void panic(char* msg, char* file, int line);
+    void panic(const char* msg, const char* file, int line);
 
     void emu64_change_ucode(void* ucode_p);
     void texconv_tile(u8* addr, u8* converted_addr, unsigned int wd, unsigned int fmt, unsigned int siz,
@@ -627,8 +641,8 @@ class emu64 : public emu64_print {
     void cullmode();
     void texture_gen(int tile);
     void texture_matrix();
-    void disp_matrix(MtxP mtx);
-    const char* segchk(u32 seg);
+    void disp_matrix(MtxPtr mtx);
+    const char* segchk(uintptr_t seg);
     const char* combine_name(u32 param, u32 type);
     const char* combine_alpha(int param, int type);
     const char* combine_tev_color_name(u32 color_param);
@@ -638,11 +652,16 @@ class emu64 : public emu64_print {
     void show_vtx(Vtx* vtx, int count, int begin);
     void print_combine(u64 combine);
     void print_combine_tev(u64 combine_tev);
-    void print_guMtxXFM1F_dol2(MtxP mtx, GXProjectionType type, float x, float y, float z);
-    u32 seg2k0(u32 seg);
+    void print_guMtxXFM1F_dol2(MtxPtr mtx, GXProjectionType type, float x, float y, float z);
+    uintptr_t seg2k0(uintptr_t seg);
     void setup_texture_tile(int tile);
     void setup_1tri_2tri_1quad(unsigned int vtx_idx);
     void draw_1tri_2tri_1quad(unsigned int n_verts, ...);
+#ifdef TARGET_PC
+    bool pc_draw_preprocessed_geometry(const Gfx* source, u32 command_count, u32 vertex_count);
+    /* ac-plus drew with GX at a NoOp tag (pc_sky.c, pc_cf_room.c, pc_cf_char.c): send everything again */
+    void pc_restore_after_host_draw();
+#endif
     void fill_rectangle(float x0, float y0, float x1, float y1);
     void draw_rectangle(Gtexrect2* rect);
     void dirty_check(int tile, int n_tiles, int do_texture_matrix);
@@ -714,7 +733,7 @@ class emu64 : public emu64_print {
 
     /* N64 texture format[N64 bit size] -> dol texture format */
     static u8 nChans;
-    static char* warningString[EMU64_WARNING_COUNT];
+    static const char* warningString[EMU64_WARNING_COUNT];
     static u32 warningTime[EMU64_WARNING_COUNT];
     static bool displayWarning;
     static const u16 fmtxtbl[8][4];
@@ -747,8 +766,8 @@ private:
     /* 0x0060 */ ucode_info* ucode_info_p;
     /* 0x0064 */ int ucode_type; // maybe?
     /* 0x0068 */ int _0068;      /* ??? */
-    /* 0x006C */ u32 segments[EMU64_NUM_SEGMENTS];
-    /* 0x00AC */ u32 DL_stack[DL_MAX_STACK_LEVEL];
+    /* 0x006C */ uintptr_t segments[EMU64_NUM_SEGMENTS];
+    /* 0x00AC */ uintptr_t DL_stack[DL_MAX_STACK_LEVEL];
     /* 0x00F4 */ s8 DL_stack_level;
     /* 0x00F8 */ u32 othermode_high;
     /* 0x00FC */ u32 othermode_low;
@@ -784,10 +803,10 @@ private:
     /* 0x049C */ EmuColor fill_color;
     /* 0x04A0 */ EmuColor fill_tev_color; /* GX_TEVREG0 */
     /* 0x04A4 */ bool dirty_flags[NUM_DIRTY_FLAGS];
-    /* 0x04C4 */ GC_Mtx original_projection_mtx;
-    /* 0x04F4 */ GC_Mtx position_mtx;
-    /* 0x0524 */ GC_Mtx model_view_mtx_stack[MTX_STACK_SIZE];
-    /* 0x0704 */ GC_Mtx position_mtx_stack[MTX_STACK_SIZE];
+    /* 0x04C4 */ Mtx original_projection_mtx;
+    /* 0x04F4 */ Mtx position_mtx;
+    /* 0x0524 */ Mtx model_view_mtx_stack[MTX_STACK_SIZE];
+    /* 0x0704 */ Mtx position_mtx_stack[MTX_STACK_SIZE];
     /* 0x08E4 */ Mtx44 projection_mtx;
     /* 0x0924 */ struct {
         struct {
@@ -799,17 +818,17 @@ private:
     } lookAt;
     /* 0x092C */ f32 near; /* Near clipping plane */
     /* 0x0930 */ f32 far;  /* Far clipping plane */
-    /* 0x0934 */ GC_Mtx model_view_mtx;
-    /* 0x0964 */ GC_Mtx _0964; /* UNCONFIRMED TYPE */
+    /* 0x0934 */ Mtx model_view_mtx;
+    /* 0x0964 */ Mtx _0964; /* UNCONFIRMED TYPE */
     /* 0x0994 */ int mtx_stack_size;
     /* 0x0998 */ Gtexture_internal texture_gfx;
     /* 0x09A0 */ f32 texture_scale_s; /* x-scale */
     /* 0x09A4 */ f32 texture_scale_t; /* y-scale */
     /* 0x09A8 */ Mtx44 ortho_mtx;
     /* 0x09E8 */ GXProjectionType projection_type;
-    /* 0x09EC */ GC_Mtx perspective_mtx;
+    /* 0x09EC */ Mtx perspective_mtx;
     /* 0x0A1C */ u32 _0A1C;
-    /* 0x0A20 */ u32 rdpHalf_1;
+    /* 0x0A20 */ uintptr_t rdpHalf_1;
     /* 0x0A24 */ EmuLight lights[NUM_LIGHTS];
     /* 0x0B64 */ u8 num_lights;
     /* 0x0B68 */ u32 lookatx_cnt;

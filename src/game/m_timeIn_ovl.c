@@ -3,6 +3,9 @@
 #include "m_common_data.h"
 #include "m_font.h"
 #include "sys_matrix.h"
+#ifdef MOUSE_INPUT
+#include "game_pointer.h"
+#endif
 
 static mTI_Ovl_c ti_ovl_data;
 
@@ -121,9 +124,75 @@ static void mTI_move_Move(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
   (*submenu->overlay->move_Move_proc)(submenu, menu_info);
 }
 
+#ifdef MOUSE_INPUT
+static u32 mTI_mouse_trigger(Submenu* submenu, mSM_MenuInfo_c* menu_info, u32 trigger) {
+#ifdef MOUSE_INPUT
+    const GamePointerFrame* pointer = acgc_pointer_frame();
+#endif
+  static const f32 field_bounds[mTI_IDX_OK + 1][4] = {
+    {  77.0f, 113.0f, 101.0f, 133.0f },
+    { 101.0f, 113.0f, 125.0f, 133.0f },
+    {  77.0f, 139.0f, 147.0f, 159.0f },
+    { 149.0f, 139.0f, 173.0f, 159.0f },
+    { 182.0f, 139.0f, 218.0f, 159.0f },
+    { 218.0f, 139.0f, 244.0f, 159.0f }
+  };
+  mTI_Ovl_c* timeIn_ovl = submenu->overlay->timeIn_ovl;
+  f32 mouse_x, mouse_y;
+  u32 pressed;
+  s32 wheel;
+  int i;
+
+  mouse_x = pointer->x;
+  mouse_y = pointer->y;
+  if (submenu->current_menu_type != mSM_OVL_TIMEIN ||
+      timeIn_ovl->input_disabled_flag ||
+      !pointer->visible ||
+      !pointer->inside) {
+    return trigger;
+  }
+
+  mouse_x -= menu_info->position[0];
+  mouse_y += menu_info->position[1];
+  pressed = pointer->pressed;
+  wheel = pointer->scroll_steps_y;
+
+  for (i = 0; i <= mTI_IDX_OK; i++) {
+    const f32* bounds = field_bounds[i];
+
+    if (mouse_x >= bounds[0] && mouse_x < bounds[2] &&
+        mouse_y >= bounds[1] && mouse_y < bounds[3]) {
+      if (timeIn_ovl->sel_idx != i) {
+        timeIn_ovl->sel_idx = i;
+        sAdo_SysTrgStart(NA_SE_CURSOL);
+      }
+
+      if (i == mTI_IDX_OK) {
+        if (pressed & GAME_POINTER_LEFT) {
+          trigger |= BUTTON_A;
+        }
+      }
+      else if (wheel < 0 || (pressed & GAME_POINTER_LEFT)) {
+        trigger |= BUTTON_CUP;
+      }
+      else if (wheel > 0 || (pressed & GAME_POINTER_RIGHT)) {
+        trigger |= BUTTON_CDOWN;
+      }
+      break;
+    }
+  }
+
+  return trigger;
+}
+#endif
+
 static void mTI_move_Play(Submenu* submenu, mSM_MenuInfo_c* menu_info) {
   mTI_Ovl_c* timeIn_ovl = submenu->overlay->timeIn_ovl;
   u32 trigger = submenu->overlay->menu_control.trigger;
+
+#ifdef MOUSE_INPUT
+  trigger = mTI_mouse_trigger(submenu, menu_info, trigger);
+#endif
 
   if (timeIn_ovl->input_disabled_flag == TRUE) {
     mTI_set_time(submenu);
@@ -377,8 +446,10 @@ static void mTI_set_clock(Submenu* submenu, GRAPH* graph, f32 x, f32 y) {
   u16 save_min = submenu->overlay->timeIn_ovl->saved_min;
   Gfx* gfx;
 
-  r[0] = -(((f32)(save_min % lbRTC_MINUTES_PER_HOUR) / (f32)lbRTC_MINUTES_PER_HOUR) * 65536.0f); // minute hand
-  r[1] = -(((f32)save_min / (f32)((lbRTC_MINUTES_PER_HOUR * lbRTC_HOURS_PER_DAY) / 2)) * 65536.0f); // hour hand
+  r[0] = F32_TO_S16(-(((f32)(save_min % lbRTC_MINUTES_PER_HOUR) / (f32)lbRTC_MINUTES_PER_HOUR) *
+                       65536.0f)); // minute hand
+  r[1] = F32_TO_S16(-(((f32)save_min / (f32)((lbRTC_MINUTES_PER_HOUR * lbRTC_HOURS_PER_DAY) / 2)) *
+                       65536.0f)); // hour hand
   r[2] = 0; // second hand?
 
   Matrix_translate((x + -61.0f) * 16.0f, (y + 45.0f) * 16.0f, 140.0f, MTX_LOAD);
@@ -415,7 +486,7 @@ static void mTI_set_character(Submenu* submenu, GAME* game, f32 x, f32 y) {
     { 196.0f, 141.0f }  // mTI_IDX_YEAR
   };
 
-  u8 str[2];
+  u8 str[4];
   int* col;
   mTI_Ovl_c* timeIn_ovl = submenu->overlay->timeIn_ovl;
   f32* set_pos_p = &set_pos[0][0];
@@ -436,6 +507,16 @@ static void mTI_set_character(Submenu* submenu, GAME* game, f32 x, f32 y) {
   /* Draw all numeric values */
   for (i = 0; i < mTI_IDX_NUM; set_pos_p += 2, i++) {
     if (i != mTI_IDX_MONTH) {
+      int digits = 2;
+      int value = timeIn_ovl->values[i];
+      f32 text_x = set_pos_p[0];
+#ifdef TARGET_PC
+      if (i == mTI_IDX_YEAR) {
+        value += GAME_YEAR_MIN;
+        digits = 4;
+        text_x -= 12.0f;
+      }
+#endif
       if (i == timeIn_ovl->sel_idx) {
         col = mTI_col_type0;
       }
@@ -443,11 +524,11 @@ static void mTI_set_character(Submenu* submenu, GAME* game, f32 x, f32 y) {
         col = mTI_col_type1;
       }
 
-      mFont_UnintToString(str, 2, timeIn_ovl->values[i], 2, FALSE, TRUE, TRUE);
+      mFont_UnintToString(str, digits, value, digits, FALSE, TRUE, FALSE);
       mFont_SetLineStrings(
         game,
-        str, 2,
-        x + set_pos_p[0], -y + set_pos_p[1],
+        str, digits,
+        x + text_x, -y + set_pos_p[1],
         col[0], col[1], col[2], 255,
         FALSE,
         TRUE,
@@ -533,7 +614,7 @@ static void mTI_timeIn_ovl_init(Submenu* submenu) {
     timeIn_ovl->original_time.year = GAME_YEAR_MIN + mTI_MIN_YEAR;
   }
   else {
-    timeIn_ovl->values[mTI_IDX_YEAR] = timeIn_ovl->original_time.year % 100;
+    timeIn_ovl->values[mTI_IDX_YEAR] = timeIn_ovl->original_time.year - GAME_YEAR_MIN;
   }
 
   timeIn_ovl->values[mTI_IDX_MONTH] = timeIn_ovl->original_time.month;

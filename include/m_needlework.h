@@ -51,8 +51,8 @@ enum {
 };
 
 typedef struct original_texture_s {
-  u8 data[mNW_DESIGN_TEX_SIZE];
-} ATTRIBUTE_ALIGN(32) mNW_original_tex_c;
+  ATTRIBUTE_ALIGN(32) u8 data[mNW_DESIGN_TEX_SIZE];
+} mNW_original_tex_c;
 
 /* sizeof(mNW_original_design_c) == 0x220 */
 typedef struct original_data_s {

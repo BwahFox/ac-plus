@@ -25,11 +25,12 @@ aWeather_Profile_c iam_weather_sakura = {
 
 static int aWeatherSakura_DecideMakeSakuraCount(ACTOR* actor, GAME* game) {
     WEATHER_ACTOR* weather = (WEATHER_ACTOR*)actor;
+    f32 horizontal_scale = aWeather_GetHorizontalScale();
 
     if (weather->current_level == 1) {
-        return aWeather_ShouldSpawnEvery(actor, 8.0f);
+        return aWeather_ShouldSpawnEvery(actor, 8.0f / horizontal_scale);
     }
-    return aWeather_ShouldSpawnEvery(actor, 4.0f);
+    return aWeather_ShouldSpawnEvery(actor, 4.0f / horizontal_scale);
 }
 
 static void aWeatherSakura_make(ACTOR* actor, GAME* game) {
@@ -43,11 +44,12 @@ static void aWeatherSakura_make(ACTOR* actor, GAME* game) {
     int count = Common_Get(clip.weather_clip)->get_priv_num(actor);
     xyz_t base = { 0.0f, 0.0f, 0.0f };
     xyz_t mod_pos;
+    f32 horizontal_half_width = 100.0f * aWeather_GetHorizontalScale();
 
     if (aWeatherSakura_DecideMakeSakuraCount(actor, game) != 0) {
         base.y = -0.8f + (RANDOM_F(-0.1f));
         if (count != -1) {
-            x = -100.0f + (RANDOM_F(200.0f));
+            x = -horizontal_half_width + RANDOM_F(horizontal_half_width * 2.0f);
             z = -200.0f + (RANDOM_F(380.0f));
 
             mod_pos = pos;
@@ -67,10 +69,10 @@ static void aWeatherSakura_make(ACTOR* actor, GAME* game) {
     }
 }
 
-static void aWeatherSakura_ct(aWeather_Priv* priv, GAME*) {
-    priv->work[0] = RANDOM_F(65535.0f);
-    priv->work[1] = RANDOM_F(65535.0f);
-    priv->work[2] = RANDOM_F(65535.0f);
+static void aWeatherSakura_ct(aWeather_Priv* priv, GAME* game) {
+    priv->work[0] = F32_TO_S16(RANDOM_F(65535.0f));
+    priv->work[1] = F32_TO_S16(RANDOM_F(65535.0f));
+    priv->work[2] = F32_TO_S16(RANDOM_F(65535.0f));
 }
 
 static int aWeatherSakura_CheckSakuraBorder(aWeather_Priv* priv) {
@@ -78,15 +80,16 @@ static int aWeatherSakura_CheckSakuraBorder(aWeather_Priv* priv) {
     int ret = 0;
     f32 sakuraTemp;
     xyz_t pos;
+    f32 horizontal_half_width = 100.0f * aWeather_GetHorizontalScale();
 
     if (weather != NULL) {
         pos = weather->pos;
         sakuraTemp = priv->pos.x;
 
-        if (sakuraTemp < (-100.0f + pos.x)) {
+        if (sakuraTemp < (-horizontal_half_width + pos.x)) {
             ret |= 2;
         }
-        if (sakuraTemp > (100.0f + pos.x)) {
+        if (sakuraTemp > (horizontal_half_width + pos.x)) {
             ret |= 8;
         }
         sakuraTemp = priv->pos.z;
@@ -104,13 +107,14 @@ static int aWeatherSakura_CheckSakuraBorder(aWeather_Priv* priv) {
 
 static void aWeatherSakura_CheckSakuraScroll(aWeather_Priv* priv) {
     int border = aWeatherSakura_CheckSakuraBorder(priv);
+    f32 horizontal_width = 200.0f * aWeather_GetHorizontalScale();
 
     if (border != 0) {
         if ((border >> 1) & 1) {
-            priv->pos.x += 200.0f;
+            priv->pos.x += horizontal_width;
         }
         if ((border >> 3) & 1) {
-            priv->pos.x -= 200.0f;
+            priv->pos.x -= horizontal_width;
         }
         if ((border >> 2) & 1) {
             priv->pos.z -= 380.0f;
@@ -148,12 +152,12 @@ static void aWeatherSakura_move(aWeather_Priv* priv, GAME* game) {
     priv->pos.y += priv->speed.y * dt;
     priv->pos.z += priv->speed.z * dt;
 
-    priv->work[3] += (float)priv->work[4] * dt;
+    priv->work[3] += F32_TO_S16((float)priv->work[4] * dt);
     aWeatherSakura_SetWind2Sakura(priv, game);
     aWeatherSakura_CheckSakuraScroll(priv);
-    priv->work[0] += 0x200 * dt;
-    priv->work[1] += 0x8DC * dt;
-    priv->work[2] += 0x474 * dt;
+    priv->work[0] += F32_TO_S16(0x200 * dt);
+    priv->work[1] += F32_TO_S16(0x8DC * dt);
+    priv->work[2] += F32_TO_S16(0x474 * dt);
 }
 
 static void aWeatherSakura_set(GAME* game) {
@@ -172,7 +176,7 @@ void aWeatherSakura_draw(aWeather_Priv* priv, GAME* game) {
 
     xyz_t base = { 0.05f, 0.05f, 0.05f };
 
-    Mtx* work;
+    N64Mtx* work;
     f32 scale;
     f32 min;
     xyz_t pos;
@@ -184,10 +188,9 @@ void aWeatherSakura_draw(aWeather_Priv* priv, GAME* game) {
     pos.y = priv->pos.y;
     Game_play_Projection_Trans(play, &pos, &screen_pos);
 
-    if ((screen_pos.x >= 0.0f) && (screen_pos.x < SCREEN_WIDTH_F) && (screen_pos.y >= 0.0f) &&
-        (screen_pos.y < SCREEN_HEIGHT_F)) {
+    if (aWeather_IsScreenPositionVisible(&screen_pos)) {
 
-        work = GRAPH_ALLOC_TYPE(game->graph, Mtx, 1);
+        work = GRAPH_ALLOC_TYPE(game->graph, N64Mtx, 1);
 
         OPEN_DISP(game->graph);
 

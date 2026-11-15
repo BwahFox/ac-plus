@@ -1,3 +1,4 @@
+#include <SDL3/SDL.h>
 #include "pc_platform.h"
 #include "pc_pause_menu.h"
 #include "pc_settings_menu.h"
@@ -16,15 +17,17 @@
 #include <stdio.h>
 #include <string.h>
 
-int g_pc_paused = 0;
+/* ac-plus's pause menu is open. Nookery pauses the game while it or one of its own menus is up (ui.cpp
+ * sync_pause_state sets g_pc_acplus_menu_open from both). */
+int g_pc_acplus_menu_open = 0;
 
 /* Pausing is blocked while either is set: main menu (set by ac_animal_logo)
  * or NES running (its own pause, and pausing it crashes the game). */
 int g_pc_title_main_menu_visible = 0;
-int g_pc_nes_active = 0;
+extern int g_pc_nes_active;
 
-/* Drains the keys still held from confirming Resume so they don't leak into play. */
-int g_pc_pause_input_drain = 0;
+/* Drains the keys still held from confirming Resume so they don't leak into play (aurora_platform.cpp) */
+extern int g_pc_pause_input_drain;
 
 /* Pause menu pages */
 typedef enum {
@@ -57,6 +60,7 @@ void pc_mp_menu_action(int act);
 void pc_mp_menu_draw(struct game_s* game);
 
 static PauseMenuPage cur_page = PAGE_MAIN;
+static int s_direct = 0; /* a page opened by itself (Nookery's ac-plus window, Porter, the chat key): done = back to the game */
 static int main_sel = 0;    /* row index into main_items() */
 static int confirm_sel = 0; /* 0=No (default), 1=Yes */
 
@@ -86,42 +90,72 @@ static int main_items(MainItem* out) {
 }
 
 void pc_pause_menu_open_skin(void) {
-    g_pc_paused = 1;
+    g_pc_acplus_menu_open = 1;
     cur_page = PAGE_SKIN;
 }
 
 void pc_pause_menu_open_const(void) {
-    g_pc_paused = 1;
+    g_pc_acplus_menu_open = 1;
     cur_page = PAGE_CONST;
 }
 
-/* Porter's "Online" (pc_mp.c): straight to Online Play */
+/* Nookery's menu bar, "ac-plus" tab (ui/menu_bar.cpp): the main page */
+void pc_pause_menu_open_main(void) {
+    if (g_pc_acplus_menu_open || g_pc_title_main_menu_visible || g_pc_nes_active) return;
+    pc_pause_menu_toggle();
+}
+
+/* A page finished: back to the main page, or to the game when it was opened by itself */
+static void pc_pause_menu_page_done(void) {
+    cur_page = PAGE_MAIN;
+    if (s_direct) {
+        s_direct = 0;
+        g_pc_acplus_menu_open = 0;
+        g_pc_pause_input_drain = 1;
+    }
+}
+
+/* Nookery's menu, ac-plus window (ui/acplus.cpp): Pattern QR codes (0) or Online Play (1), drawn by the game */
+void pc_pause_menu_open_page(int which) {
+    if (g_pc_acplus_menu_open || g_pc_title_main_menu_visible || g_pc_nes_active) return;
+    g_pc_acplus_menu_open = 1;
+    s_direct = 1;
+    if (which == 0) {
+        cur_page = PAGE_QR;
+        pc_qr_menu_enter();
+    } else {
+        cur_page = PAGE_ONLINE;
+        pc_mp_menu_enter();
+    }
+}
+
+/* Porter's "Online" (pc_mp.c): Online Play in Nookery's menu (ui/acplus_online.cpp) */
 void pc_pause_menu_open_online(void) {
-    extern void pc_mp_menu_enter_porter(void);
-    g_pc_paused = 1;
-    cur_page = PAGE_ONLINE;
-    pc_mp_menu_enter_porter();
+    extern void pc_acplus_online_open(int porter);
+    pc_acplus_online_open(1);
 }
 
 /* The chat button (pc_main.c): straight to Online Play's Say line while in an online visit. TRUE if it opened */
 int pc_pause_menu_quick_say(void) {
     extern void pc_mp_menu_quick_say(void);
 
-    if (g_pc_paused || g_pc_title_main_menu_visible || g_pc_nes_active || !(pc_mp_hosting() || pc_mp_visiting())) {
+    if (g_pc_acplus_menu_open || g_pc_title_main_menu_visible || g_pc_nes_active || !(pc_mp_hosting() || pc_mp_visiting())) {
         return 0;
     }
-    g_pc_paused = 1;
+    g_pc_acplus_menu_open = 1;
+    s_direct = 1;
     cur_page = PAGE_ONLINE;
     pc_mp_menu_quick_say();
     return 1;
 }
 
 void pc_pause_menu_toggle(void) {
-    if (!g_pc_paused && (g_pc_title_main_menu_visible || g_pc_nes_active)) return;
-    if (g_pc_paused && cur_page == PAGE_SKIN) return; /* closed by picking (or B), not the pause key */
+    if (!g_pc_acplus_menu_open && (g_pc_title_main_menu_visible || g_pc_nes_active)) return;
+    if (g_pc_acplus_menu_open && cur_page == PAGE_SKIN) return; /* closed by picking (or B), not the pause key */
 
-    g_pc_paused = !g_pc_paused;
-    if (g_pc_paused) {
+    g_pc_acplus_menu_open = !g_pc_acplus_menu_open;
+    s_direct = 0;
+    if (g_pc_acplus_menu_open) {
         cur_page = PAGE_MAIN;
         main_sel = 0;
     } else {
@@ -213,7 +247,7 @@ static void handle_action(MenuAction act) {
         pc_skin_pick_action((int)act);
         if (!pc_skin_pick_active()) {
             cur_page = PAGE_MAIN;
-            g_pc_paused = 0;
+            g_pc_acplus_menu_open = 0;
             g_pc_pause_input_drain = 1;
         }
         return;
@@ -224,7 +258,7 @@ static void handle_action(MenuAction act) {
         if (!pc_const_edit_active()) {
             /* back to the game, not the pause menu */
             cur_page = PAGE_MAIN;
-            g_pc_paused = 0;
+            g_pc_acplus_menu_open = 0;
             g_pc_pause_input_drain = 1;
         }
         return;
@@ -232,13 +266,13 @@ static void handle_action(MenuAction act) {
 
     if (cur_page == PAGE_ONLINE) {
         pc_mp_menu_action((int)act); /* MenuAction values as pc_mp_menu.c numbers them */
-        if (!pc_mp_menu_active()) cur_page = PAGE_MAIN;
+        if (!pc_mp_menu_active()) pc_pause_menu_page_done();
         return;
     }
 
     if (cur_page == PAGE_QR) {
         pc_qr_menu_action((int)act); /* MenuAction values match pc_pattern_qr.h */
-        if (!pc_qr_menu_active()) cur_page = PAGE_MAIN;
+        if (!pc_qr_menu_active()) pc_pause_menu_page_done();
         return;
     }
 
@@ -273,13 +307,13 @@ static void handle_action(MenuAction act) {
 static MenuAction translate_key(SDL_Keycode k) {
     switch (k) {
         case SDLK_UP:
-        case SDLK_w:        return ACT_UP;
+        case SDLK_W:        return ACT_UP;
         case SDLK_DOWN:
-        case SDLK_s:        return ACT_DOWN;
+        case SDLK_S:        return ACT_DOWN;
         case SDLK_LEFT:
-        case SDLK_a:        return ACT_LEFT;
+        case SDLK_A:        return ACT_LEFT;
         case SDLK_RIGHT:
-        case SDLK_d:        return ACT_RIGHT;
+        case SDLK_D:        return ACT_RIGHT;
         case SDLK_RETURN:
         case SDLK_KP_ENTER:
         case SDLK_SPACE:    return ACT_CONFIRM;
@@ -290,14 +324,14 @@ static MenuAction translate_key(SDL_Keycode k) {
 
 static MenuAction translate_pad_button(int button) {
     switch (button) {
-        case SDL_CONTROLLER_BUTTON_DPAD_UP:    return ACT_UP;
-        case SDL_CONTROLLER_BUTTON_DPAD_DOWN:  return ACT_DOWN;
-        case SDL_CONTROLLER_BUTTON_DPAD_LEFT:  return ACT_LEFT;
-        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: return ACT_RIGHT;
-        case SDL_CONTROLLER_BUTTON_A:          return ACT_CONFIRM;
-        case SDL_CONTROLLER_BUTTON_B:
-        case SDL_CONTROLLER_BUTTON_BACK:
-        case SDL_CONTROLLER_BUTTON_START:      return ACT_CANCEL;
+        case SDL_GAMEPAD_BUTTON_DPAD_UP:    return ACT_UP;
+        case SDL_GAMEPAD_BUTTON_DPAD_DOWN:  return ACT_DOWN;
+        case SDL_GAMEPAD_BUTTON_DPAD_LEFT:  return ACT_LEFT;
+        case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: return ACT_RIGHT;
+        case SDL_GAMEPAD_BUTTON_SOUTH:          return ACT_CONFIRM;
+        case SDL_GAMEPAD_BUTTON_EAST:
+        case SDL_GAMEPAD_BUTTON_BACK:
+        case SDL_GAMEPAD_BUTTON_START:      return ACT_CANCEL;
     }
     return ACT_NONE;
 }
@@ -311,8 +345,8 @@ static MenuAction translate_pad_axis(int axis, int value) {
     int* latch;
     MenuAction neg, pos;
 
-    if (axis == SDL_CONTROLLER_AXIS_LEFTX)      { latch = &latch_x; neg = ACT_LEFT; pos = ACT_RIGHT; }
-    else if (axis == SDL_CONTROLLER_AXIS_LEFTY) { latch = &latch_y; neg = ACT_UP;   pos = ACT_DOWN; }
+    if (axis == SDL_GAMEPAD_AXIS_LEFTX)      { latch = &latch_x; neg = ACT_LEFT; pos = ACT_RIGHT; }
+    else if (axis == SDL_GAMEPAD_AXIS_LEFTY) { latch = &latch_y; neg = ACT_UP;   pos = ACT_DOWN; }
     else return ACT_NONE;
 
     if (*latch != 0) {
@@ -328,24 +362,24 @@ static MenuAction translate_pad_axis(int axis, int value) {
 void pc_pause_menu_dev_action(int act) {
     if (act == 0) {
         pc_pause_menu_toggle();
-    } else if (g_pc_paused) {
+    } else if (g_pc_acplus_menu_open) {
         handle_action((MenuAction)act);
     }
 }
 
 int pc_pause_menu_handle_event(const SDL_Event* e) {
-    if (!g_pc_paused) return 0;
+    if (!g_pc_acplus_menu_open) return 0;
 
     switch (e->type) {
-        case SDL_KEYDOWN:
+        case SDL_EVENT_KEY_DOWN:
             if (e->key.repeat) return 1;
-            handle_action(translate_key(e->key.keysym.sym));
+            handle_action(translate_key(e->key.key));
             return 1; /* swallow all keys while paused */
-        case SDL_CONTROLLERBUTTONDOWN:
-            handle_action(translate_pad_button(e->cbutton.button));
+        case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+            handle_action(translate_pad_button(e->gbutton.button));
             return 1;
-        case SDL_CONTROLLERAXISMOTION:
-            handle_action(translate_pad_axis(e->caxis.axis, e->caxis.value));
+        case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+            handle_action(translate_pad_axis(e->gaxis.axis, e->gaxis.value));
             return 1;
     }
     return 0;
@@ -380,7 +414,7 @@ static void draw_confirm_page(struct game_s* game) {
 }
 
 void pc_pause_menu_draw(struct game_s* game) {
-    if (!g_pc_paused || game == NULL || game->graph == NULL) return;
+    if (!g_pc_acplus_menu_open || game == NULL || game->graph == NULL) return;
 
     /* Font ortho projection + identity modelview, else our screen-space quads
      * inherit whatever projection the scene ended its frame with. */
@@ -396,7 +430,7 @@ void pc_pause_menu_draw(struct game_s* game) {
         pc_const_edit_draw(game); /* draws the sky itself, no dimming */
         if (!pc_const_edit_active()) { /* a mouse click closed it */
             cur_page = PAGE_MAIN;
-            g_pc_paused = 0;
+            g_pc_acplus_menu_open = 0;
             g_pc_pause_input_drain = 1;
         }
     } else if (cur_page == PAGE_SKIN) {
@@ -407,6 +441,10 @@ void pc_pause_menu_draw(struct game_s* game) {
         else if (cur_page == PAGE_CONFIRM_QUIT) draw_confirm_page(game);
         else if (cur_page == PAGE_QR)           pc_qr_menu_draw(game);
         else if (cur_page == PAGE_ONLINE)       pc_mp_menu_draw(game);
+        /* (a page may close itself while drawing: Online Play when Porter's train is ready) */
+        if ((cur_page == PAGE_QR && !pc_qr_menu_active()) || (cur_page == PAGE_ONLINE && !pc_mp_menu_active())) {
+            pc_pause_menu_page_done();
+        }
     }
 
     mFont_UnSetMatrix(game->graph, mFont_MODE_FONT);

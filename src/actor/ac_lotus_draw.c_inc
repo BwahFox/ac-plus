@@ -1,71 +1,71 @@
 #ifdef TARGET_PC
-static u16 aLOT_obj_01_lotus_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u16 aLOT_obj_01_lotus_pal[0x20 / sizeof(u16)];
 #else
-static u16 aLOT_obj_01_lotus_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u16 aLOT_obj_01_lotus_pal[] = {
     #include "assets/aLOT_obj_01_lotus_pal.inc"
 };
 #endif
 
 #ifdef TARGET_PC
-static u16 obj_02_lotus_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u16 obj_02_lotus_pal[0x20 / sizeof(u16)];
 #else
-static u16 obj_02_lotus_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u16 obj_02_lotus_pal[] = {
     #include "assets/obj_02_lotus_pal.inc"
 };
 #endif
 
 #ifdef TARGET_PC
-static u16 obj_03_lotus_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u16 obj_03_lotus_pal[0x20 / sizeof(u16)];
 #else
-static u16 obj_03_lotus_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u16 obj_03_lotus_pal[] = {
     #include "assets/obj_03_lotus_pal.inc"
 };
 #endif
 
 #ifdef TARGET_PC
-static u16 obj_04_lotus_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u16 obj_04_lotus_pal[0x20 / sizeof(u16)];
 #else
-static u16 obj_04_lotus_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u16 obj_04_lotus_pal[] = {
     #include "assets/obj_04_lotus_pal.inc"
 };
 #endif
 
 #ifdef TARGET_PC
-static u16 obj_05_lotus_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u16 obj_05_lotus_pal[0x20 / sizeof(u16)];
 #else
-static u16 obj_05_lotus_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u16 obj_05_lotus_pal[] = {
     #include "assets/obj_05_lotus_pal.inc"
 };
 #endif
 
 #ifdef TARGET_PC
-static u16 obj_06_lotus_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u16 obj_06_lotus_pal[0x20 / sizeof(u16)];
 #else
-static u16 obj_06_lotus_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u16 obj_06_lotus_pal[] = {
     #include "assets/obj_06_lotus_pal.inc"
 };
 #endif
 
 #ifdef TARGET_PC
-static u16 obj_07_lotus_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u16 obj_07_lotus_pal[0x20 / sizeof(u16)];
 #else
-static u16 obj_07_lotus_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u16 obj_07_lotus_pal[] = {
     #include "assets/obj_07_lotus_pal.inc"
 };
 #endif
 
 #ifdef TARGET_PC
-static u16 obj_08_lotus_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u16 obj_08_lotus_pal[0x20 / sizeof(u16)];
 #else
-static u16 obj_08_lotus_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u16 obj_08_lotus_pal[] = {
     #include "assets/obj_08_lotus_pal.inc"
 };
 #endif
 
 #ifdef TARGET_PC
-static u16 obj_09_lotus_pal[0x20 / sizeof(u16)] ATTRIBUTE_ALIGN(32);
+ATTRIBUTE_ALIGN(32) static u16 obj_09_lotus_pal[0x20 / sizeof(u16)];
 #else
-static u16 obj_09_lotus_pal[] ATTRIBUTE_ALIGN(32) = {
+ATTRIBUTE_ALIGN(32) static u16 obj_09_lotus_pal[] = {
     #include "assets/obj_09_lotus_pal.inc"
 };
 #endif
@@ -131,7 +131,7 @@ static void aLOT_actor_draw(ACTOR* actor, GAME* game) {
     LOTUS_ACTOR* lotus;
     GRAPH* graph;
     cKF_SkeletonInfo_R_c* keyframe;
-    Mtx* mtx;
+    N64Mtx* mtx;
     Gfx* gfx;
 
     lotus = (LOTUS_ACTOR*)actor;
@@ -139,7 +139,7 @@ static void aLOT_actor_draw(ACTOR* actor, GAME* game) {
     keyframe = &lotus->structure_class.keyframe;
 
     if (lotus->structure_class.arg0 >= 0) {
-        mtx = GRAPH_ALLOC_TYPE(graph, Mtx, keyframe->skeleton->num_shown_joints);
+        mtx = GRAPH_ALLOC_TYPE(graph, N64Mtx, keyframe->skeleton->num_shown_joints);
         if (mtx != NULL) {
             _texture_z_light_fog_prim_npc(graph);
 
